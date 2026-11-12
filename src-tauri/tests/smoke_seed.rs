@@ -31,8 +31,8 @@ fn seed() {
     std::fs::create_dir_all(&thumbs).unwrap();
     // 曲：フィクスチャを複製して、タグとジャケットを付ける
     let list = [
-        ("sine.mp3", "夜明けのテーマ", "Aoi Sora", "Morning Light", "J-Pop", Some("cover_a.png")),
-        ("sine.flac", "群青の街", "Aoi Sora", "Morning Light", "J-Pop", Some("cover_a.png")),
+        ("sine.mp3", "夜明けのテーマ", "Kumo Kujira", "Morning Light", "J-Pop", Some("cover_a.png")),
+        ("sine.flac", "群青の街", "Kumo Kujira", "Morning Light", "J-Pop", Some("cover_a.png")),
         ("sine_aaclc.m4a", "Starfall", "Hikari", "Night Parade", "Anime", Some("cover_b.jpg")),
         ("sine.ogg", "風の通り道", "Hikari", "Night Parade", "Anime", Some("cover_b.jpg")),
         ("sine.opus", "とても長い曲名のテスト：狭いウィンドウで省略されるかを確かめるための曲名", "Long Name Artist Collective", "Very Long Album Title For Layout Check", "Soundtrack", None),

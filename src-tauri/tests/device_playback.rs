@@ -37,7 +37,7 @@ fn wait_for<F: FnMut(&Event) -> bool>(rx: &crossbeam_channel::Receiver<Event>, s
     panic!("timeout; seen: {seen:?}");
 }
 
-/// 7形式すべてを実際のデバイスで最後まで鳴らす（位置が進み、終わりの通知が来る）
+/// 7形式すべて（v3.1.2 から HE-AAC の m4a も。Media Foundation で読む）を実際のデバイスで最後まで鳴らす（位置が進み、終わりの通知が来る）
 #[test]
 #[ignore]
 fn plays_all_formats_to_the_end() {
@@ -46,7 +46,7 @@ fn plays_all_formats_to_the_end() {
     }
     let engine = AudioEngine::start(0.0, false, None);
     let rx = engine.events();
-    for (i, name) in ["sine.mp3", "sine.wav", "sine.flac", "sine_aaclc.m4a", "sine_alac.m4a", "sine.aac", "sine.ogg", "sine.opus", "mono_22k.wav"]
+    for (i, name) in ["sine.mp3", "sine.wav", "sine.flac", "sine_aaclc.m4a", "sine_alac.m4a", "sine.aac", "sine.ogg", "sine.opus", "mono_22k.wav", "sine_heaac.m4a"]
         .iter()
         .enumerate()
     {
@@ -71,10 +71,17 @@ fn plays_all_formats_to_the_end() {
     }
 }
 
-/// 再生中に出力先を変えても、曲と位置が保たれる
+/// 再生中に出力先を変えても、曲と位置が保たれる（v3.1.2：Media Foundation で読む HE-AAC も）
 #[test]
 #[ignore]
 fn switching_device_keeps_position() {
+    for name in ["sine.flac", "sine_heaac.m4a"] {
+        println!("== {name}");
+        switching_device_keeps_position_for(name);
+    }
+}
+
+fn switching_device_keeps_position_for(name: &str) {
     let devs = list_output_devices();
     if devs.is_empty() {
         return;
@@ -82,7 +89,7 @@ fn switching_device_keeps_position() {
     // 長めの曲（3秒の曲を、0.5秒から）
     let engine = AudioEngine::start(0.0, false, None);
     let rx = engine.events();
-    engine.send(Command::Load { path: fixture("sine.flac"), start_ms: 500, play: true, token: 7 });
+    engine.send(Command::Load { path: fixture(name), start_ms: 500, play: true, token: 7 });
     let mut before_switch = 0;
     wait_for(&rx, 5, |e| match e {
         Event::Position { position_ms, .. } => {
@@ -123,16 +130,23 @@ fn switching_device_keeps_position() {
     wait_for(&rx, 5, |e| matches!(e, Event::Ended { token: 7 }));
 }
 
-/// 一時停止・シーク・再開
+/// 一時停止・シーク・再開（v3.1.2：Media Foundation で読む HE-AAC も）
 #[test]
 #[ignore]
 fn pause_seek_resume() {
+    for name in ["sine.ogg", "sine_heaac.m4a"] {
+        println!("== {name}");
+        pause_seek_resume_for(name);
+    }
+}
+
+fn pause_seek_resume_for(name: &str) {
     if !has_device() {
         return;
     }
     let engine = AudioEngine::start(0.0, false, None);
     let rx = engine.events();
-    engine.send(Command::Load { path: fixture("sine.ogg"), start_ms: 0, play: true, token: 1 });
+    engine.send(Command::Load { path: fixture(name), start_ms: 0, play: true, token: 1 });
     wait_for(&rx, 5, |e| matches!(e, Event::Position { position_ms, .. } if *position_ms >= 500));
     engine.send(Command::Pause);
     std::thread::sleep(Duration::from_millis(400));

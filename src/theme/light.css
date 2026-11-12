@@ -1,23 +1,25 @@
 /*
-  Light テーマ。原文は「Dark を反転した設計」とだけ書いていて、値が無い。
-  背景・パネル・文字は Dark の値を反転（255 − 値）して作った。アクセントは役割が同じなので Dark と同じ色。
-  （#08080C → #F7F7F3、rgba(15,15,22) → rgba(240,240,233)、#FFFFFF → #000000、#B0B0B8 → #4F4F47）
-  作者に画面で確かめてもらう項目（アーキテクチャ案 3-2・11章）。
+  Light テーマ（v3.1.2 で作り直した）。
+  3.1.1 までは Dark の値を反転して作った仮の色で、暗い背景画像の上では説明の文字・アクセントの文字・線が読みにくかった。
+  文字と背景の濃さの差（WCAG のコントラスト比）を計算して、本文 4.5:1 以上、大きい文字と線 3:1 以上にした。
+  計算は背景画像なし・明るい背景画像（白）・暗い背景画像（黒）の3つで、覆い（背景の暗さ 45%）とパネル（UI の不透明度 70%）を重ねた色に対して行う。
+  計算に使った値と結果の表、確かめ方は docs\テーマの色の根拠.md（scripts\theme-contrast.mts で出し、scripts\theme-contrast.test.mts で確かめる）。
+  変数の名前は Dark と同じ。
 */
 [data-theme="light"] {
-  --c-bg: #f7f7f3;
-  --c-panel-rgb: 240, 240, 233;
-  --c-overlay-rgb: 247, 247, 243;
+  --c-bg: #f4f4f1;
+  --c-panel-rgb: 252, 252, 250; /* 不透明度は --ui-alpha */
+  --c-overlay-rgb: 250, 250, 247;
   --c-primary: #000000;
-  --c-secondary: #4f4f47;
-  --c-accent: #7c6cff;
+  --c-secondary: #44444c;
+  --c-accent: #4232c2;
   --c-accent-contrast: #ffffff;
-  --c-hover: rgba(0, 0, 0, 0.06);
-  --c-selected: rgba(124, 108, 255, 0.2);
-  --c-border: rgba(0, 0, 0, 0.1);
-  --c-input: rgba(0, 0, 0, 0.05);
-  --c-danger: #c8243a;
-  --c-ok: #1f8a57;
+  --c-hover: rgba(0, 0, 0, 0.045);
+  --c-selected: rgba(66, 50, 194, 0.12);
+  --c-border: rgba(0, 0, 0, 0.48);
+  --c-input: rgba(0, 0, 0, 0.02);
+  --c-danger: #a3132b;
+  --c-ok: #0c5f37;
   --shadow-panel: 0 4px 18px rgba(0, 0, 0, 0.12);
   --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.18);
   color-scheme: light;

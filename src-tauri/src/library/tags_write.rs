@@ -417,6 +417,26 @@ mod tests {
         p
     }
 
+    /// v3.1.2：HE-AAC の m4a にも書ける（書いたあとの確かめで、音声を Media Foundation で復号する）。
+    /// 古い文字コードで化けたタグの曲で、編集画面が直した値をそのまま保存すると、読み直しの照合も通る
+    #[test]
+    fn writes_he_aac_and_repaired_values() {
+        let _mf = crate::platform::windows::mf_audio::test_lock();
+        let p = work_copy("sine_heaac.m4a", "heaac");
+        write_tags(&p, &values(), &ArtChange::Keep).unwrap();
+        let got = super::super::tags_read::read_values(&p).unwrap();
+        assert_eq!(got.title, "新しい曲名");
+        assert!(crate::audio::decoder::decode_all_frames(&p).is_ok());
+        // 「さくら色の坂道」（Shift_JIS）を ID3v2 の Latin-1 の枠に入れた MP3。編集画面は直した値を出し、それを保存できる
+        let dir = p.parent().unwrap().to_path_buf();
+        let mp3 = super::super::tags_read::test_legacy_mp3(&dir, "legacy.mp3", &[(b"TIT2", b"\x82\xb3\x82\xad\x82\xe7\x90\x46\x82\xcc\x8d\xe2\x93\xb9")], None);
+        let shown = super::super::tags_read::read_values(&mp3).unwrap();
+        assert_eq!(shown.title, "さくら色の坂道");
+        write_tags(&mp3, &shown, &ArtChange::Keep).unwrap();
+        assert_eq!(super::super::tags_read::read_values(&mp3).unwrap().title, "さくら色の坂道");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn writes_all_formats_safely() {
         for name in ["sine.mp3", "sine.flac", "sine_aaclc.m4a", "sine.ogg", "sine.opus", "sine.wav"] {

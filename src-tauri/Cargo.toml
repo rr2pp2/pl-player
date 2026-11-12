@@ -1,6 +1,6 @@
 [package]
 name = "pl-player"
-version = "3.1.1"
+version = "3.1.2"
 description = "PL Player - local music player"
 license = "MIT"
 edition = "2021"
@@ -57,6 +57,10 @@ windows = { version = "=0.62.2", features = [
   "Win32_Networking",
   "Win32_Networking_WinHttp",
   "Win32_Globalization",
+  # v3.1.2：Symphonia が読めない AAC（HE-AAC）を Media Foundation で鳴らす（新しいクレートは無い）。古い文字コードのタグは Win32_Globalization の MultiByteToWideChar
+  "Win32_Media_MediaFoundation",
+  # v3.1.2：Media Foundation の DLL があるかを、使う前に確かめる（LoadLibraryExW。DLL は build.rs で遅延読み込みにしている）
+  "Win32_System_LibraryLoader",
 ] }
 
 [profile.release]

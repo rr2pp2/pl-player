@@ -26,6 +26,8 @@ pub struct TagValues {
     pub comment: String,
 }
 
+/// タグの値をそのまま読む（文字化けは直さない。書き込みの照合（tags_write::verify）は書いた値そのものと比べるため、これを使う）。
+/// 画面・DB に出す値は `read_track`・`read_values` が `legacy_text::repair_values` で直す（v3.1.2）
 pub fn values_from_tag(tag: &Tag) -> TagValues {
     TagValues {
         title: tag.title().map(|s| s.trim().to_string()).unwrap_or_default(),
@@ -132,7 +134,9 @@ pub fn read_track(path: &Path, thumbs_dir: &Path) -> Result<TrackInfo, AppError>
             info.duration_ms = tagged.properties().duration().as_millis() as i64;
             let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
             if let Some(tag) = tag {
-                let v = values_from_tag(tag);
+                let mut v = values_from_tag(tag);
+                // v3.1.2：古い文字コード（Shift_JIS など）の文字化けを読むときに直す（ファイルは書き換えない）
+                super::legacy_text::repair_values(&mut v, path);
                 if !v.title.is_empty() {
                     info.title = v.title;
                 }
@@ -179,11 +183,14 @@ fn read_values_inner(path: &Path) -> Result<TagValues, AppError> {
         };
         AppError::new(kind, format!("{}: {e}", path.display()))
     })?;
-    Ok(tagged
+    let mut v = tagged
         .primary_tag()
         .or_else(|| tagged.first_tag())
         .map(values_from_tag)
-        .unwrap_or_default())
+        .unwrap_or_default();
+    // v3.1.2：古い文字コードの文字化けを直す（取り込みと同じ）。編集画面にも、歌詞を取るときの曲名の確かめにも、直した値が出る
+    super::legacy_text::repair_values(&mut v, path);
+    Ok(v)
 }
 
 /// 曲ファイルの歌詞タグを読む（v3、仕様 2.3）。読むだけで、書き込み（tags_write）にはつながない。
@@ -452,10 +459,89 @@ pub(crate) fn test_copy_with_lyrics(name: &str, tag: &str, lyrics: &str) -> std:
     dst
 }
 
+/// テスト用（v3.1.2）：古い文字コードのタグを持つ MP3 を `dir` に作る。音声はフィクスチャの sine.mp3（頭の ID3v2 を外したもの）。
+/// - `v2_latin1`：ID3v2.3 の項目（TIT2・TPE1 など）を、文字コードの印を Latin-1（0）にして、渡したバイトをそのまま入れる
+/// - `v1`：ID3v1（曲名・アーティスト・アルバム）。各 30 バイトに切る（2バイト文字が途中で切れる形も作れる）
+#[cfg(test)]
+pub(crate) fn test_legacy_mp3(dir: &Path, name: &str, v2_latin1: &[(&[u8; 4], &[u8])], v1: Option<[&[u8]; 3]>) -> std::path::PathBuf {
+    let src = std::fs::read(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("sine.mp3")).unwrap();
+    assert_eq!(&src[..3], b"ID3");
+    let ss = |b: &[u8]| b.iter().fold(0usize, |a, &x| (a << 7) | (x & 0x7f) as usize);
+    let audio = &src[10 + ss(&src[6..10])..];
+    let mut out = Vec::new();
+    if !v2_latin1.is_empty() {
+        let mut frames = Vec::new();
+        for (id, bytes) in v2_latin1 {
+            frames.extend_from_slice(*id);
+            frames.extend_from_slice(&((bytes.len() + 1) as u32).to_be_bytes());
+            frames.extend_from_slice(&[0, 0, 0]); // 印2バイト＋文字コード 0（Latin-1）
+            frames.extend_from_slice(bytes);
+        }
+        let n = frames.len();
+        out.extend_from_slice(b"ID3\x03\x00\x00");
+        out.extend_from_slice(&[(n >> 21) as u8 & 0x7f, (n >> 14) as u8 & 0x7f, (n >> 7) as u8 & 0x7f, n as u8 & 0x7f]);
+        out.extend_from_slice(&frames);
+    }
+    out.extend_from_slice(audio);
+    if let Some(fields) = v1 {
+        out.extend_from_slice(b"TAG");
+        for f in fields {
+            let mut b = f.to_vec();
+            b.resize(30, 0);
+            out.extend_from_slice(&b);
+        }
+        out.extend_from_slice(b"2001");
+        out.extend_from_slice(&[0u8; 30]);
+        out.push(255);
+    }
+    std::fs::create_dir_all(dir).unwrap();
+    let p = dir.join(name);
+    std::fs::write(&p, &out).unwrap();
+    p
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// v3.1.2：ID3v2 の Latin-1 の枠・ID3v1 に入った Shift_JIS は、取り込み（read_track）と編集画面（read_values）で日本語になる。
+    /// 曲ファイルは書き換えない。直してはいけない値（アクセント付きの名前・×）はそのまま。曲名は架空のもの
+    #[test]
+    fn legacy_shift_jis_tags_are_read_as_japanese() {
+        let dir = crate::test_tmp().join(format!("plp-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // 「さくら色の坂道」「アオイ」「夜の果て」（Shift_JIS）
+        let title = b"\x82\xb3\x82\xad\x82\xe7\x90\x46\x82\xcc\x8d\xe2\x93\xb9".as_slice();
+        let artist = b"\x83\x41\x83\x49\x83\x43".as_slice();
+        let album = b"\x96\xe9\x82\xcc\x89\xca\x82\xc4".as_slice();
+        let v2 = test_legacy_mp3(&dir, "v2.mp3", &[(b"TIT2", title), (b"TPE1", artist), (b"TALB", album)], None);
+        // 直してはいけない値も Latin-1 のバイトで：「Raison d'être」の ê は 0xEA、× は 0xD7
+        let v2b = test_legacy_mp3(&dir, "v2b.mp3", &[(b"TIT2", title), (b"TCOM", b"Raison d'\xeatre"), (b"TCON", b"A \xd7 B")], None);
+        // ID3v1：曲名は 30 バイトに収まらない長さにして、2バイト文字の途中で切れる形
+        let long_title = [title, title, title].concat(); // 先頭の 29 バイト：14文字（28 バイト）＋「さ」の先頭バイトだけ
+        let v1 = test_legacy_mp3(&dir, "01 v1.mp3", &[], Some([&long_title[..29], artist, album]));
+        let before: Vec<Vec<u8>> = [&v2, &v2b, &v1].iter().map(|p| std::fs::read(p).unwrap()).collect();
+        let t = read_track(&v2, &dir).unwrap();
+        assert_eq!((t.title.as_str(), t.artist.as_str(), t.album.as_str()), ("さくら色の坂道", "アオイ", "夜の果て"));
+        let v = read_values(&v2).unwrap();
+        assert_eq!((v.title.as_str(), v.artist.as_str(), v.album.as_str()), ("さくら色の坂道", "アオイ", "夜の果て"));
+        let v = read_values(&v2b).unwrap();
+        assert_eq!(v.title, "さくら色の坂道");
+        assert_eq!(v.composer, "Raison d'être");
+        assert_eq!(v.genre, "A × B");
+        let t = read_track(&v1, &dir).unwrap();
+        assert_eq!(t.title, "さくら色の坂道さくら色の坂道");
+        assert_eq!((t.artist.as_str(), t.album.as_str()), ("アオイ", "夜の果て"));
+        // 書き込みの照合用の生の値（values_from_tag）は直さない
+        let tagged = open_tagged(&v2).unwrap();
+        let raw = values_from_tag(tagged.primary_tag().or_else(|| tagged.first_tag()).unwrap());
+        assert!(raw.title.chars().all(|c| (c as u32) <= 0xFF), "{:?}", raw.title);
+        // 曲ファイルは書き換えていない
+        let after: Vec<Vec<u8>> = [&v2, &v2b, &v1].iter().map(|p| std::fs::read(p).unwrap()).collect();
+        assert!(before == after);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// v3.1.0 直し2回目：lofty が panic するファイル（OpusHead のチャンネル数を 0 にした Opus。ペネトレーションテスト v3.0.2 の3）
     /// でも、読み取りは panic せず Err を返す

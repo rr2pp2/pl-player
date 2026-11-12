@@ -68,6 +68,71 @@ pub fn album_key(album_artist: &str, artist: &str, album: &str) -> String {
     format!("{}\u{1}{}", who.trim().to_lowercase(), album.trim().to_lowercase())
 }
 
+/// 3.1.1 までに取り込んだ曲の、古い文字コードで化けた値を直す（v3.1.2。移行 4 の中で1回だけ走る。`db::migrate`）。
+///
+/// 取り込み（`tags_read::read_track`）は v3.1.2 から読むときに直すが、変わっていない曲は再走査で読み直さない。
+/// そこで DB の値に同じ決まり（`library::legacy_text::repair`）を当てる。曲ファイルは読まない・書かない。
+/// - 先に SQL で、U+0080〜U+00FF の文字を含む行だけに絞る（それ以外の行は決まり 1・2 に当たらない）
+/// - 曲名がファイル名（拡張子なし）と同じ行は、曲名には当てない（タグに曲名が無く、ファイル名から作った値のため）
+/// - アルバムの鍵（album_key）も作り直し、外部画像の設定（album_art_overrides）は新しい鍵へ移す
+///   （古い鍵の曲がもう無く、新しい鍵に設定が無いときだけ）
+///
+/// 直した行の数を返す
+pub fn repair_legacy_text(conn: &Connection) -> AppResult<usize> {
+    use crate::library::legacy_text::repair;
+    type Row7 = (i64, String, String, [String; 7]);
+    let rows: Vec<Row7> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, path, album_key, title, artist, album, album_artist, genre, composer, comment FROM tracks
+             WHERE (title || char(1) || artist || char(1) || album || char(1) || album_artist || char(1) || genre
+                    || char(1) || composer || char(1) || comment) GLOB ('*[' || char(128) || '-' || char(255) || ']*')",
+        )?;
+        let it = stmt.query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                [r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?],
+            ))
+        })?;
+        it.collect::<rusqlite::Result<_>>()?
+    };
+    let mut fixed = 0;
+    for (id, path, old_key, mut v) in rows {
+        let stem = std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().into_owned());
+        let mut changed = false;
+        for (i, field) in v.iter_mut().enumerate() {
+            if i == 0 && stem.as_deref().is_some_and(|s| s == field.as_str()) {
+                continue;
+            }
+            if let Some(f) = repair(field, stem.as_deref()) {
+                *field = f;
+                changed = true;
+            }
+        }
+        if !changed {
+            continue;
+        }
+        let key = album_key(&v[3], &v[1], &v[2]);
+        conn.execute(
+            "UPDATE tracks SET title=?2, artist=?3, album=?4, album_artist=?5, genre=?6, composer=?7, comment=?8, album_key=?9 WHERE id=?1",
+            params![id, v[0], v[1], v[2], v[3], v[4], v[5], v[6], key],
+        )?;
+        if key != old_key {
+            conn.execute(
+                "UPDATE OR IGNORE album_art_overrides SET album_key = ?2 WHERE album_key = ?1
+                 AND NOT EXISTS (SELECT 1 FROM tracks WHERE album_key = ?1)",
+                params![old_key, key],
+            )?;
+        }
+        fixed += 1;
+    }
+    if fixed > 0 {
+        tracing::info!("legacy text repaired in {fixed} tracks");
+    }
+    Ok(fixed)
+}
+
 pub(crate) const SELECT_TRACK: &str = "SELECT t.id, t.path, t.format, t.duration_ms, t.title, t.artist, t.album, t.album_artist,
     t.genre, t.year, t.track_no, t.disc_no, t.composer, t.comment, t.has_art, t.art_key, o.image_path,
     t.album_key, t.added_at, t.last_played_at, t.play_count, t.favorite, t.missing, t.tag_error

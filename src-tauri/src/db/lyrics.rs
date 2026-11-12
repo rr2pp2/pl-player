@@ -230,7 +230,8 @@ mod tests {
     fn migrations_2_and_3_are_applied() {
         let db = Db::open_memory("lyrics_mig").unwrap();
         let v: i64 = db.reader().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 3);
+        // v3.1.2 で移行 4（古い文字コードの値を直す。表は変えない）を足した
+        assert_eq!(v, 4);
     }
 
     /// 移行 3：覚えた結果の読み書き。結果は3種だけ。曲を外すと消える

@@ -224,12 +224,21 @@ mod tests {
 
     #[test]
     fn imports_fixtures_and_counts_problems() {
+        // HE-AAC のフィクスチャは Media Foundation で開くので、読み手の数を数えるテストと重ならないようにする
+        let _mf = crate::platform::windows::mf_audio::test_lock();
         let db = Db::open_memory("import_fixtures").unwrap();
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
         let s = run(&db, &[dir.clone()], true, true, &|_| {});
-        // 8つの正常なファイル（mono_22k.wav を含めて9）
-        assert!(s.added >= 9, "{s:?}");
+        // 8つの正常なファイル（mono_22k.wav を含めて9、v3.1.2 の HE-AAC を含めて10）
+        assert!(s.added >= 10, "{s:?}");
         assert!(s.unsupported.iter().any(|p| p.ends_with("broken.mp3")), "{s:?}");
+        // v3.1.2：HE-AAC は非対応形式にならず取り込まれる
+        assert!(!s.unsupported.iter().any(|p| p.ends_with("sine_heaac.m4a")), "{s:?}");
+        let all = db::tracks::all_paths(&db).unwrap();
+        let he = all.iter().find(|(_, p)| p.ends_with("sine_heaac.m4a")).expect("HE-AAC imported");
+        let t = db::tracks::get(&db, he.0).unwrap().unwrap();
+        assert_eq!(t.title, "Sine HE-AAC");
+        assert!((2900..=3200).contains(&t.duration_ms), "{}", t.duration_ms);
         // 2回目は読み直さない
         let s2 = run(&db, &[dir], true, true, &|_| {});
         assert_eq!(s2.added, 0);
@@ -238,6 +247,41 @@ mod tests {
         // 音声ファイルはコピーしていない：パスはフィクスチャそのもの
         let all = db::tracks::all_paths(&db).unwrap();
         assert!(all.iter().all(|(_, p)| p.contains("fixtures")));
+    }
+
+    /// v3.1.2：古い文字コードのタグは、取り込みで DB に入る値が直る（Shift_JIS は値だけで、GBK はファイル名と一致したときだけ）。
+    /// 再走査で読み直しても同じ値になる。曲名・名前は架空のもの
+    #[test]
+    fn legacy_text_is_repaired_on_import() {
+        let dir = crate::test_tmp().join(format!("plp-import-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // 「さくら色の坂道」（Shift_JIS）
+        let sjis = b"\x82\xb3\x82\xad\x82\xe7\x90\x46\x82\xcc\x8d\xe2\x93\xb9".as_slice();
+        tags_read::test_legacy_mp3(&dir, "a.mp3", &[(b"TIT2", sjis)], None);
+        // 「春风」（GBK）。ファイル名が「01 春风」なので採る。「b.mp3」の同じタグは採らない（Latin-1 の値のまま）
+        let gbk = b"\xb4\xba\xb7\xe7".as_slice();
+        tags_read::test_legacy_mp3(&dir, "01 春风.mp3", &[(b"TIT2", gbk)], None);
+        tags_read::test_legacy_mp3(&dir, "b.mp3", &[(b"TIT2", gbk)], None);
+        let db = Db::open_memory("import_legacy").unwrap();
+        let s = run(&db, &[dir.clone()], false, false, &|_| {});
+        assert_eq!(s.added, 3, "{s:?}");
+        let titles = || -> Vec<(String, String)> {
+            let conn = db.reader();
+            let mut st = conn.prepare("SELECT path, title FROM tracks ORDER BY path").unwrap();
+            st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).unwrap().map(Result::unwrap).collect()
+        };
+        let t = titles();
+        let title_of = |end: &str| t.iter().find(|(p, _)| p.ends_with(end)).unwrap().1.clone();
+        assert_eq!(title_of("01 春风.mp3"), "春风");
+        assert_eq!(title_of("a.mp3"), "さくら色の坂道");
+        assert_eq!(title_of("b.mp3"), "\u{b4}\u{ba}\u{b7}\u{e7}");
+        // 全文検索も直した値で引ける
+        let hits: i64 = db
+            .reader()
+            .query_row("SELECT count(*) FROM tracks_fts WHERE tracks_fts MATCH '\"色の坂\"'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(hits, 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// v3.1.1（ペネトレーションテスト v3.0.2 の2）：0 Hz の WAV は非対応形式として数え、取り込みは最後まで進む

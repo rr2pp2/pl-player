@@ -26,8 +26,8 @@ const ORIGIN: &str = "https://lrclib.net";
 
 /// 名札（User-Agent）に入れるアプリ名。版は Cargo.toml の version
 pub const APP_NAME: &str = "PL-Player";
-/// 連絡先の URL（LRCLIB の求め。後で足せるよう定数にしておく）。**個人を指すもの（メール・個人の URL）は入れない**
-pub const CONTACT_URL: Option<&str> = None;
+/// 連絡先の URL（LRCLIB の求め）。v3.1.2 から公開リポジトリの URL を入れた。**個人を指すもの（メール・個人の URL）は入れない**
+pub const CONTACT_URL: Option<&str> = Some("https://github.com/rr2pp2/pl-player");
 
 pub const MIN_GAP_SEC: f64 = 0.3; // 要求の間を 300〜500ms 空ける
 pub const MAX_GAP_SEC: f64 = 0.5;
@@ -51,10 +51,10 @@ pub const PARTIAL_RATIO_DEN: usize = 2;
 /// 歌詞にこれがあれば `bad_lyrics_text`（スクリプトの encodable と同じ扱い）。名前では記号として消える
 const LONE_SURROGATE_MARK: char = '\u{FDD0}';
 
-/// 名札。アプリ名と版だけ（CONTACT_URL があれば足す）
+/// 名札。アプリ名と版（CONTACT_URL があれば、後ろに括弧で足す：`PL-Player/3.1.2 (https://github.com/rr2pp2/pl-player)`）
 pub fn user_agent() -> String {
     match CONTACT_URL {
-        Some(u) => format!("{APP_NAME}/{} (+{u})", env!("CARGO_PKG_VERSION")),
+        Some(u) => format!("{APP_NAME}/{} ({u})", env!("CARGO_PKG_VERSION")),
         None => format!("{APP_NAME}/{}", env!("CARGO_PKG_VERSION")),
     }
 }
@@ -803,7 +803,7 @@ fn name_match_norm(a: &str, b: &str) -> NameMatch {
     if a == b {
         return NameMatch::Exact;
     }
-    // 部分一致は縛る。短い名前（SID・ZAQ・ナノ・ゆず など）は別の長い名前にいくらでも含まれるため
+    // 部分一致は縛る。短い名前（3文字の英字・2文字のかな など）は別の長い名前にいくらでも含まれるため
     let (la, lb) = (a.chars().count(), b.chars().count());
     let (short, long, ls, ll) = if la <= lb { (a, b, la, lb) } else { (b, a, lb, la) };
     if ls < MIN_PARTIAL_CHARS {
@@ -1013,11 +1013,18 @@ mod tests {
         assert!(path_and_query("https://evil.example/api/get").is_err());
     }
 
+    /// v3.1.2：名札はアプリ名・版・公開リポジトリの URL。メールアドレスなど個人を指すものは入れない。
+    /// 送るときにもこの名札が使われる（偽の通り道で受けた名札を確かめる。本物の lrclib.net へは送らない）
     #[test]
-    fn user_agent_names_app_and_version_only() {
+    fn user_agent_names_app_version_and_contact() {
         let ua = user_agent();
-        assert_eq!(ua, format!("PL-Player/{}", env!("CARGO_PKG_VERSION")));
+        assert_eq!(ua, format!("PL-Player/{} (https://github.com/rr2pp2/pl-player)", env!("CARGO_PKG_VERSION")));
         assert!(!ua.contains('@'));
+        let mut t = FakeTransport::default();
+        t.push(404, "");
+        let mut c = client(t);
+        let _ = c.get(API_GET, &[("track_name", "a".into()), ("artist_name", "b".into())]);
+        assert_eq!(c.transport.user_agents, vec![ua]);
     }
 
     #[test]
@@ -1123,13 +1130,13 @@ mod tests {
     #[test]
     fn short_names_match_narrowly() {
         // 正規化して3文字未満は完全一致だけ
-        assert_eq!(name_match(Some("ナノ"), "ナノ"), NameMatch::Exact);
-        assert_eq!(name_match(Some("ナノウ"), "ナノ"), NameMatch::None);
+        assert_eq!(name_match(Some("ミモ"), "ミモ"), NameMatch::Exact);
+        assert_eq!(name_match(Some("ミモザ"), "ミモ"), NameMatch::None);
         assert_eq!(name_match(Some("Totally Other"), "A"), NameMatch::None);
-        assert_eq!(name_match(Some("ゆず"), "ゆず (Yuzu)"), NameMatch::None);
+        assert_eq!(name_match(Some("もも"), "もも (Momo)"), NameMatch::None);
         // 3文字以上でも、短い方が長い方の半分以上のときだけ部分一致
-        assert_eq!(name_match(Some("SID"), "SIDE"), NameMatch::Partial);
-        assert_eq!(name_match(Some("ZAQ"), "ZAQ and Friends Orchestra"), NameMatch::None);
+        assert_eq!(name_match(Some("SUN"), "SUNS"), NameMatch::Partial);
+        assert_eq!(name_match(Some("QYX"), "QYX and Friends Orchestra"), NameMatch::None);
         assert_eq!(name_match(Some("Song (Remastered)"), "Song"), NameMatch::None);
         assert_eq!(name_match(Some("Song Title (Live)"), "Song Title"), NameMatch::Partial);
         // 大文字小文字・全角半角・記号は無視
