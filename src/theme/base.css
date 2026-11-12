@@ -1,0 +1,1684 @@
+/*
+  画面の骨組み。CSS Grid と Flex だけで組む（絶対座標のレイアウトは使わない。
+  例外は背景の層と、重ねて出す小窓・メニューだけ）。
+*/
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  color: var(--c-primary);
+  background: var(--c-bg);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 層（原文2通目：背景 → 覆いとぼかし → UI） ---------- */
+.bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--c-bg);
+}
+.bg-image {
+  position: absolute;
+  inset: calc(var(--bg-blur) * -2);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(var(--bg-blur));
+  opacity: 0;
+  transition: opacity var(--dur-bg) var(--ease);
+}
+.bg-image.contain {
+  background-size: contain;
+}
+.bg-image.visible {
+  opacity: 1;
+}
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--c-overlay-rgb), var(--bg-dim));
+  transition: background var(--dur-bg) var(--ease);
+}
+
+/* ---------- 骨組み ---------- */
+.app {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--player-h);
+  gap: 10px;
+  padding: 10px;
+  transition: grid-template-columns var(--dur-panel) var(--ease), grid-template-rows var(--dur-panel) var(--ease);
+}
+/* 流れる歌詞の列（v3.0.2）を出している間：再生バーの行を 48px 伸ばし、下の 48px に列を置く。
+   中央の画面とサイドバーの下端はちょうど 48px 上がる（再生バーとの間にすき間を作らない） */
+.app.lyrics-row-on {
+  grid-template-rows: minmax(0, 1fr) calc(var(--player-h) + var(--lyrics-row-h));
+}
+.app.sidebar-collapsed {
+  --sidebar-w: var(--sidebar-w-collapsed);
+}
+.panel {
+  background: rgba(var(--c-panel-rgb), var(--ui-alpha));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+/* ---------- サイドバー ---------- */
+.sidebar {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 8px;
+  gap: 2px;
+  overflow: hidden;
+}
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 10px;
+  min-height: 36px;
+}
+.app-name {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--c-secondary);
+  padding: 12px 10px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  min-height: 38px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius);
+  color: var(--c-primary);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-hover) var(--ease);
+}
+.nav-item:hover {
+  background: var(--c-hover);
+}
+.nav-item.active {
+  background: var(--c-selected);
+}
+.nav-item.drop-over {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+.nav-item .icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--c-secondary);
+}
+.nav-item.active .icon {
+  color: var(--c-accent);
+}
+.nav-item .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-item .count {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.sidebar-collapsed .sidebar .label,
+.sidebar-collapsed .sidebar .count,
+.sidebar-collapsed .sidebar .section-label span,
+.sidebar-collapsed .sidebar .app-name {
+  display: none;
+}
+.sidebar-collapsed .sidebar .nav-item {
+  justify-content: center;
+  padding: 8px 0;
+}
+.sidebar-collapsed .sidebar .section-label {
+  justify-content: center;
+  padding: 10px 0 4px;
+}
+
+/* ---------- 右側（上の検索・一覧） ---------- */
+.main {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.topbar {
+  flex: none;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--c-border);
+}
+.search {
+  flex: 1;
+  min-width: 80px;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  background: var(--c-input);
+  border: 1px solid transparent;
+  transition: border-color var(--dur-hover) var(--ease);
+}
+.search:focus-within {
+  border-color: var(--c-accent);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+.search .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--c-secondary);
+  flex: none;
+}
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: page-in var(--dur-page) var(--ease);
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.view-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.view-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view-sub {
+  color: var(--c-secondary);
+  font-size: var(--fs-artist);
+  white-space: nowrap;
+}
+.view-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--c-secondary);
+  padding: 24px;
+  text-align: center;
+}
+
+/* ---------- ボタン ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-border);
+  background: var(--c-input);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+.btn:hover {
+  background: var(--c-hover);
+  border-color: var(--c-secondary);
+}
+.btn.primary {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-accent-contrast);
+}
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+.btn.danger {
+  color: var(--c-danger);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn .icon {
+  width: 16px;
+  height: 16px;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--c-primary);
+  cursor: pointer;
+  flex: none;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.icon-btn:hover {
+  background: var(--c-hover);
+}
+.icon-btn .icon {
+  width: 20px;
+  height: 20px;
+}
+.icon-btn.on {
+  color: var(--c-accent);
+}
+.icon-btn.small {
+  width: 28px;
+  height: 28px;
+}
+.icon-btn.small .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- 曲一覧 ---------- */
+.track-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.track-head,
+.track-row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: 14px;
+  padding: 0 18px;
+}
+.track-head {
+  flex: none;
+  height: 34px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  border-bottom: 1px solid var(--c-border);
+}
+.track-head button {
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+.track-head button.sorted {
+  color: var(--c-primary);
+}
+.track-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: none;
+}
+.track-row {
+  height: var(--row-h);
+  border-radius: var(--radius);
+  cursor: default;
+  transition: background var(--dur-hover) var(--ease);
+}
+.track-row:hover {
+  background: var(--c-hover);
+}
+.track-row.selected {
+  background: var(--c-selected);
+}
+.track-row.playing .t-title {
+  color: var(--c-accent);
+}
+.track-row.missing {
+  opacity: 0.5;
+}
+.track-row.dragging {
+  opacity: 0.4;
+}
+.t-art {
+  width: var(--row-art);
+  height: var(--row-art);
+  border-radius: var(--radius-small);
+  flex: none;
+}
+.t-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.t-title {
+  font-size: var(--fs-title-list);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.t-artist {
+  font-size: var(--fs-artist);
+  color: var(--c-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-secondary);
+}
+.t-dur {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-secondary);
+}
+.t-fav {
+  display: flex;
+  justify-content: center;
+}
+.eq {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--c-accent);
+}
+
+/* ---------- アート ---------- */
+.art {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(124, 108, 255, 0.35), rgba(var(--c-panel-rgb), 0.9));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-secondary);
+  flex: none;
+}
+.art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.art .icon {
+  width: 45%;
+  height: 45%;
+  opacity: 0.7;
+}
+.art.drop-target {
+  outline: 2px dashed var(--c-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- アーティスト・アルバム・ジャンルの一覧 ---------- */
+.group-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  padding: 6px 18px 18px;
+  align-content: start;
+}
+.group-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 12px 18px;
+}
+.group-card {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 10px;
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: background var(--dur-hover) var(--ease);
+}
+.group-card:hover {
+  background: var(--c-hover);
+}
+.group-card .art {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-card);
+}
+.group-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-sub {
+  font-size: var(--fs-artist);
+  color: var(--c-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease);
+}
+.group-row:hover {
+  background: var(--c-hover);
+}
+.album-head-art {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+}
+
+/* ---------- 再生バー ---------- */
+.player {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  min-width: 0;
+}
+.player-art {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius);
+}
+.player-mid {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.player-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-artist {
+  font-size: var(--fs-artist);
+  color: var(--c-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.play-btn {
+  width: 42px;
+  height: 42px;
+  background: var(--c-primary);
+  color: var(--c-bg);
+}
+.play-btn:hover {
+  background: var(--c-primary);
+  transform: scale(1.04);
+}
+.play-btn .icon {
+  width: 22px;
+  height: 22px;
+  transition: transform var(--dur-hover) var(--ease);
+}
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+.volume .range {
+  width: 96px;
+}
+
+/* 横長の帯（シーク・音量・設定のつまみ） */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+  flex: 1;
+  min-width: 40px;
+  --pct: 0%;
+}
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(to right, var(--c-accent) var(--pct), var(--c-border) var(--pct));
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.range:hover::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+/* ---------- 重ねて出すもの ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fade-in var(--dur-panel) var(--ease);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.modal {
+  width: min(720px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(var(--c-panel-rgb), 0.97);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.modal.small {
+  width: min(420px, 100%);
+}
+.modal-head {
+  padding: 16px 20px 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.modal-body {
+  padding: 8px 20px;
+  overflow-y: auto;
+  min-height: 0;
+  font-size: var(--fs-settings);
+}
+.modal-foot {
+  padding: 12px 20px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 6px;
+  background: rgba(var(--c-panel-rgb), 0.98);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  animation: fade-in 120ms var(--ease);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-item:hover,
+.menu-item.open {
+  background: var(--c-hover);
+}
+.menu-item.danger {
+  color: var(--c-danger);
+}
+.menu-item .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--c-secondary);
+}
+.menu-sep {
+  height: 1px;
+  background: var(--c-border);
+  margin: 4px 6px;
+}
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--player-h) + 24px);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: rgba(var(--c-panel-rgb), 0.97);
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--c-accent);
+  box-shadow: var(--shadow-pop);
+  animation: fade-in var(--dur-panel) var(--ease);
+  user-select: text;
+}
+.toast.error {
+  border-left-color: var(--c-danger);
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+.toast-detail {
+  margin-top: 4px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow: auto;
+}
+.drop-overlay {
+  position: fixed;
+  inset: 10px;
+  z-index: 40;
+  border: 2px dashed var(--c-accent);
+  border-radius: var(--radius-card);
+  background: rgba(124, 108, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.drag-chip {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--c-accent);
+  color: var(--c-accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--shadow-pop);
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.progress-line {
+  height: 3px;
+  background: var(--c-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-line > div {
+  height: 100%;
+  background: var(--c-accent);
+  transition: width 200ms linear;
+}
+.import-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  min-width: 140px;
+  max-width: 240px;
+}
+
+/* ---------- フォーム（設定・編集） ---------- */
+.settings {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px 24px;
+  font-size: var(--fs-settings);
+}
+.settings section {
+  max-width: 760px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+.settings h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.field {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 6px 0;
+}
+.field > label,
+.field > .flabel {
+  color: var(--c-secondary);
+}
+.field .hint {
+  grid-column: 2;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.input,
+select.input,
+textarea.input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-border);
+  background: var(--c-input);
+  outline: none;
+  user-select: text;
+}
+textarea.input {
+  height: 70px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.input:focus {
+  border-color: var(--c-accent);
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+.seg button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--c-accent);
+  color: var(--c-accent-contrast);
+}
+.key-box {
+  min-width: 150px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-border);
+  background: var(--c-input);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.key-box.capturing {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.key-box.bad {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+.error-text {
+  color: var(--c-danger);
+  font-size: var(--fs-small);
+}
+.ok-text {
+  color: var(--c-ok);
+  font-size: var(--fs-small);
+}
+.list-box {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.list-box .li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--c-border);
+  min-width: 0;
+}
+.list-box .li:last-child {
+  border-bottom: none;
+}
+.list-box .li .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 18px;
+}
+.editor-art {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.editor-art .art {
+  width: 180px;
+  height: 180px;
+  border-radius: var(--radius-card);
+}
+.editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.editor-fields .wide {
+  grid-column: 1 / -1;
+}
+.editor-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.path-text {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  word-break: break-all;
+  user-select: text;
+}
+
+/* ---------- 幅が狭くなったとき（原文の順番：1 サイドバー → 2 列 → 3 ジャケット → 4 行の高さ） ---------- */
+/* 1. サイドバーの縮小は 1100px 未満で .sidebar-collapsed を付けて行う（AppShell） */
+/* 2. 列を減らす：Genre → Album の順 */
+@media (max-width: 899px) {
+  .col-genre {
+    display: none !important;
+  }
+}
+@media (max-width: 819px) {
+  .col-album {
+    display: none !important;
+  }
+  .volume .range {
+    width: 64px;
+  }
+}
+/* 3. ジャケットを縮める */
+@media (max-width: 719px) {
+  .hide-narrow {
+    display: none;
+  }
+  :root {
+    --row-art: 36px;
+    --player-h: 76px;
+  }
+  .player-art {
+    width: 48px;
+    height: 48px;
+  }
+  .player {
+    gap: 10px;
+    padding: 0 10px;
+  }
+  /* 流れる歌詞の列：狭いときは今の行をそろえる位置を 14px に（ほかは base.css の末尾） */
+  :root {
+    --lyrics-row-anchor: 14px;
+  }
+  /* 再生バーの歌詞：狭いときは今の行だけ（今の行が無いあいだの次の行は、省略記号で切って出す） */
+  .player-lyric-next:not(.alone) {
+    display: none;
+  }
+  .editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field .hint {
+    grid-column: 1;
+  }
+}
+/* 4. 行の高さを縮める */
+@media (max-width: 599px) {
+  :root {
+    --row-h: 48px;
+  }
+  .volume .range {
+    display: none;
+  }
+  .track-head,
+  .track-row {
+    padding: 0 10px;
+    column-gap: 10px;
+  }
+  .app {
+    gap: 6px;
+    padding: 6px;
+  }
+  .editor-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.nav-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--c-secondary);
+  flex: none;
+}
+
+/* 出力デバイスの一覧（v2：選択欄の一覧が見えなかったため、画面内の一覧にした） */
+.device-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease);
+}
+.device-item:hover {
+  background: var(--c-hover);
+}
+.device-item.on {
+  background: var(--c-selected);
+}
+.radio-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--c-secondary);
+  flex: none;
+}
+.device-item.on .radio-dot {
+  border-color: var(--c-accent);
+  background: radial-gradient(var(--c-accent) 0 3px, transparent 4px);
+}
+/* ほかの選択欄（今は無いが、使うとき）も、一覧の文字が背景に溶けないようにする */
+select.input option {
+  background: var(--c-bg);
+  color: var(--c-primary);
+}
+
+/* ---------- 歌詞（v3）。色・文字・角丸・動きは既存の変数だけを使う ---------- */
+.hint-text {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.btn.small-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: var(--fs-small);
+}
+.lyrics-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-border);
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  white-space: nowrap;
+}
+.lyrics-badge.accent {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.lyrics-head {
+  gap: 10px;
+}
+.lyrics-follow-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-accent);
+  background: var(--c-selected);
+  font-size: var(--fs-small);
+}
+.lyrics-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 18px 16px;
+}
+.lyrics-view.narrow .lyrics-layout {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0 10px 10px;
+}
+.lyrics-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  overflow-y: auto;
+}
+.lyrics-side-art {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-card);
+}
+.lyrics-track-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyrics-track-artist {
+  font-size: var(--fs-artist);
+  color: var(--c-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyrics-delay {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border);
+}
+.lyrics-delay.compact {
+  flex-direction: row;
+  align-items: center;
+  padding: 0 10px 6px;
+  border-top: none;
+}
+.lyrics-delay-label {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.lyrics-delay-row {
+  gap: 6px;
+}
+.lyrics-delay-value {
+  min-width: 64px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-small);
+}
+.lyrics-compact-info {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 8px;
+  min-width: 0;
+}
+.lyrics-compact-art {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-small);
+}
+.lyrics-compact-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+.lyrics-compact-text .lyrics-track-title {
+  font-size: var(--fs-body);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lyrics-compact-text .lyrics-track-artist {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* 歌詞のカード：背景画像が明るくても暗くても読めるよう、不透明度を上げる */
+.lyrics-card {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: rgba(var(--c-panel-rgb), 0.92);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  padding: 14px 10px;
+  outline: none;
+  user-select: text;
+}
+.lyrics-card .empty {
+  flex: 1;
+}
+.lyrics-warn {
+  margin: 0 6px 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-danger);
+  color: var(--c-danger);
+  font-size: var(--fs-small);
+}
+.lyrics-notes {
+  margin: 0 6px 10px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.lyric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 30vh 0;
+}
+.lyric-line {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--c-secondary);
+  font-size: var(--fs-title-list);
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.lyric-line:hover {
+  background: var(--c-hover);
+  color: var(--c-primary);
+}
+.lyric-line:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+/* 今の行：色だけでなく、太さ・左の線・背景でも示す（aria-current も付ける） */
+.lyric-line.active {
+  color: var(--c-primary);
+  font-weight: 700;
+  border-left-color: var(--c-accent);
+  background: var(--c-selected);
+}
+.lyric-time {
+  font-size: var(--fs-small);
+  font-weight: 400;
+  color: var(--c-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.lyric-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lyric-untimed {
+  margin-top: 8px;
+  padding: 10px 13px 0;
+  border-top: 1px solid var(--c-border);
+  color: var(--c-secondary);
+  font-size: var(--fs-title-list);
+  line-height: 1.55;
+}
+.lyric-untimed-head {
+  font-size: var(--fs-small);
+  margin-bottom: 4px;
+}
+.lyrics-plain {
+  padding: 4px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--fs-title-list);
+  line-height: 1.7;
+  color: var(--c-primary);
+}
+.lyrics-view.narrow .lyric-line,
+.lyrics-view.narrow .lyrics-plain,
+.lyrics-view.narrow .lyric-untimed {
+  font-size: var(--fs-body); /* 14px を下回らない */
+}
+.lyrics-view.narrow .lyric-line {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+}
+.lyrics-empty {
+  min-height: 200px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-card {
+    scroll-behavior: auto;
+  }
+  .lyric-line {
+    transition: none;
+  }
+}
+/* 再生バー：アーティスト名の下に今の歌詞の1行 */
+.player-lyric {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: var(--fs-small);
+  line-height: 1.3;
+  color: var(--c-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.player-lyric.muted {
+  color: var(--c-secondary);
+  cursor: default;
+}
+/* 今の行の右に次の行（v3.0.1）。今の行より目立たせない：色だけ --c-secondary に落とし、大きさは同じ。
+   区切りは「›」と左右の間。1つの行として右から省略記号で切るので、収まらないときは次の行から隠れる */
+.player-lyric-next {
+  color: var(--c-secondary);
+}
+.player-lyric-sep {
+  margin: 0 8px;
+}
+.player-mid:has(.player-lyric) {
+  gap: 1px;
+}
+.player-mid:has(.player-lyric) .player-title,
+.player-mid:has(.player-lyric) .player-artist {
+  line-height: 1.25;
+}
+/* 歌詞の編集画面 */
+.lyrics-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+textarea.input.lyrics-input {
+  height: min(52vh, 460px);
+  min-height: 160px;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+}
+.lyrics-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: var(--fs-small);
+}
+
+/* ---------- 流れる歌詞の列（v3.0.2）。再生バーの下に 48px。色は既存の変数だけ ---------- */
+/* 列を出している間：再生バーは上の 84px のまま（高さと中身の並びは変えない）。下の角だけ列とつなぐ */
+.app.lyrics-row-on .player {
+  align-self: start;
+  height: var(--player-h);
+  border-bottom-color: transparent;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.lyrics-row {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  align-self: end;
+  position: relative;
+  height: var(--lyrics-row-h);
+  min-width: 0;
+  overflow: hidden;
+  background: rgba(var(--c-panel-rgb), 0.97);
+  border: 1px solid var(--c-border); /* 上の線が再生バーとの境目 */
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  clip-path: inset(0 -40px -40px -40px); /* 影を再生バーの上に落とさない */
+}
+/* 左右の端はパネル色へぼかす */
+.lyrics-row::before,
+.lyrics-row::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.lyrics-row::before {
+  left: 0;
+  width: 18px;
+  background: linear-gradient(90deg, rgba(var(--c-panel-rgb), 0.97), rgba(var(--c-panel-rgb), 0));
+}
+.lyrics-row::after {
+  right: 0;
+  width: 22px;
+  background: linear-gradient(90deg, rgba(var(--c-panel-rgb), 0), rgba(var(--c-panel-rgb), 0.97));
+}
+.lyrics-row-window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+/* 行が変わったときだけ、列全体を左へ送る（位置は LyricsRow.tsx が決める） */
+.lyrics-row-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  white-space: nowrap;
+  transform: translateX(var(--lyrics-row-anchor));
+  transition: transform var(--dur-panel) var(--ease);
+  will-change: transform;
+}
+/* その先の行（既定）。文字の状態の変化（色・薄さ）は --dur-hover */
+.lyrics-row-item {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  max-width: min(34vw, 380px);
+  color: var(--c-secondary);
+  font-size: var(--fs-small);
+  font-weight: 400;
+  line-height: 1.2;
+  opacity: 0.58;
+  transition: color var(--dur-hover) var(--ease), opacity var(--dur-hover) var(--ease);
+}
+.lyrics-row-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyrics-row-sep {
+  flex: none;
+  margin: 0 26px 0 20px;
+  color: var(--c-secondary);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  opacity: 0.48;
+}
+/* 今の行：括弧の部分まで見えるよう、ほかの行より広く取る（列の左端にあるので、次の行より先に幅を取る） */
+.lyrics-row-item.is-current {
+  max-width: min(72vw, 900px);
+  color: var(--c-primary);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  opacity: 1;
+}
+.lyrics-row-item.is-current::before {
+  content: "";
+  flex: none;
+  width: 2px;
+  height: 16px;
+  margin-right: 10px;
+  border-radius: 2px;
+  background: var(--c-accent);
+}
+.lyrics-row-item.is-next,
+.lyrics-row-item.is-hint {
+  max-width: min(38vw, 440px);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  opacity: 0.88;
+}
+.lyrics-row-item.is-past {
+  opacity: 0.24;
+}
+.lyrics-row-item.is-status {
+  max-width: min(54vw, 640px);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  opacity: 0.9;
+}
+.lyrics-row-item.is-status::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 11px 0 2px;
+  border-radius: 50%;
+  background: var(--c-accent);
+}
+.lyrics-row-item.is-status .lyrics-row-sep {
+  margin-left: 24px;
+}
+/* 括弧の中（掛け合い・合いの手）：同じ行の本体より一段薄く・一段小さく。
+   一段は列の文字の段（--fs-title → --fs-body → --fs-small）と色の段（--c-primary → --c-secondary）。
+   一番下の段（--fs-small・--c-secondary）の行は、大きさはそのままで薄さだけ下げる */
+.lyric-sub {
+  opacity: 0.72;
+}
+.lyrics-row-item.is-current .lyric-sub {
+  color: var(--c-secondary);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  opacity: 1;
+}
+.lyrics-row-item.is-next .lyric-sub {
+  font-size: var(--fs-small);
+}
+.player-lyric-now .lyric-sub {
+  color: var(--c-secondary);
+  opacity: 1;
+}
+/* 列を出している間、通知は列の上に出す */
+body:has(.app.lyrics-row-on) .toasts {
+  bottom: calc(var(--player-h) + var(--lyrics-row-h) + 24px);
+}
+/* 狭いとき（719px 以下）：見本の 600px の値。今の行は列の幅のほとんどを取り、次の行より先に幅を取る */
+@media (max-width: 719px) {
+  .lyrics-row-item,
+  .lyrics-row-item.is-past {
+    max-width: 30vw;
+  }
+  .lyrics-row-item.is-next,
+  .lyrics-row-item.is-hint {
+    max-width: 35vw;
+  }
+  .lyrics-row-item.is-status {
+    max-width: 48vw;
+  }
+  .lyrics-row-item.is-current {
+    max-width: calc(100vw - 96px);
+  }
+  .lyrics-row-sep {
+    margin: 0 17px 0 12px;
+  }
+  .lyrics-row-item.is-status .lyrics-row-sep {
+    margin-left: 14px;
+  }
+  .lyrics-row-item.is-current::before {
+    height: 14px;
+    margin-right: 7px;
+  }
+}
+/* 動きを減らす設定：列の移動・文字の変化・列の出し入れを即時にする（サイドバーの動きは今までどおり） */
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-row-track,
+  .lyrics-row-item {
+    transition: none;
+  }
+  .app {
+    transition: grid-template-columns var(--dur-panel) var(--ease);
+  }
+}
+
+/* ---------- 歌詞をネットから取る（v3.1.0。設定画面） ---------- */
+.lyrics-online-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.field .lyrics-fetch-progress {
+  grid-column: 2;
+  max-width: 320px;
+}

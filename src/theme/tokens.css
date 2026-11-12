@@ -1,0 +1,45 @@
+/*
+  テーマ変数（色・文字・角丸・影・動きの時間）。原文2通目の値をそのまま既定値に入れる。
+  テーマを足すときは、このフォルダに [data-theme="名前"] のファイルを1つ足すだけ。
+*/
+:root {
+  /* 文字（原文2通目 Typography） */
+  --font-ui: "Yu Gothic UI", "Segoe UI", "Meiryo UI", "Meiryo", system-ui, sans-serif;
+  --fs-title: 17px;        /* 曲名：16〜18px */
+  --fs-title-list: 16px;   /* 曲一覧の曲名（16px） */
+  --fs-artist: 13px;       /* アーティスト：12〜14px */
+  --fs-body: 14px;         /* 通常テキスト：13〜14px */
+  --fs-settings: 14px;     /* 設定画面：13〜14px */
+  --fs-small: 12px;
+
+  /* 角丸（基本 8〜12px、重要なカード 12〜16px） */
+  --radius: 10px;
+  --radius-card: 14px;
+  --radius-small: 8px;
+
+  /* 影（背景と UI を分ける程度。Glow は使わない） */
+  --shadow-panel: 0 4px 18px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.35);
+
+  /* 動き（100〜250ms。hover・パネル・ページ・背景・再生状態だけ） */
+  --dur-hover: 120ms;
+  --dur-panel: 200ms;
+  --dur-page: 180ms;
+  --dur-bg: 250ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* 大きさ（幅で変わるものは base.css のメディアクエリで上書き） */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 64px;
+  --row-h: 64px;
+  --row-art: 48px;
+  --player-h: 84px;
+  --topbar-h: 56px;
+  --lyrics-row-h: 48px;     /* 再生バーの下の流れる歌詞の列（v3.0.2） */
+  --lyrics-row-anchor: 22px; /* 列の中で今の行の左端をそろえる位置（狭いときは base.css で 14px） */
+
+  /* 背景（設定値。BackgroundLayer が書き換える） */
+  --bg-dim: 0.45;
+  --bg-blur: 6px;
+  --ui-alpha: 0.7;
+}

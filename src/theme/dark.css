@@ -1,0 +1,17 @@
+/* Dark テーマ（原文2通目 Color の値） */
+[data-theme="dark"] {
+  --c-bg: #08080c;
+  --c-panel-rgb: 15, 15, 22; /* Panel: rgba(15,15,22,0.70)。不透明度は --ui-alpha */
+  --c-overlay-rgb: 8, 8, 12;
+  --c-primary: #ffffff;
+  --c-secondary: #b0b0b8;
+  --c-accent: #7c6cff;
+  --c-accent-contrast: #ffffff;
+  --c-hover: rgba(255, 255, 255, 0.07);
+  --c-selected: rgba(124, 108, 255, 0.22);
+  --c-border: rgba(255, 255, 255, 0.09);
+  --c-input: rgba(255, 255, 255, 0.07);
+  --c-danger: #ff6b7a;
+  --c-ok: #5fd39a;
+  color-scheme: dark;
+}

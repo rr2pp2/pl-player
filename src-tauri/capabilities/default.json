@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "PL Player の画面に許す操作。v3.1.1 で core:default から絞った：画面が呼ぶ Tauri の API は、通知を受ける listen と、受けるのをやめる unlisten だけ（ドラッグ＆ドロップの受け取りも同じ listen）。アプリのコマンド（invoke）は権限の外で、画像の表示（asset）は tauri.conf.json の assetProtocol.scope で決まる。ファイル選択・トレイ・ウィンドウの操作は Rust 側で行うので、画面にはプラグインの権限もウィンドウ・トレイの権限も渡さない。",
+  "windows": ["main"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

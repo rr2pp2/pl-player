@@ -1,0 +1,24 @@
+/*
+  Light テーマ。原文は「Dark を反転した設計」とだけ書いていて、値が無い。
+  背景・パネル・文字は Dark の値を反転（255 − 値）して作った。アクセントは役割が同じなので Dark と同じ色。
+  （#08080C → #F7F7F3、rgba(15,15,22) → rgba(240,240,233)、#FFFFFF → #000000、#B0B0B8 → #4F4F47）
+  作者に画面で確かめてもらう項目（アーキテクチャ案 3-2・11章）。
+*/
+[data-theme="light"] {
+  --c-bg: #f7f7f3;
+  --c-panel-rgb: 240, 240, 233;
+  --c-overlay-rgb: 247, 247, 243;
+  --c-primary: #000000;
+  --c-secondary: #4f4f47;
+  --c-accent: #7c6cff;
+  --c-accent-contrast: #ffffff;
+  --c-hover: rgba(0, 0, 0, 0.06);
+  --c-selected: rgba(124, 108, 255, 0.2);
+  --c-border: rgba(0, 0, 0, 0.1);
+  --c-input: rgba(0, 0, 0, 0.05);
+  --c-danger: #c8243a;
+  --c-ok: #1f8a57;
+  --shadow-panel: 0 4px 18px rgba(0, 0, 0, 0.12);
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.18);
+  color-scheme: light;
+}
