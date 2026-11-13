@@ -10,6 +10,7 @@ import { useAppShortcuts } from "./shortcuts/shortcuts";
 import { initPlayback } from "./stores/playback";
 import { initLyrics } from "./stores/lyrics";
 import { initLyricsFetch } from "./stores/lyricsFetch";
+import { initLegacyReread } from "./stores/legacyReread";
 import { initSettings } from "./stores/settings";
 import { initSkins } from "./stores/skin";
 import { initLibrary } from "./stores/library";
@@ -28,6 +29,7 @@ export default function App() {
         await initSkins();
         initLyrics();
         await initLyricsFetch();
+        await initLegacyReread();
       } catch (e) {
         notify({ level: "error", error: e });
       } finally {

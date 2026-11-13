@@ -41,6 +41,9 @@ export type ErrorCode =
   | "trash_unavailable"
   | "file_in_use"
   | "trash_too_many"
+  // 古い文字コードのタグの読み直し（v3.5.0）
+  | "legacy_reread_busy"
+  | "library_import_busy"
   | "other";
 
 /** v3.3.0：曲をごみ箱へ移した結果。移せなかった曲は、ファイルもライブラリもそのまま */
@@ -363,6 +366,26 @@ export interface LyricsFetchProgress {
 
 export interface LyricsFetchDone extends LyricsFetchProgress {
   trackIds: number[];
+}
+
+/** v3.5.0：古い文字コードのタグの読み直しの進み具合と結果（Rust 側 library/legacy_reread.rs の RereadProgress と同じ形） */
+export interface LegacyRereadProgress {
+  running: boolean;
+  finished: boolean;
+  /** 「やめる」で止めた */
+  cancelled: boolean;
+  /** 始めたときのライブラリの曲数 */
+  total: number;
+  /** 見た曲の数 */
+  done: number;
+  /** 値を直した曲の数 */
+  fixed: number;
+  /** 手で直した印のある項目なので、直さなかった曲の数 */
+  skippedManual: number;
+  /** 読み直しの途中で値が変わった・ライブラリから外されたので、書かなかった曲の数 */
+  changedDuringRun: number;
+  /** 途中で止まったときのエラーの種別（それまでに直した曲はそのまま） */
+  error: ErrorCode | null;
 }
 
 export interface LyricsFetchOne {

@@ -10,6 +10,7 @@ import type {
   Group,
   HotkeyStatus,
   InboxReport,
+  LegacyRereadProgress,
   LyricsFetchMode,
   LyricsFetchOne,
   LyricsFetchProgress,
@@ -63,6 +64,10 @@ export const api = {
   /** v3.3.0：曲ファイルをごみ箱へ移し、移せた曲をライブラリから外す（曲の id だけを渡す） */
   libraryTrashTracks: (ids: number[]) => invoke<TrashReport>("library_trash_tracks", { ids }),
   revealInExplorer: (path: string) => invoke<void>("reveal_in_explorer", { path }),
+  /** v3.5.0：古い文字コードのタグを読み直す（DB の値だけを直す。曲ファイルには書かない）。取り込み・再走査の途中なら断る */
+  legacyRereadStart: () => invoke<LegacyRereadProgress>("legacy_reread_start"),
+  legacyRereadCancel: () => invoke<void>("legacy_reread_cancel"),
+  legacyRereadStatus: () => invoke<LegacyRereadProgress>("legacy_reread_status"),
 
   // 再生
   snapshot: () => invoke<Snapshot>("playback_snapshot"),

@@ -949,6 +949,11 @@ textarea {
   font-size: var(--fs-small);
   color: var(--c-secondary);
 }
+/* v3.5.0：古い文字コードのタグの読み直しの進み具合の帯（狭いときは下の @media で1列目へ。そのため、この決まりは @media より前に置く） */
+.field .legacy-reread-progress {
+  grid-column: 2;
+  max-width: 320px;
+}
 .row {
   display: flex;
   align-items: center;
@@ -1157,6 +1162,10 @@ textarea.input {
     grid-template-columns: minmax(0, 1fr);
   }
   .field .hint {
+    grid-column: 1;
+  }
+  /* v3.5.0：古い文字コードのタグの読み直しの進み具合の帯も、1列に並べる */
+  .field .legacy-reread-progress {
     grid-column: 1;
   }
 }

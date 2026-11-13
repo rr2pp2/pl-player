@@ -39,6 +39,9 @@ pub mod ev {
     pub const LYRICS_FETCH_DONE: &str = "pl://lyrics-fetch-done";
     /// v3.2.0：着せ替えの状態（適用・既定に戻す・セーフモード）
     pub const SKIN: &str = "pl://skin";
+    /// v3.5.0：古い文字コードのタグの読み直しの進み具合と終わり
+    pub const LEGACY_REREAD_PROGRESS: &str = "pl://legacy-reread-progress";
+    pub const LEGACY_REREAD_DONE: &str = "pl://legacy-reread-done";
 }
 
 pub struct Paths {
@@ -59,6 +62,8 @@ pub struct AppState {
     pub lyrics_fetch: crate::lyrics::online::Control,
     /// v3.2.0：着せ替えの、起動中だけの状態（セーフモード・確認待ちの取り込み・いま当てているスキン）
     pub skin: Mutex<crate::skins::runtime::Runtime>,
+    /// v3.5.0：古い文字コードのタグの読み直し（同時に1つだけ・取り込みとは同時に走らせない・やめるボタン・進み具合）
+    pub legacy_reread: crate::library::legacy_reread::Control,
 }
 
 impl AppState {

@@ -85,6 +85,10 @@ pub enum ErrorKind {
     FileInUse,
     /// 曲をごみ箱へ移す：1回に送れる曲の数（library::trash::MAX_TRACKS）を超えた。何も動かしていない
     TrashTooMany,
+    /// 古い文字コードのタグの読み直し（v3.5.0）：もう走っている。何も変えていない
+    LegacyRereadBusy,
+    /// 古い文字コードのタグの読み直し：曲の取り込み・再走査が走っているので始めなかった。何も変えていない
+    LibraryImportBusy,
     /// 上のどれにも当たらないもの（入力の誤りなど）
     Other,
 }
@@ -191,6 +195,8 @@ mod tests {
             ErrorKind::TrashUnavailable,
             ErrorKind::FileInUse,
             ErrorKind::TrashTooMany,
+            ErrorKind::LegacyRereadBusy,
+            ErrorKind::LibraryImportBusy,
             ErrorKind::Other,
         ] {
             let code = serde_json::to_value(k).unwrap();

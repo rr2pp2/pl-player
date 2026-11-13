@@ -1,5 +1,15 @@
 // エラー種別 → 日本語の文。言い回しはここ1か所で直す（Rust 側では日本語の文を作らない）。
-import type { AppError, ErrorCode, InboxReport, LyricsFetchOne, LyricsFetchProgress, Notice, SkinNotice, SkinParts } from "../ipc/types";
+import type {
+  AppError,
+  ErrorCode,
+  InboxReport,
+  LegacyRereadProgress,
+  LyricsFetchOne,
+  LyricsFetchProgress,
+  Notice,
+  SkinNotice,
+  SkinParts,
+} from "../ipc/types";
 
 export const errorText: Record<ErrorCode, string> = {
   file_not_found: "ファイルが見つかりません。移動・削除されたか、ドライブが外れている可能性があります。",
@@ -42,6 +52,9 @@ export const errorText: Record<ErrorCode, string> = {
   trash_unavailable: "ごみ箱の無い場所（USB メモリ・CD など、またはごみ箱を使わない設定のドライブ）にある曲です。ごみ箱へ移すと完全に消えてしまうので、移していません。",
   file_in_use: "ほかのアプリがこの曲のファイルを使っているので、ごみ箱へ移せませんでした。そのアプリを閉じてから、もう一度お試しください。",
   trash_too_many: "一度にごみ箱へ移せるのは 1,000 曲までです。選ぶ曲を減らしてから、もう一度お試しください。何も移していません。",
+  // 古い文字コードのタグの読み直し（v3.5.0）。断ったときは何も変えていない
+  legacy_reread_busy: "古い文字コードのタグを読み直している途中です。終わってから、もう一度お試しください。",
+  library_import_busy: "曲の取り込み・再走査の途中なので、古い文字コードのタグの読み直しを始めませんでした。終わってから、もう一度お試しください。",
   other: "処理を完了できませんでした。",
 };
 
@@ -65,6 +78,8 @@ export function noticeText(n: Notice): { text: string; detail: string } {
       };
     case "import_busy":
       return { text: "取り込みの途中です。終わってから、もう一度お試しください。", detail: "" };
+    case "import_refused_legacy_reread":
+      return { text: "古い文字コードのタグを読み直している途中なので、取り込み・再走査をしませんでした。終わってから、もう一度お試しください。", detail: "" };
     default:
       return { text: n.code, detail: n.detail };
   }
@@ -255,6 +270,45 @@ export function lyricsFetchOneText(r: LyricsFetchOne): { level: "info" | "error"
     default:
       return { level: "error", text: `歌詞を取れませんでした（${lyricsFetchErrorText(r.error)}）` };
   }
+}
+
+// ---- 古い文字コードのタグの読み直し（v3.5.0）。出すのは件数だけ（曲名は出さない） ----
+
+/** 押したときの確認の小窓 */
+export const legacyRereadConfirm = {
+  title: "古い文字コードのタグを読み直す",
+  body:
+    "ライブラリの全曲の曲名・アーティスト・アルバムなどを見直し、古い文字コード（Shift_JIS など）で化けたまま残っている名前を、今の決まりで直します。" +
+    "直すのはこのアプリのライブラリの表示だけで、曲ファイルには書き込みません。編集画面で手で直した名前は書き換えません。" +
+    "途中でやめられます（それまでに直した曲はそのままです）。",
+  ok: "読み直す",
+};
+
+/** 進み具合の1行 */
+export function legacyRereadProgressText(p: LegacyRereadProgress): string {
+  return `${p.total}曲中 ${p.done}曲・直した ${p.fixed}曲`;
+}
+
+/** 終わったときの知らせ（設定画面の状態の行にも同じ文を出す） */
+export function legacyRereadDoneText(p: LegacyRereadProgress): { level: "info" | "error"; text: string; detail: string } {
+  const more: string[] = [];
+  if (p.skippedManual) more.push(`編集画面で手で直した項目がある ${p.skippedManual}曲は、その項目を変えていません`);
+  if (p.changedDuringRun) more.push(`読み直しの途中で名前が変わった・ライブラリから外された ${p.changedDuringRun}曲は、変えていません`);
+  if (p.error) {
+    more.unshift(errorText[p.error] ?? errorText.other);
+    return {
+      level: "error",
+      text: `古い文字コードのタグの読み直しを、途中で止めました（${p.done}曲を見て、${p.fixed}曲を直しました。直した曲はそのままです）`,
+      detail: more.join("・"),
+    };
+  }
+  if (p.cancelled) {
+    return { level: "info", text: `古い文字コードのタグの読み直しをやめました（${p.done}曲を見て、${p.fixed}曲を直しました）`, detail: more.join("・") };
+  }
+  const text = p.fixed
+    ? `古い文字コードのタグを読み直しました。${p.fixed}曲の名前を直しました（${p.done}曲を見ました）`
+    : `古い文字コードのタグを読み直しました。直せる名前はありませんでした（${p.done}曲を見ました）`;
+  return { level: "info", text, detail: more.join("・") };
 }
 
 // ---- 着せ替え（v3.2.0） ----

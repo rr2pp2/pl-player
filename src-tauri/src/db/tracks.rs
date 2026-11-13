@@ -80,7 +80,7 @@ pub fn album_key(album_artist: &str, artist: &str, album: &str) -> String {
 /// 直した行の数を返す
 pub fn repair_legacy_text(conn: &Connection) -> AppResult<usize> {
     use crate::library::legacy_text::repair;
-    type Row7 = (i64, String, String, [String; 7]);
+    type Row7 = (i64, String, String, LegacyFields);
     let rows: Vec<Row7> = {
         let mut stmt = conn.prepare(
             "SELECT id, path, album_key, title, artist, album, album_artist, genre, composer, comment FROM tracks
@@ -98,39 +98,111 @@ pub fn repair_legacy_text(conn: &Connection) -> AppResult<usize> {
         it.collect::<rusqlite::Result<_>>()?
     };
     let mut fixed = 0;
-    for (id, path, old_key, mut v) in rows {
-        let stem = std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().into_owned());
-        let mut changed = false;
-        for (i, field) in v.iter_mut().enumerate() {
-            if i == 0 && stem.as_deref().is_some_and(|s| s == field.as_str()) {
-                continue;
-            }
-            if let Some(f) = repair(field, stem.as_deref()) {
-                *field = f;
-                changed = true;
-            }
-        }
-        if !changed {
+    for (id, path, old_key, v) in rows {
+        let Some(new) = repair_fields(&path, &v, 0, &repair).fixed else {
             continue;
+        };
+        if write_repaired(conn, id, &v, &old_key, &new)? {
+            fixed += 1;
         }
-        let key = album_key(&v[3], &v[1], &v[2]);
-        conn.execute(
-            "UPDATE tracks SET title=?2, artist=?3, album=?4, album_artist=?5, genre=?6, composer=?7, comment=?8, album_key=?9 WHERE id=?1",
-            params![id, v[0], v[1], v[2], v[3], v[4], v[5], v[6], key],
-        )?;
-        if key != old_key {
-            conn.execute(
-                "UPDATE OR IGNORE album_art_overrides SET album_key = ?2 WHERE album_key = ?1
-                 AND NOT EXISTS (SELECT 1 FROM tracks WHERE album_key = ?1)",
-                params![old_key, key],
-            )?;
-        }
-        fixed += 1;
     }
     if fixed > 0 {
         tracing::info!("legacy text repaired in {fixed} tracks");
     }
     Ok(fixed)
+}
+
+/// 古い文字コードの決まりを当てる7項目（曲名・アーティスト・アルバム・アルバムアーティスト・ジャンル・作曲者・コメント）。
+/// この並びは、手で直した項目の印（`tag_manual_edits.fields`。v3.5.0）のビットの並びと同じ（曲名が 1、アーティストが 2 …）
+pub type LegacyFields = [String; 7];
+
+/// 7項目のどれかに U+0080〜U+00FF の文字があるか（無ければ決まり 1・2 に当たらないので、決まりを当てるまでもない）
+pub(crate) fn has_latin1_high(v: &LegacyFields) -> bool {
+    v.iter().any(|f| f.chars().any(|c| ('\u{80}'..='\u{FF}').contains(&c)))
+}
+
+/// `repair_fields` の結果
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct FieldsRepair {
+    /// 直した値（変わる項目が無ければ None）
+    pub fixed: Option<LegacyFields>,
+    /// 手で直した印（`skip`）があるので当てなかったが、当てれば変わった項目があった
+    pub skipped_manual: bool,
+}
+
+/// 1曲の7項目に、古い文字コードの決まり（`repair`）を当てる（移行 4 と、v3.5.0 の読み直しで共用）。
+/// - `skip`：当てない項目のビット（v3.5.0：編集画面で手で変えた項目。移行 4 では 0）
+/// - 曲名がファイル名（拡張子なし）と同じなら、曲名には当てない（タグに曲名が無く、ファイル名から作った値のため）
+/// - `repair` は `library::legacy_text::repair` と同じ形（値・ファイル名）。テストで決まりを差し替えるために受け取る
+pub(crate) fn repair_fields(
+    path: &str,
+    v: &LegacyFields,
+    skip: i64,
+    repair: &dyn Fn(&str, Option<&str>) -> Option<String>,
+) -> FieldsRepair {
+    let stem = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
+    let mut out = v.clone();
+    let mut changed = false;
+    let mut skipped_manual = false;
+    for (i, field) in out.iter_mut().enumerate() {
+        if i == 0 && stem.as_deref().is_some_and(|s| s == field.as_str()) {
+            continue;
+        }
+        if let Some(f) = repair(field, stem.as_deref()) {
+            if f == *field {
+                continue;
+            }
+            if skip & (1 << i) != 0 {
+                skipped_manual = true;
+                continue;
+            }
+            *field = f;
+            changed = true;
+        }
+    }
+    FieldsRepair { fixed: changed.then_some(out), skipped_manual }
+}
+
+/// 直した値を書く。**読んだときの値（`old` と `old_key`）のままの行だけ**を書き換える
+/// （v3.5.0：読み直しの途中で、編集画面の保存・取り込みが値を変えた行や、ごみ箱へ移す・ライブラリから外すで消えた行は書かない）。
+/// アルバムの鍵も作り直し、外部画像の設定（album_art_overrides）は新しい鍵へ移す（古い鍵の曲がもう無く、新しい鍵に設定が無いときだけ）。
+/// 書いたら true
+pub(crate) fn write_repaired(conn: &Connection, id: i64, old: &LegacyFields, old_key: &str, new: &LegacyFields) -> AppResult<bool> {
+    let key = album_key(&new[3], &new[1], &new[2]);
+    let n = conn.execute(
+        "UPDATE tracks SET title=?2, artist=?3, album=?4, album_artist=?5, genre=?6, composer=?7, comment=?8, album_key=?9
+         WHERE id=?1 AND title=?10 AND artist=?11 AND album=?12 AND album_artist=?13 AND genre=?14 AND composer=?15
+               AND comment=?16 AND album_key=?17",
+        params![
+            id, new[0], new[1], new[2], new[3], new[4], new[5], new[6], key, old[0], old[1], old[2], old[3], old[4], old[5],
+            old[6], old_key
+        ],
+    )?;
+    if n == 0 {
+        return Ok(false);
+    }
+    if key != old_key {
+        conn.execute(
+            "UPDATE OR IGNORE album_art_overrides SET album_key = ?2 WHERE album_key = ?1
+             AND NOT EXISTS (SELECT 1 FROM tracks WHERE album_key = ?1)",
+            params![old_key, key],
+        )?;
+    }
+    Ok(true)
+}
+
+/// 編集画面で手で変えた項目に印を付ける（v3.5.0。`fields` は `LegacyFields` の並びのビット。前の印に足す）。
+/// 古い文字コードの読み直し（`library::legacy_reread`）は、印の付いた項目を書き換えない
+pub fn mark_manual_edits(conn: &Connection, id: i64, fields: i64) -> AppResult<()> {
+    if fields == 0 {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO tag_manual_edits (track_id, fields, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(track_id) DO UPDATE SET fields = fields | excluded.fields, updated_at = excluded.updated_at",
+        params![id, fields, now_ms()],
+    )?;
+    Ok(())
 }
 
 pub(crate) const SELECT_TRACK: &str = "SELECT t.id, t.path, t.format, t.duration_ms, t.title, t.artist, t.album, t.album_artist,

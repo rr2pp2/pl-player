@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::{ev, AppState};
+use crate::db::Db;
 use crate::db::tracks::{self, Track};
 use crate::error::{AppError, AppResult, ErrorKind};
 use crate::library::tags_read::{self, TagValues};
@@ -55,19 +56,30 @@ pub async fn metadata_write(
     let result = with_resume(
         || controller.release_for_write(id),
         |r| controller.resume_after_write(r),
-        || {
-            let result = tags_write::write_tags(&path, &values, &art);
-            // 成否に関わらず、ライブラリの値は実ファイルから読み直す
-            if let Ok(info) = tags_read::read_track(&path, &state.db.thumbs_dir) {
-                let _ = tracks::upsert(&state.db.writer(), &info);
-            }
-            result
-        },
+        || write_and_reload(&state.db, &track, &path, &values, &art),
     );
     state.controller.refresh_track(id);
     let _ = app.emit(ev::LIBRARY, ());
     result?;
     track_or_err(&state, id)
+}
+
+/// 曲ファイルのタグに書き、成否に関わらずライブラリの値を実ファイルから読み直す。
+/// v3.5.0：書けたら、手で変えた項目（保存する前のライブラリの値と違う項目）に印を付ける（古い文字コードの読み直しで書き換えないため）
+pub(crate) fn write_and_reload(db: &Db, track: &Track, path: &Path, values: &TagValues, art: &ArtChange) -> AppResult<()> {
+    let edited = crate::library::legacy_reread::edited_fields(track, values);
+    let result = tags_write::write_tags(path, values, art);
+    let read = tags_read::read_track(path, &db.thumbs_dir);
+    let conn = db.writer();
+    if let Ok(info) = read {
+        let _ = tracks::upsert(&conn, &info);
+    }
+    if result.is_ok() {
+        if let Err(e) = tracks::mark_manual_edits(&conn, track.id, edited) {
+            tracing::warn!("could not mark manual tag edits: {:?}", e.kind);
+        }
+    }
+    result
 }
 
 /// `release` で手放したものを、`work` の抜け方（panic を含む）にかかわらず `resume` で戻す
@@ -148,8 +160,64 @@ fn refresh_current(state: &AppState) {
 
 #[cfg(test)]
 mod tests {
-    use super::with_resume;
+    use super::{with_resume, write_and_reload};
+    use crate::db::{tracks, Db};
+    use crate::library::tags_read::{self, TagValues};
+    use crate::library::tags_write::ArtChange;
     use std::cell::Cell;
+    use std::sync::atomic::AtomicBool;
+
+    /// v3.5.0：編集画面で保存すると、手で変えた項目にだけ印が付く（保存に失敗したら付けない）。
+    /// 印の付いた項目は、古い文字コードの読み直しで（決まりを変えた版を見立てても）書き換えない。曲名・名前は架空のもの
+    #[test]
+    fn saving_in_the_editor_marks_only_changed_fields() {
+        let dir = crate::test_tmp().join(format!("plp-edit-mark-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // 曲名は「さくら色の坂道」（Shift_JIS を Latin-1 の枠に）、アーティストは西欧の名前（今の決まりでは直らない）
+        let mp3 = tags_read::test_legacy_mp3(
+            &dir,
+            "a.mp3",
+            &[(b"TIT2", b"\x82\xb3\x82\xad\x82\xe7\x90F\x82\xcc\x8d\xe2\x93\xb9"), (b"TPE1", b"\xd1and\xfa Br\xfbl\xe9")],
+            None,
+        );
+        let db = Db::open_memory("edit_mark").unwrap();
+        crate::library::import::run(&db, &[mp3.clone()], false, false, &|_| {});
+        let id = tracks::id_by_path(&db, &mp3.to_string_lossy()).unwrap().unwrap();
+        let track = tracks::get(&db, id).unwrap().unwrap();
+        assert_eq!(track.title, "さくら色の坂道");
+        assert_eq!(track.artist, "Ñandú Brûlé");
+        // 編集画面に出た値のまま、アルバムだけを手で入れて保存する
+        let mut v = tags_read::read_values(&mp3).unwrap();
+        v.album = "手で入れたアルバム".into();
+        write_and_reload(&db, &track, &mp3, &v, &ArtChange::Keep).unwrap();
+        let marks = |db: &Db| -> Option<i64> {
+            db.reader()
+                .query_row("SELECT fields FROM tag_manual_edits WHERE track_id = ?1", [id], |r| r.get(0))
+                .ok()
+        };
+        assert_eq!(marks(&db), Some(4), "アルバムだけ");
+        assert_eq!(tracks::get(&db, id).unwrap().unwrap().album, "手で入れたアルバム");
+        // 次にアーティストを手で直す（印は足される）
+        let track = tracks::get(&db, id).unwrap().unwrap();
+        v.artist = "Ñandú Brûlé Ça".into();
+        write_and_reload(&db, &track, &mp3, &v, &ArtChange::Keep).unwrap();
+        assert_eq!(marks(&db), Some(4 | 2));
+        // 決まりを変えた版で、西欧の名前も「直る」ことになったと見立てても、手で直したアーティストは書き換えない
+        let future = |s: &str, _: Option<&str>| -> Option<String> { s.contains('Ñ').then(|| "変わった".to_string()) };
+        let (_, fixed) = crate::library::legacy_reread::run_with(&db, &AtomicBool::new(false), &future, 200, &mut |_| {});
+        assert!(fixed.is_empty());
+        assert_eq!(tracks::get(&db, id).unwrap().unwrap().artist, "Ñandú Brûlé Ça");
+        // 書けなかったとき（ファイルが無い）は印を付けない
+        let db2 = Db::open_memory("edit_mark_fail").unwrap();
+        crate::library::import::run(&db2, &[mp3.clone()], false, false, &|_| {});
+        let id2 = tracks::id_by_path(&db2, &mp3.to_string_lossy()).unwrap().unwrap();
+        let t2 = tracks::get(&db2, id2).unwrap().unwrap();
+        std::fs::remove_file(&mp3).unwrap();
+        let bad = TagValues { title: "別の名前".into(), ..v.clone() };
+        assert!(write_and_reload(&db2, &t2, &mp3, &bad, &ArtChange::Keep).is_err());
+        assert_eq!(marks(&db2), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// v3.1.1（ペネトレーションテスト v3.0.2 の3）：タグの書き込みが panic で抜けても、再生の再開は必ず走る
     #[test]

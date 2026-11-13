@@ -22,6 +22,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (2, include_str!("migrations/002_lyrics.sql")),
     (3, include_str!("migrations/003_lyrics_fetch.sql")),
     (4, include_str!("migrations/004_legacy_text.sql")),
+    (5, include_str!("migrations/005_tag_manual_edits.sql")),
 ];
 
 /// 移行 4（v3.1.2）：SQL のあとに、同じトランザクションの中で走らせる Rust の処理（古い文字コードの値を直す）
@@ -152,7 +153,9 @@ mod tests {
         conn.execute("INSERT INTO album_art_overrides (album_key, image_path, updated_at) VALUES (?1, 'x.png', 0)", [&old_key]).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, LEGACY_TEXT_VERSION);
+        // v3.5.0 から移行 5 まで続けて走る
+        assert_eq!(v, MIGRATIONS.last().unwrap().0);
+        assert!(v >= LEGACY_TEXT_VERSION);
         let get = |id: i64| -> (String, String, String, String) {
             conn.query_row("SELECT title, artist, album, album_key FROM tracks WHERE id = ?1", [id], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
@@ -176,6 +179,32 @@ mod tests {
         conn.execute("UPDATE tracks SET artist = ?1 WHERE id = 1", [&artist]).unwrap();
         migrate(&conn).unwrap();
         assert_eq!(get(1).1, artist);
+    }
+
+    /// v3.5.0：移行 5 は、手で直した項目の印の表を作るだけ（曲の値は変えない。3.4.0 までの曲に印は付かない）。
+    /// 曲を外すと印も消える（ON DELETE CASCADE）
+    #[test]
+    fn migration_5_adds_manual_edit_marks_without_touching_tracks() {
+        let conn = test_conn_at_version("migration5", 4);
+        conn.execute(
+            "INSERT INTO tracks (path, title, artist, album_key, added_at) VALUES ('C:\\m\\a.mp3', 'Plain', '\u{93}A\u{94}', '', 0)",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 5);
+        let (t, a): (String, String) = conn.query_row("SELECT title, artist FROM tracks", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((t.as_str(), a.as_str()), ("Plain", "\u{93}A\u{94}"));
+        let marks: i64 = conn.query_row("SELECT count(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap();
+        assert_eq!(marks, 0);
+        tracks::mark_manual_edits(&conn, 1, 1).unwrap();
+        tracks::mark_manual_edits(&conn, 1, 4).unwrap();
+        let f: i64 = conn.query_row("SELECT fields FROM tag_manual_edits WHERE track_id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(f, 5, "印は前の印に足す");
+        conn.execute("DELETE FROM tracks WHERE id = 1", []).unwrap();
+        let marks: i64 = conn.query_row("SELECT count(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap();
+        assert_eq!(marks, 0);
     }
 }
 

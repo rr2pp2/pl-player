@@ -1,6 +1,6 @@
 [package]
 name = "pl-player"
-version = "3.4.0"
+version = "3.5.0"
 description = "PL Player - local music player"
 license = "MIT"
 edition = "2021"

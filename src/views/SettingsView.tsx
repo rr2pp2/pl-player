@@ -15,7 +15,8 @@ import { notify } from "../stores/notices";
 import { lyricsOnlineOn, settings, updateSettings } from "../stores/settings";
 import { importLyricsInbox, lastInboxReport, openLyricsInbox } from "../stores/lyrics";
 import { cancelLyricsFetch, lyricsFetch, lyricsFetchOne, lyricsFetchRunning, startLyricsFetch } from "../stores/lyricsFetch";
-import { inboxReportText, lyricsFetchAbortMessage, lyricsFetchProgressText } from "../messages/ja";
+import { inboxReportText, legacyRereadConfirm, legacyRereadDoneText, legacyRereadProgressText, lyricsFetchAbortMessage, lyricsFetchProgressText } from "../messages/ja";
+import { cancelLegacyReread, legacyReread, legacyRereadRunning, startLegacyReread } from "../stores/legacyReread";
 import type { LyricsFetchMode } from "../ipc/types";
 import { useStore } from "../stores/store";
 import { Artwork } from "../components/Artwork";
@@ -144,6 +145,47 @@ function TrashField() {
       </label>
       <span className="hint">
         オンにすると、ライブラリの曲一覧（すべての曲・最近追加・お気に入り・アーティストやアルバムを開いたところなど）の右端に「ごみ箱」の列が出て、行ごとにボタンが付きます。オフでも、曲の右クリックのメニューの「ごみ箱へ移す…」は使えます（「ライブラリから外す…」と並んで出ます）。右クリックの「ごみ箱へ移す…」と行のボタンは、プレイリストとキューの一覧には出ません（「プレイリストから削除」「キューから削除」と取り違えないため）。一度に移せるのは 1,000 曲までです。押すと確認のあと、曲ファイルを Windows のごみ箱へ移し、ライブラリ・プレイリスト・キュー・お気に入り・その曲の歌詞の設定からも外します。ごみ箱から戻せます。USB メモリなど、ごみ箱の無い場所にある曲は、完全に消えてしまうので移しません。設定の zip を読み込むと、このボタンはオフに戻ります。
+      </span>
+    </div>
+  );
+}
+
+/** v3.5.0：古い文字コードのタグを読み直す（確認のあと、裏で全曲を見直す。曲ファイルには書かない） */
+function LegacyRereadField() {
+  const p = useStore(legacyReread);
+  const running = legacyRereadRunning(p);
+  return (
+    <div className="field">
+      <span className="flabel">古い文字コード</span>
+      <span className="row">
+        <button
+          className="btn"
+          disabled={running}
+          onClick={async () => {
+            const c = legacyRereadConfirm;
+            if (await confirmDialog(c.title, c.body, c.ok)) void startLegacyReread();
+          }}
+        >
+          <IconRefresh /> 古い文字コードのタグを読み直す…
+        </button>
+        {running ? (
+          <button className="btn" onClick={() => void cancelLegacyReread()}>
+            <IconX /> やめる
+          </button>
+        ) : null}
+      </span>
+      {p ? (
+        <span className="hint" role="status">
+          {p.running ? `読み直しています：${legacyRereadProgressText(p)}` : legacyRereadDoneText(p).text}
+        </span>
+      ) : null}
+      {running && p ? (
+        <div className="progress-line legacy-reread-progress" aria-hidden="true">
+          <div style={{ width: `${p.total ? Math.round((p.done / p.total) * 100) : 0}%` }} />
+        </div>
+      ) : null}
+      <span className="hint">
+        古い文字コード（Shift_JIS など）で書かれたタグの名前は、取り込むときに直しています。直らずに化けたまま残った名前を、今の決まりでもう一度見直します（アプリの版が上がって決まりが良くなったときに使います）。直すのはこのアプリのライブラリの表示だけで、曲ファイルには書き込みません。編集画面で手で直した名前は書き換えません。曲の取り込み・再走査の途中は始められません。
       </span>
     </div>
   );
@@ -496,6 +538,7 @@ export function SettingsView() {
                 起動したときにフォルダを再走査する
               </label>
             </div>
+            <LegacyRereadField />
             <TrashField />
           </section>
         ) : null}

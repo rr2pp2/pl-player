@@ -98,6 +98,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         importing: Mutex::new(false),
         lyrics_fetch: Default::default(),
         skin: Default::default(),
+        legacy_reread: Default::default(),
     });
 
     // タスクトレイ
@@ -217,6 +218,9 @@ pub fn run() {
             commands::library::library_rescan,
             commands::library::library_remove_tracks,
             commands::library::library_trash_tracks,
+            commands::library::legacy_reread_start,
+            commands::library::legacy_reread_cancel,
+            commands::library::legacy_reread_status,
             commands::library::reveal_in_explorer,
             commands::playback::playback_snapshot,
             commands::playback::play_context,

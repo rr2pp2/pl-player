@@ -1,7 +1,18 @@
 // event を受けるのはここだけ。名前は Rust 側（commands/mod.rs の ev）と同じ。
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { AppSettings, HotkeyStatus, ImportProgress, ImportSummary, LyricsFetchDone, LyricsFetchProgress, Notice, SkinState, Snapshot } from "./types";
+import type {
+  AppSettings,
+  HotkeyStatus,
+  ImportProgress,
+  ImportSummary,
+  LegacyRereadProgress,
+  LyricsFetchDone,
+  LyricsFetchProgress,
+  Notice,
+  SkinState,
+  Snapshot,
+} from "./types";
 
 export const EV = {
   playback: "pl://playback",
@@ -18,6 +29,8 @@ export const EV = {
   lyricsFetchProgress: "pl://lyrics-fetch-progress",
   lyricsFetchDone: "pl://lyrics-fetch-done",
   skin: "pl://skin",
+  legacyRereadProgress: "pl://legacy-reread-progress",
+  legacyRereadDone: "pl://legacy-reread-done",
 } as const;
 
 type Handlers = {
@@ -35,6 +48,8 @@ type Handlers = {
   lyricsFetchProgress: LyricsFetchProgress;
   lyricsFetchDone: LyricsFetchDone;
   skin: SkinState;
+  legacyRereadProgress: LegacyRereadProgress;
+  legacyRereadDone: LegacyRereadProgress;
 };
 
 export function on<K extends keyof Handlers>(name: K, cb: (payload: Handlers[K]) => void): Promise<UnlistenFn> {

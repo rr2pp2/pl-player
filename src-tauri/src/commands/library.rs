@@ -9,7 +9,7 @@ use tauri_plugin_dialog::DialogExt;
 use super::{ev, AppState};
 use crate::db::tracks::{self, Group, Track, TrackQuery};
 use crate::error::AppResult;
-use crate::library::import;
+use crate::library::{import, legacy_reread};
 use crate::platform::windows::localpath;
 
 #[derive(Serialize)]
@@ -116,14 +116,10 @@ pub fn start_rescan(app: &AppHandle, folders: Vec<PathBuf>) {
 
 fn start_import_with(app: &AppHandle, paths: Vec<PathBuf>, recursive: bool, remember_folders: bool, skip_missing: bool) {
     let state = app.state::<AppState>();
-    {
-        let mut busy = state.importing.lock().unwrap_or_else(|p| p.into_inner());
-        if *busy {
-            // 走っている取り込みが終わったら、もう一度呼んでもらう
-            let _ = app.emit(ev::NOTICE, crate::playback::Notice::info("import_busy", None, None));
-            return;
-        }
-        *busy = true;
+    // 走っている取り込み・古い文字コードのタグの読み直し（v3.5.0）が終わったら、もう一度呼んでもらう
+    if let Err(code) = crate::library::legacy_reread::begin_import(&state.importing, &state.legacy_reread) {
+        let _ = app.emit(ev::NOTICE, crate::playback::Notice::info(code, None, None));
+        return;
     }
     let app = app.clone();
     std::thread::spawn(move || {
@@ -247,6 +243,68 @@ pub async fn library_trash_tracks(app: AppHandle, state: State<'_, AppState>, id
         let _ = app.emit(ev::PLAYLISTS, ());
     }
     Ok(report)
+}
+
+/// 古い文字コードのタグを読み直す（v3.5.0。設定の「ライブラリ」のボタン。確認は画面が出す）。
+/// DB の値に今の決まりをかけ直すだけで、曲ファイルは読まない・書かない（判断は library::legacy_reread）。
+/// 取り込み・再走査が走っていれば断る。別スレッドで走らせ、進み具合は pl://legacy-reread-progress、終わりは pl://legacy-reread-done
+#[tauri::command]
+pub async fn legacy_reread_start(app: AppHandle, state: State<'_, AppState>) -> AppResult<legacy_reread::RereadProgress> {
+    legacy_reread::begin_exclusive(&state.importing, &state.legacy_reread)?;
+    let initial = legacy_reread::RereadProgress { running: true, ..Default::default() };
+    state.legacy_reread.set_progress(initial.clone());
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let state = app2.state::<AppState>();
+        let ctl = &state.legacy_reread;
+        let end = ctl.end_guard();
+        let cancel = ctl.cancel_flag();
+        let emit_app = app2.clone();
+        let mut on_progress = |p: &legacy_reread::RereadProgress| {
+            ctl.set_progress(p.clone());
+            let _ = emit_app.emit(ev::LEGACY_REREAD_PROGRESS, p);
+        };
+        // 途中で落ちても、終わりの知らせを必ず出し、走っている印を外す
+        let (done, fixed) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            legacy_reread::run(&state.db, &cancel, &mut on_progress)
+        })) {
+            Ok(r) => r,
+            Err(_) => {
+                tracing::error!("legacy tag reread thread panicked");
+                let mut p = ctl.progress();
+                p.running = false;
+                p.finished = true;
+                p.error = Some(crate::error::ErrorKind::Other);
+                (p, vec![])
+            }
+        };
+        ctl.set_progress(done.clone());
+        // 終わりの知らせより先に印を外す（知らせを受けた画面が、すぐにもう一度押せるように）
+        drop(end);
+        if !fixed.is_empty() {
+            if let Some(t) = state.controller.snapshot().track {
+                if fixed.contains(&t.id) {
+                    state.controller.refresh_track(t.id);
+                }
+            }
+            let _ = app2.emit(ev::LIBRARY, ());
+        }
+        let _ = app2.emit(ev::LEGACY_REREAD_DONE, &done);
+    });
+    Ok(initial)
+}
+
+/// 古い文字コードのタグの読み直しを、やめる（次のまとまりの前で止まる。それまでに直した曲はそのまま）
+#[tauri::command]
+pub async fn legacy_reread_cancel(state: State<'_, AppState>) -> AppResult<()> {
+    state.legacy_reread.cancel();
+    Ok(())
+}
+
+/// 今の進み具合（設定画面を開き直したとき）
+#[tauri::command]
+pub async fn legacy_reread_status(state: State<'_, AppState>) -> AppResult<legacy_reread::RereadProgress> {
+    Ok(state.legacy_reread.progress())
 }
 
 /// エクスプローラーでファイルの場所を開く（そのファイルを選んだ状態で）
