@@ -54,6 +54,49 @@ pub struct UiSettings {
     /// v3.3.0：設定画面のタブの並び（タブの名前）。空なら既定の順。タブの一覧は画面（src\layout\visibility.ts）が持ち、
     /// 知らない名前を捨て・抜けたタブを足して合わせる。ここでは形だけ整える（名前の形・重なり・数）
     pub settings_tabs: Vec<String>,
+    /// v3.4.0：曲一覧のコンパクト表示（`COMPACT_LIST_MODES` のどれか）。既定は "off"（今までの見た目）。
+    /// 知らない値・文字でない値は "off" にする（この値だけを既定に戻し、設定全体は既定に戻さない）
+    #[serde(deserialize_with = "de_compact_list")]
+    pub compact_list: String,
+    /// v3.4.0：サイドバーの項目のアイコンの大きさ（px）。`SIDEBAR_ICON_PX_MIN`〜`MAX` の整数。既定は 3.3.0 までの 20。
+    /// 範囲の外は端へ丸め、小数は四捨五入する。数でない値は既定（この値だけ）
+    #[serde(deserialize_with = "de_sidebar_icon_px")]
+    pub sidebar_icon_px: u32,
+}
+
+/// v3.4.0：曲一覧のコンパクト表示の値（画面の src/layout/density.ts と同じ並び）。
+/// off：使わない（既定）　always：いつも　narrow：ウィンドウが狭いときだけ（境目は画面が持つ。ジャケットが縮む 720px 未満）
+pub const COMPACT_LIST_MODES: &[&str] = &["off", "always", "narrow"];
+
+/// v3.4.0：サイドバーのアイコンの大きさ（px）。既定は 3.3.0 までの大きさ（base.css の `.nav-item .icon` の 20px）。
+/// 下は、ボタンの中の小さいアイコン（`.icon-btn.small .icon`）の 16px より少し小さい 14px まで（それより小さいと形が読めない）。
+/// 上は、たたんだサイドバーの中の幅（64 − 枠 2 − 余白 16 − スクロールバー 10 = 36px）に余白を残して収まる 32px まで
+pub const SIDEBAR_ICON_PX_MIN: u32 = 14;
+pub const SIDEBAR_ICON_PX_MAX: u32 = 32;
+pub const SIDEBAR_ICON_PX_DEFAULT: u32 = 20;
+
+fn compact_list_ok(s: &str) -> String {
+    if COMPACT_LIST_MODES.contains(&s) { s.to_string() } else { "off".to_string() }
+}
+
+fn clamp_icon_px(v: f64) -> u32 {
+    if v.is_finite() {
+        v.round().clamp(SIDEBAR_ICON_PX_MIN as f64, SIDEBAR_ICON_PX_MAX as f64) as u32
+    } else {
+        SIDEBAR_ICON_PX_DEFAULT
+    }
+}
+
+/// どんな JSON の値でも受け、知らない値は "off" にする（形の違う1つの値で、設定全体を既定に戻さないため）
+fn de_compact_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(compact_list_ok(v.as_str().unwrap_or("")))
+}
+
+/// どんな JSON の値でも受け、数なら丸め、数でなければ既定にする
+fn de_sidebar_icon_px<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_f64().map(clamp_icon_px).unwrap_or(SIDEBAR_ICON_PX_DEFAULT))
 }
 
 /// v3.3.0：設定のタブの並びに置ける数と、名前の長さ
@@ -90,6 +133,8 @@ impl Default for UiSettings {
             sidebar_items: all_shown(SIDEBAR_ITEMS_HIDEABLE),
             trash_button: false,
             settings_tabs: Vec::new(),
+            compact_list: "off".into(),
+            sidebar_icon_px: SIDEBAR_ICON_PX_DEFAULT,
         }
     }
 }
@@ -205,6 +250,9 @@ impl AppSettings {
         let mut seen = std::collections::HashSet::new();
         self.ui.settings_tabs.retain(|t| tab_name_ok(t) && seen.insert(t.clone()));
         self.ui.settings_tabs.truncate(SETTINGS_TABS_MAX);
+        // v3.4.0：コンパクト表示とサイドバーのアイコンの大きさ（画面から来た値・zip の値も、読むときと同じに整える）
+        self.ui.compact_list = compact_list_ok(&self.ui.compact_list);
+        self.ui.sidebar_icon_px = clamp_icon_px(self.ui.sidebar_icon_px as f64);
         // v3.2.0：着せ替え
         let sk = &mut self.skin;
         sk.character_scale = if sk.character_scale.is_finite() { sk.character_scale.clamp(0.75, 1.25) } else { 1.0 };
@@ -378,6 +426,61 @@ mod tests {
         assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains("\"settingsTabs\":[]"));
     }
 
+    /// v3.4.0：コンパクト表示とサイドバーのアイコンの大きさ。古い設定（値が無い）は既定（使わない・20px）。
+    /// 知らない値は "off"、範囲の外は端へ丸める。形の違う値が来ても、その値だけを既定にし、ほかの設定は残す
+    #[test]
+    fn compact_list_and_sidebar_icon() {
+        let d = AppSettings::default();
+        assert_eq!(d.ui.compact_list, "off");
+        assert_eq!(d.ui.sidebar_icon_px, 20);
+        assert_eq!(d.ui.sidebar_icon_px, SIDEBAR_ICON_PX_DEFAULT);
+        assert!(SIDEBAR_ICON_PX_MIN < SIDEBAR_ICON_PX_DEFAULT && SIDEBAR_ICON_PX_DEFAULT < SIDEBAR_ICON_PX_MAX);
+        // 3.3.0 までの設定（値が無い）
+        let old: AppSettings = serde_json::from_str(r#"{"theme":"light","ui":{"sidebarCollapsed":true,"trashButton":true}}"#).unwrap();
+        let old = old.sanitize();
+        assert_eq!(old.ui.compact_list, "off");
+        assert_eq!(old.ui.sidebar_icon_px, 20);
+        assert!(old.ui.sidebar_collapsed && old.ui.trash_button);
+        // 選べる値はそのまま
+        for m in COMPACT_LIST_MODES {
+            let s: AppSettings = serde_json::from_str(&format!(r#"{{"ui":{{"compactList":"{m}"}}}}"#)).unwrap();
+            assert_eq!(s.sanitize().ui.compact_list, *m);
+        }
+        // 知らない値・大文字違い・文字でない値は "off"。設定全体は既定に戻さない（theme が残る）
+        for bad in [r#""big""#, r#""Always""#, r#""""#, "5", "true", "null", "{}", "[\"always\"]"] {
+            let s: AppSettings = serde_json::from_str(&format!(r#"{{"theme":"light","ui":{{"compactList":{bad},"lyricsRow":false}}}}"#))
+                .unwrap_or_else(|e| panic!("{bad}: {e}"));
+            let s = s.sanitize();
+            assert_eq!(s.ui.compact_list, "off", "{bad}");
+            assert_eq!(s.theme, "light", "{bad}");
+            assert!(!s.ui.lyrics_row, "{bad}");
+        }
+        // 大きさ：範囲の外は端へ、小数は四捨五入、数でなければ既定
+        for (v, want) in [
+            ("14", 14), ("32", 32), ("24", 24), ("13", 14), ("0", 14), ("-5", 14), ("33", 32), ("1e9", 32), ("20.4", 20), ("20.6", 21),
+            ("31.6", 32), ("\"24\"", 20), ("null", 20), ("true", 20), ("[]", 20), ("{}", 20),
+        ] {
+            let s: AppSettings = serde_json::from_str(&format!(r#"{{"theme":"light","ui":{{"sidebarIconPx":{v}}}}}"#))
+                .unwrap_or_else(|e| panic!("{v}: {e}"));
+            let s = s.sanitize();
+            assert_eq!(s.ui.sidebar_icon_px, want, "{v}");
+            assert_eq!(s.theme, "light", "{v}");
+        }
+        // 画面から来た値（コードで入れた値）も sanitize で同じに整える
+        let mut m = AppSettings::default();
+        m.ui.compact_list = "<script>".into();
+        m.ui.sidebar_icon_px = 500;
+        let m = m.sanitize();
+        assert_eq!(m.ui.compact_list, "off");
+        assert_eq!(m.ui.sidebar_icon_px, SIDEBAR_ICON_PX_MAX);
+        let mut m = AppSettings::default();
+        m.ui.sidebar_icon_px = 0;
+        assert_eq!(m.sanitize().ui.sidebar_icon_px, SIDEBAR_ICON_PX_MIN);
+        // 画面に送る名前（camelCase）
+        let j = serde_json::to_string(&AppSettings::default()).unwrap();
+        assert!(j.contains("\"compactList\":\"off\"") && j.contains("\"sidebarIconPx\":20"), "{j}");
+    }
+
     #[test]
     fn roundtrip_in_db() {
         let db = Db::open_memory("settings_rt").unwrap();
@@ -390,8 +493,20 @@ mod tests {
         s.ui.sidebar_items.insert("playlists".into(), false);
         s.ui.trash_button = true;
         s.ui.settings_tabs = vec!["keys".into(), "display".into()];
+        s.ui.compact_list = "narrow".into();
+        s.ui.sidebar_icon_px = 28;
         save(&db, &s).unwrap();
         assert_eq!(load(&db), s);
+        // v3.4.0：DB に範囲の外・知らない値が入っていても、読むときに整える（ほかの値は残す）
+        let mut raw = serde_json::to_value(&s).unwrap();
+        raw["ui"]["compactList"] = serde_json::json!("tiny");
+        raw["ui"]["sidebarIconPx"] = serde_json::json!(99);
+        db::settings::set(&db, KEY, &raw).unwrap();
+        let back = load(&db);
+        assert_eq!(back.ui.compact_list, "off");
+        assert_eq!(back.ui.sidebar_icon_px, SIDEBAR_ICON_PX_MAX);
+        assert_eq!(back.theme, "light");
+        assert_eq!(back.ui.settings_tabs, s.ui.settings_tabs);
     }
 
     /// v3.1.1（ペネトレーションテスト v3.0.2 の4）：背景のパスは backgrounds の直下だけ

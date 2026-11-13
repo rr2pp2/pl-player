@@ -173,10 +173,13 @@ textarea {
   outline: 2px solid var(--c-accent);
   outline-offset: -2px;
 }
+/* 項目のアイコン：大きさは設定の「サイドバーのアイコンの大きさ」（v3.4.0。Sidebar.tsx が .sidebar に --nav-icon を置く。既定 20px・14〜32px）。
+   スキンの画像（img.skin-icon）もこの決まりに従う（こちらの方が強い）。項目の高さは min-height なので、大きくすると行が伸びる。
+   たたんだサイドバーの中の幅は 64 − 枠 2 − 余白 16 − スクロールバー 10 = 36px なので、32px までなら幅を変えずに収まる */
 .nav-item .icon {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: var(--nav-icon, 20px);
+  height: var(--nav-icon, 20px);
   color: var(--c-secondary);
 }
 .nav-item.active .icon {
@@ -509,6 +512,25 @@ textarea {
   height: 14px;
   flex: none;
   color: var(--c-accent);
+}
+/* 曲一覧のコンパクト表示（v3.4.0）：ジャケットの列は TrackTable が出さない。行の高さは TrackTable が --row-h で渡す（36px）。
+   「タイトル — アーティスト」を1行に並べ、入りきらなければ行の終わりを省略記号で切る。タイトルは本文の大きさ（--fs-body）に下げる */
+.track-table.compact .t-main {
+  gap: 0;
+}
+.track-table.compact .t-title {
+  font-size: var(--fs-body);
+}
+.t-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-line-artist {
+  font-size: var(--fs-artist);
+  font-weight: 400;
+  color: var(--c-secondary);
 }
 
 /* ---------- アート ---------- */

@@ -3,6 +3,7 @@
 // v3.3.0：使う人が隠した項目は出さない（設定は隠せない。決まりは visibility.ts）。
 // たたんでいるときは、項目にマウスを乗せる・キーボードで移ると項目名の吹き出しを出す（Tip）。
 // ウィンドウが狭くて自動でたたんでいるときは、切り替えボタンを押せない見た目にし、理由の吹き出しを出す。
+// v3.4.0：項目のアイコンの大きさは設定の ui.sidebarIconPx（--nav-icon。読み方は density.ts、当て方は base.css の .nav-item .icon）。
 import { useDroppable } from "@dnd-kit/core";
 import { api } from "../ipc/commands";
 import type { ViewKind } from "../ipc/types";
@@ -33,6 +34,7 @@ import {
 import { playback } from "../stores/playback";
 import { settings } from "../stores/settings";
 import { sidebarItemShown, sidebarToggleInfo } from "./visibility";
+import { sidebarIconPx } from "./density";
 
 const LIB: { view: ViewKind; label: string; icon: any }[] = [
   { view: "all", label: "すべての曲", icon: <IconMusic /> },
@@ -130,7 +132,7 @@ export function Sidebar(props: { onToggle: () => void; sidebarAuto: boolean; col
   const showQueue = sidebarItemShown(ui, "queue");
   const showPlaylists = sidebarItemShown(ui, "playlists");
   return (
-    <nav className="sidebar panel" aria-label="ライブラリとプレイリスト">
+    <nav className="sidebar panel" aria-label="ライブラリとプレイリスト" style={{ ["--nav-icon" as any]: `${sidebarIconPx(ui)}px` }}>
       <div className="sidebar-head">
         {/* 狭いときは disabled にしない（disabled だとマウスもキーボードも届かず、理由の吹き出しを出せない）。
             aria-disabled で押せないことを伝え、押しても何もしない */}

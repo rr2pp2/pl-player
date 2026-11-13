@@ -220,6 +220,10 @@ export interface AppSettings {
     trashButton?: boolean;
     /** v3.3.0：設定のタブの並び（空・無ければ既定の順。知らない名前・抜けは画面が合わせる） */
     settingsTabs?: string[];
+    /** v3.4.0：曲一覧のコンパクト表示（"off" 使わない・"always" いつも・"narrow" 狭いときだけ）。無ければ使わない。読み方は src\layout\density.ts */
+    compactList?: string;
+    /** v3.4.0：サイドバーのアイコンの大きさ（px。14〜32）。無ければ 20 */
+    sidebarIconPx?: number;
   };
   shortcuts: Record<string, string>;
   hotkeys: Record<string, string>;

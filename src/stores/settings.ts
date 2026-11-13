@@ -34,6 +34,9 @@ export const settings = createStore<AppSettings>({
     sidebarItems: {},
     trashButton: false,
     settingsTabs: [],
+    // v3.4.0：曲一覧のコンパクト表示（既定は使わない）・サイドバーのアイコンの大きさ（既定は 3.3.0 までの 20px）
+    compactList: "off",
+    sidebarIconPx: 20,
   },
   shortcuts: { ...DEFAULT_SHORTCUTS },
   hotkeys: {},

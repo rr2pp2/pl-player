@@ -267,6 +267,9 @@ mod tests {
         s.ui.sidebar_items.insert("playlists".into(), false);
         s.ui.trash_button = true;
         s.ui.settings_tabs = vec!["app".into(), "display".into()];
+        // v3.4.0：コンパクト表示とサイドバーのアイコンの大きさも、書き出し・読み込みに入る
+        s.ui.compact_list = "always".into();
+        s.ui.sidebar_icon_px = 26;
         s.background.path = Some(bg.to_string_lossy().into_owned());
         let zip_path = tmp.join("backup.zip");
         let r = export(&a, &s, &bg_dir, &zip_path).unwrap();
@@ -292,6 +295,10 @@ mod tests {
         assert_eq!(s2.ui.sidebar_items.get("all"), Some(&true));
         assert!(!s2.ui.trash_button);
         assert_eq!(s2.ui.settings_tabs, vec!["app", "display"]);
+        assert_eq!(s2.ui.compact_list, "always");
+        assert_eq!(s2.ui.sidebar_icon_px, 26);
+        assert_eq!(store::load(&b).ui.compact_list, "always");
+        assert_eq!(store::load(&b).ui.sidebar_icon_px, 26);
         let bg2 = Path::new(s2.background.path.as_ref().unwrap());
         assert!(bg2.exists());
         // v3.1.1：取り出した背景は自前の名前（bg-<鍵>.png）
@@ -444,6 +451,43 @@ mod tests {
         let p = tmp.join("bomb.zip");
         fs::write(&p, &z).unwrap();
         assert_eq!(import(&db, &p, &tmp.join("bgs")).unwrap_err().kind, ErrorKind::UnsupportedFormat);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.4.0：設定の zip の settings.json に、コンパクト表示・サイドバーのアイコンの大きさが無い（3.3.0 までの zip）なら既定。
+    /// 知らない値・範囲の外の値・形の違う値は、その値だけを整えて読み込む（zip を断らない。ほかの設定は入る）
+    #[test]
+    fn import_compact_list_and_sidebar_icon() {
+        let tmp = tmp_dir("density");
+        let cases: [(&str, &str, &str, u32); 6] = [
+            ("old", r#"{"theme":"light","ui":{"sidebarCollapsed":true}}"#, "off", 20),
+            ("ok", r#"{"theme":"light","ui":{"compactList":"narrow","sidebarIconPx":16}}"#, "narrow", 16),
+            ("unknown", r#"{"theme":"light","ui":{"compactList":"micro","sidebarIconPx":64}}"#, "off", 32),
+            ("small", r#"{"theme":"light","ui":{"compactList":"always","sidebarIconPx":2}}"#, "always", 14),
+            ("types", r#"{"theme":"light","ui":{"compactList":1,"sidebarIconPx":"28"}}"#, "off", 20),
+            ("nulls", r#"{"theme":"light","ui":{"compactList":null,"sidebarIconPx":null}}"#, "off", 20),
+        ];
+        for (name, json, mode, px) in cases {
+            let db = Db::open_memory(&format!("backup_density_{name}")).unwrap();
+            let z = make_zip(&tmp, &format!("{name}.zip"), &[manifest(), zip::Entry { name: "settings.json".into(), data: json.as_bytes().to_vec() }]);
+            let (s, _, _) = import(&db, &z, &tmp.join("bgs")).unwrap_or_else(|e| panic!("{name}: {}", e.detail));
+            assert_eq!(s.theme, "light", "{name}");
+            assert_eq!(s.ui.compact_list, mode, "{name}");
+            assert_eq!(s.ui.sidebar_icon_px, px, "{name}");
+            let saved = store::load(&db);
+            assert_eq!(saved.ui.compact_list, mode, "{name}: saved");
+            assert_eq!(saved.ui.sidebar_icon_px, px, "{name}: saved");
+        }
+        // 書き出した zip の settings.json に、画面と同じ名前で入る
+        let a = Db::open_memory("backup_density_export").unwrap();
+        let mut s = AppSettings::default();
+        s.ui.compact_list = "narrow".into();
+        s.ui.sidebar_icon_px = 30;
+        let z = tmp.join("export.zip");
+        export(&a, &s, &tmp.join("no-bg"), &z).unwrap();
+        let entries = zip::read(&mut fs::File::open(&z).unwrap(), &|_| true).unwrap();
+        let text = String::from_utf8(entries.into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
+        assert!(text.contains("\"compactList\": \"narrow\"") && text.contains("\"sidebarIconPx\": 30"), "{text}");
         let _ = fs::remove_dir_all(&tmp);
     }
 

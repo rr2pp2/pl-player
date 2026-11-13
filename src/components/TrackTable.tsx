@@ -3,7 +3,9 @@
 // v3.3.0：設定の「ごみ箱へ移すボタン」がオンのときだけ、行の右端に「ごみ箱へ移す」を出す（既定はオフ）。
 // 出すのはライブラリの曲一覧だけ（props.list。プレイリスト・キューの一覧には、行のボタンも右クリックのメニューも出さない）。
 // 対象は右クリックのメニューと同じ決まり：押した行が選んでいる行の中にあれば選んでいる全部、そうでなければその行だけ。
-import { useEffect, useMemo, useRef, useState } from "react";
+// v3.4.0：コンパクト表示（設定の ui.compactList。決まりは src\layout\density.ts）：ジャケットの列を出さず、行を詰め、
+// タイトルとアーティストを1行に並べる。選択・再生中の印・ドラッグ・右クリック・お気に入り・ごみ箱の列は今までどおり。
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -20,6 +22,7 @@ import { formatTime } from "./format";
 import { IconBars, IconStar, IconTrash } from "./Icons";
 import { trackMenu, trashBusy, trashTracksFlow } from "./trackActions";
 import { trashButtonShown, trashTargets, type TrackListKind } from "../layout/visibility";
+import { compactListOn, trackRowHeight } from "../layout/density";
 import { useLayoutSize } from "./useLayoutSize";
 
 export interface DragData {
@@ -62,6 +65,9 @@ export function TrackTable(props: Props) {
     anchor.current = null;
   }, [props.tracks]);
 
+  // v3.4.0：コンパクト表示か（「狭いときだけ」はウィンドウの幅で決める）と、行の高さ（仮想スクロールの1行の大きさ）
+  const compact = compactListOn(ui, size.width);
+  const rowH = trackRowHeight(compact, size.rowH);
   const cols = {
     album: cfg.album !== false && !size.hideAlbum,
     genre: cfg.genre !== false && !size.hideGenre,
@@ -70,7 +76,8 @@ export function TrackTable(props: Props) {
     trash: trashButtonShown(ui, props.list),
   };
   const template = [
-    `${size.artSize}px`,
+    // ジャケットの列：コンパクト表示では出さない（見出しの行の空き枠も出さない）
+    compact ? null : `${size.artSize}px`,
     "minmax(0, 3fr)",
     cols.album ? "minmax(0, 2fr)" : null,
     cols.genre ? "minmax(0, 1.2fr)" : null,
@@ -86,12 +93,31 @@ export function TrackTable(props: Props) {
   const virt = useVirtualizer({
     count: props.tracks.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => size.rowH,
+    estimateSize: () => rowH,
     overscan: 12,
   });
-  useEffect(() => {
+  // この描画で並べた全体の高さ（下の div の高さ。行の高さを替えた直後の描画では、まだ前の高さで並べた値）
+  const totalSize = virt.getTotalSize();
+  // 行の高さが変わったら（コンパクト表示の切り替え・幅の段）、覚えている行の位置を捨てて測り直す。
+  // estimateSize を替えただけでは、仮想スクロールは前の高さで並べたまま（measure で作り直す）。
+  // 描く前（useLayoutEffect）に測り直し、前の高さで並んだ行が一瞬見えないようにする。
+  // スクロールの位置は、いちばん上に見えていた行が同じ行になるように、新しい高さで置き直す（次の描画のあと）
+  const prevRowH = useRef(rowH);
+  const keepTopRow = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && prevRowH.current !== rowH && prevRowH.current > 0) keepTopRow.current = el.scrollTop / prevRowH.current;
+    prevRowH.current = rowH;
     virt.measure();
-  }, [size.rowH]); // eslint-disable-line
+  }, [rowH]); // eslint-disable-line
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (keepTopRow.current === null || !el) return;
+    // 描いた全体の高さが新しい行の高さに追いついてから置く（追いつく前に置くと、前の短い全体の高さで切られる）
+    if (totalSize !== props.tracks.length * rowH) return;
+    el.scrollTop = keepTopRow.current * rowH;
+    keepTopRow.current = null;
+  });
 
   const selIndexes = () => [...selected].sort((a, b) => a - b);
 
@@ -180,6 +206,7 @@ export function TrackTable(props: Props) {
         start={v.start}
         track={t}
         cols={cols}
+        compact={compact}
         playing={pb.track?.id === t.id}
         isPlaying={pb.status === "playing"}
         selected={selected.has(v.index)}
@@ -197,9 +224,9 @@ export function TrackTable(props: Props) {
   });
 
   return (
-    <div className="track-table" style={{ ["--cols" as any]: template, ["--row-h" as any]: `${size.rowH}px` }}>
+    <div className={"track-table" + (compact ? " compact" : "")} style={{ ["--cols" as any]: template, ["--row-h" as any]: `${rowH}px` }}>
       <div className="track-head" role="row">
-        <span />
+        {compact ? null : <span />}
         {headBtn("title", "タイトル / アーティスト")}
         {cols.album ? headBtn("album", "アルバム", "col-album") : null}
         {cols.genre ? headBtn("genre", "ジャンル", "col-genre") : null}
@@ -211,7 +238,7 @@ export function TrackTable(props: Props) {
         {cols.trash ? <span className="col-trash">ごみ箱</span> : null}
       </div>
       <div className="track-scroll" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-rowcount={props.tracks.length}>
-        <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+        <div style={{ height: totalSize, position: "relative" }}>
           {props.sortable && props.sortableIds ? (
             <SortableContext items={props.sortableIds} strategy={verticalListSortingStrategy}>
               {rows}
@@ -230,6 +257,8 @@ interface RowProps {
   start: number;
   track: Track;
   cols: { album: boolean; genre: boolean; duration: boolean; favorite: boolean; trash: boolean };
+  /** v3.4.0：コンパクト表示（ジャケットなし・1行） */
+  compact: boolean;
   playing: boolean;
   isPlaying: boolean;
   selected: boolean;
@@ -326,14 +355,27 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
       onContextMenu={p.onContextMenu}
       title={t.missing ? "ファイルが見つかりません" : undefined}
     >
-      <Artwork path={t.artPath} className="t-art" />
-      <div className="t-main">
-        <div className="t-title">
-          {p.playing ? <IconBars className="eq" title={p.isPlaying ? "再生中" : "一時停止中"} /> : null}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
+      {p.compact ? null : <Artwork path={t.artPath} className="t-art" />}
+      {p.compact ? (
+        // コンパクト表示：「タイトル — アーティスト」を1行に。入りきらなければ行の終わりを省略記号で切る
+        <div className="t-main">
+          <div className="t-title">
+            {p.playing ? <IconBars className="eq" title={p.isPlaying ? "再生中" : "一時停止中"} /> : null}
+            <span className="t-line">
+              <span className="t-line-title">{t.title}</span>
+              <span className="t-line-artist"> — {t.artist || "不明なアーティスト"}</span>
+            </span>
+          </div>
         </div>
-        <div className="t-artist">{t.artist || "不明なアーティスト"}</div>
-      </div>
+      ) : (
+        <div className="t-main">
+          <div className="t-title">
+            {p.playing ? <IconBars className="eq" title={p.isPlaying ? "再生中" : "一時停止中"} /> : null}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
+          </div>
+          <div className="t-artist">{t.artist || "不明なアーティスト"}</div>
+        </div>
+      )}
       {p.cols.album ? <div className="t-cell col-album">{t.album}</div> : null}
       {p.cols.genre ? <div className="t-cell col-genre">{t.genre}</div> : null}
       {p.cols.duration ? <div className="t-dur">{formatTime(t.durationMs)}</div> : null}

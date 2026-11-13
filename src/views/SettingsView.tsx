@@ -4,6 +4,7 @@
 //   ライブラリ（フォルダ・外部歌詞・起動時・ごみ箱へ移すボタン）／ネットの歌詞／キー操作（ショートカットとグローバルホットキー）／
 //   アプリ（ウィンドウ・設定のバックアップ・情報）
 // 最後に開いていたタブは、アプリを閉じるまで覚える（settingsTab。保存はしない）。
+// v3.4.0：表示のタブに「曲一覧のコンパクト表示」（曲一覧の列のすぐ下）と「サイドバーのアイコンの大きさ」（サイドバーの項目のすぐ下）。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
 import { on } from "../ipc/events";
@@ -26,6 +27,7 @@ import { SkinsSection } from "./SettingsSkins";
 import { SettingsTabs } from "./SettingsTabs";
 import { createStore } from "../stores/store";
 import { mergeTabOrder, PLAYER_BUTTONS, playerButtonShown, SIDEBAR_ITEMS, sidebarItemShown } from "../layout/visibility";
+import { COMPACT_LIST_MODES, COMPACT_NARROW_BELOW, compactListMode, SIDEBAR_ICON_PX, sidebarIconPx } from "../layout/density";
 
 /** 開いているタブ（アプリを閉じるまで覚える） */
 const settingsTab = createStore<string>("");
@@ -79,6 +81,56 @@ function HideFields() {
   );
 }
 
+/** v3.4.0：曲一覧のコンパクト表示（表示のタブ。「曲一覧の列」のすぐ下） */
+function CompactField() {
+  const s = useStore(settings);
+  const mode = compactListMode(s.ui);
+  return (
+    <div className="field">
+      <span className="flabel">曲一覧のコンパクト表示</span>
+      <span className="seg" role="radiogroup" aria-label="曲一覧のコンパクト表示">
+        {COMPACT_LIST_MODES.map((m) => (
+          <button
+            key={m.id}
+            role="radio"
+            aria-checked={mode === m.id}
+            className={mode === m.id ? "on" : ""}
+            onClick={() => updateSettings((x) => ({ ...x, ui: { ...x.ui, compactList: m.id } }))}
+          >
+            {m.label}
+          </button>
+        ))}
+      </span>
+      <span className="hint">
+        コンパクト表示では、曲一覧のジャケットを出さず、曲名とアーティストを1行に並べて、行の高さを詰めます（すべての曲・アーティストやアルバムを開いたところ・プレイリスト・キュー）。「ウィンドウが狭いときだけ」は、ウィンドウの幅が {COMPACT_NARROW_BELOW}px 未満（ジャケットが小さくなる幅）のときに切り替わります。再生バーのジャケットはそのままです。
+      </span>
+    </div>
+  );
+}
+
+/** v3.4.0：サイドバーのアイコンの大きさ（表示のタブ。「サイドバーの項目」のすぐ下） */
+function SidebarIconField() {
+  const s = useStore(settings);
+  return (
+    <div className="field">
+      <span className="flabel">サイドバーのアイコンの大きさ</span>
+      <Slider
+        label="サイドバーのアイコンの大きさ"
+        value={sidebarIconPx(s.ui)}
+        min={SIDEBAR_ICON_PX.min}
+        max={SIDEBAR_ICON_PX.max}
+        step={1}
+        fmt={(v) => `${v}px`}
+        preview={(v) => settings.set((x) => ({ ...x, ui: { ...x.ui, sidebarIconPx: v } }))}
+        onChange={(v) => updateSettings((x) => ({ ...x, ui: { ...x.ui, sidebarIconPx: v } }))}
+      />
+      <span className="hint">
+        左のサイドバーの項目（すべての曲・アーティスト・プレイリスト・設定など）のアイコンの大きさです。たたんだサイドバーと、着せ替えのアイコンの画像にも効きます。既定は {SIDEBAR_ICON_PX.default}px（{SIDEBAR_ICON_PX.min}〜{SIDEBAR_ICON_PX.max}px）。
+      </span>
+    </div>
+  );
+}
+
 /** v3.3.0：曲一覧に「ごみ箱」の列（行の右端のボタン）を出す（ライブラリのタブ。既定はオフ）。右クリックの「ごみ箱へ移す…」は、この設定にかかわらず出る */
 function TrashField() {
   const s = useStore(settings);
@@ -109,7 +161,17 @@ const COLS = [
   { id: "favorite", label: "お気に入り" },
 ];
 
-function Slider(props: { value: number; min: number; max: number; step: number; onChange: (v: number) => void; fmt: (v: number) => string; label: string }) {
+/** preview：動かしている間の見た目の変え方（v3.4.0。無ければ背景の3つ） */
+function Slider(props: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  fmt: (v: number) => string;
+  label: string;
+  preview?: (v: number) => void;
+}) {
   const [local, setLocal] = useState<number | null>(null);
   const v = local ?? props.value;
   const pct = ((v - props.min) / (props.max - props.min)) * 100;
@@ -128,7 +190,8 @@ function Slider(props: { value: number; min: number; max: number; step: number; 
           const nv = Number(e.target.value);
           setLocal(nv);
           // 見た目はすぐ変える（保存は手を離したとき）
-          settings.set((s) => ({ ...s, background: { ...s.background, ...previewPatch(props.label, nv) } }));
+          if (props.preview) props.preview(nv);
+          else settings.set((s) => ({ ...s, background: { ...s.background, ...previewPatch(props.label, nv) } }));
         }}
         onPointerUp={() => {
           if (local !== null) props.onChange(local);
@@ -306,7 +369,9 @@ export function SettingsView() {
               </span>
               <span className="hint">ウィンドウが狭いときは、ジャンル → アルバムの順に自動で隠れます。</span>
             </div>
+            <CompactField />
             <HideFields />
+            <SidebarIconField />
           </section>
         ) : null}
 
