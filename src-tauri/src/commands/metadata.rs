@@ -282,6 +282,87 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// v3.5.0（検査2回目の指摘）：トランザクションを始められないときは、ファイルへの書き込みの結果だけを返し、
+    /// 読み直しも印も書かない。DB は壊れず、次の保存はふつうに通る。
+    /// 書き込みの接続を別のトランザクションの中にしておき（`BEGIN` のまま鍵を手放す）、`BEGIN DEFERRED` を失敗させる。曲名・名前は架空のもの
+    #[test]
+    fn saving_when_the_transaction_cannot_start() {
+        let dir = crate::test_tmp().join(format!("plp-edit-nobegin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mp3 = tags_read::test_legacy_mp3(&dir, "a.mp3", &[(b"TIT2", b"Paper Lantern"), (b"TPE1", b"Test Artist")], None);
+        let db = Db::open_memory("edit_mark_nobegin").unwrap();
+        crate::library::import::run(&db, &[mp3.clone()], false, false, &|_| {});
+        let id = tracks::id_by_path(&db, &mp3.to_string_lossy()).unwrap().unwrap();
+        let mut v = tags_read::read_values(&mp3).unwrap();
+        v.album = "手で入れたアルバム".into();
+        // 書き込みの接続を別のトランザクションの中にする
+        db.writer().execute_batch("BEGIN").unwrap();
+        assert!(!db.writer().is_autocommit());
+        // ファイルには書けた：その結果（Ok）だけを返す
+        write_and_reload(&db, id, &mp3, &v, &ArtChange::Keep).unwrap();
+        assert_eq!(tags_read::read_values(&mp3).unwrap().album, "手で入れたアルバム");
+        // 同じ接続から見ても、読み直し（upsert）も印も書いていない（外のトランザクションに混ざっていない）
+        let peek = |db: &Db| -> (String, i64) {
+            let w = db.writer();
+            let album = w.query_row("SELECT album FROM tracks WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+            let marks = w.query_row("SELECT COUNT(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap();
+            (album, marks)
+        };
+        assert_eq!(peek(&db), (String::new(), 0));
+        // ファイルに書けなかった：書き込みのエラーをそのまま返す（種別もファイルへの書き込みと同じ）
+        let gone = dir.join("gone.mp3");
+        let direct = crate::library::tags_write::write_tags(&gone, &v, &ArtChange::Keep).unwrap_err().kind;
+        let e = write_and_reload(&db, id, &gone, &v, &ArtChange::Keep).unwrap_err();
+        assert_eq!(e.kind, direct);
+        assert_eq!(peek(&db), (String::new(), 0));
+        // 外のトランザクションを戻すと、DB は壊れていない
+        db.writer().execute_batch("ROLLBACK").unwrap();
+        assert!(db.writer().is_autocommit());
+        let ok: String = db.writer().query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(ok, "ok");
+        let t = tracks::get(&db, id).unwrap().unwrap();
+        assert_eq!((t.title.as_str(), t.artist.as_str(), t.album.as_str()), ("Paper Lantern", "Test Artist", ""));
+        // 次の保存はふつうに通る（読み直しが入り、手で入れたアルバムに印が付く）
+        write_and_reload(&db, id, &mp3, &v, &ArtChange::Keep).unwrap();
+        assert_eq!(tracks::get(&db, id).unwrap().unwrap().album, "手で入れたアルバム");
+        let marks: i64 = db
+            .reader()
+            .query_row("SELECT fields FROM tag_manual_edits WHERE track_id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(marks, 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v3.5.0（検査2回目の指摘）：保存の最中に曲がライブラリから外されていたら、比べる値が無い（None）ので印を付けない。
+    /// 返り値は今までどおり、ファイルへの書き込みの結果。
+    /// `write_and_reload` は書き込みの鍵を取るまで DB に触らないので、呼ぶ前に外せば、鍵を取った時点の DB は「最中に外された」ときと同じになる。
+    /// （鍵を取ったあとに外す操作は、鍵を待ってコミットのあとに走る。そのときは印も一緒に消える（ON DELETE CASCADE））。曲名・名前は架空のもの
+    #[test]
+    fn saving_a_track_removed_meanwhile_marks_nothing() {
+        let dir = crate::test_tmp().join(format!("plp-edit-removed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mp3 = tags_read::test_legacy_mp3(&dir, "a.mp3", &[(b"TIT2", b"Paper Lantern"), (b"TPE1", b"Test Artist")], None);
+        let db = Db::open_memory("edit_mark_removed").unwrap();
+        crate::library::import::run(&db, &[mp3.clone()], false, false, &|_| {});
+        let id = tracks::id_by_path(&db, &mp3.to_string_lossy()).unwrap().unwrap();
+        let mut v = tags_read::read_values(&mp3).unwrap();
+        v.album = "手で入れたアルバム".into();
+        // 編集画面を開いたあと、保存が鍵を取る前に、曲がライブラリから外された
+        tracks::remove(&db, &[id]).unwrap();
+        assert!(tracks::legacy_fields(&db.writer(), id).unwrap().is_none());
+        let marks = |db: &Db| -> i64 { db.reader().query_row("SELECT COUNT(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap() };
+        // ファイルには書けた：Ok を返し、印はどの曲にも付かない
+        write_and_reload(&db, id, &mp3, &v, &ArtChange::Keep).unwrap();
+        assert_eq!(tags_read::read_values(&mp3).unwrap().album, "手で入れたアルバム");
+        assert_eq!(marks(&db), 0);
+        // ファイルに書けなかった：書き込みのエラーをそのまま返す（種別もファイルへの書き込みと同じ）
+        let gone = dir.join("gone.mp3");
+        let direct = crate::library::tags_write::write_tags(&gone, &v, &ArtChange::Keep).unwrap_err().kind;
+        assert_eq!(write_and_reload(&db, id, &gone, &v, &ArtChange::Keep).unwrap_err().kind, direct);
+        assert_eq!(marks(&db), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// v3.1.1（ペネトレーションテスト v3.0.2 の3）：タグの書き込みが panic で抜けても、再生の再開は必ず走る
     #[test]
     fn resume_runs_even_if_writing_panics() {
