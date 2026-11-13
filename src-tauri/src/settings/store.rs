@@ -43,6 +43,37 @@ pub struct UiSettings {
     pub columns: BTreeMap<String, bool>,
     /// v3.0.2：再生バーの下の「流れる歌詞の列」を出すか。既定はオン（古い設定・v2 の書き出しに無ければオン）
     pub lyrics_row: bool,
+    /// v3.3.0：再生バーのボタンを出すか（キーは `PLAYER_BUTTONS_HIDEABLE` だけ。無いキーは出す）。
+    /// 再生・一時停止・前・次・シークバーは隠せない（キーを持たない。来ても `sanitize` が捨てる）
+    pub player_buttons: BTreeMap<String, bool>,
+    /// v3.3.0：サイドバーの項目を出すか（キーは `SIDEBAR_ITEMS_HIDEABLE` だけ。無いキーは出す）。設定は隠せない
+    pub sidebar_items: BTreeMap<String, bool>,
+    /// v3.3.0：曲一覧の行の右端に「ごみ箱へ移す」ボタンを出す。既定はオフ。設定の zip を読み込んだときは、値にかかわらずオフ。
+    /// 決めるのは行のボタンだけ（右クリックのメニューには、設定にかかわらず出す。ごみ箱へ移す窓口 commands/library.rs もこの値を見ない）
+    pub trash_button: bool,
+    /// v3.3.0：設定画面のタブの並び（タブの名前）。空なら既定の順。タブの一覧は画面（src\layout\visibility.ts）が持ち、
+    /// 知らない名前を捨て・抜けたタブを足して合わせる。ここでは形だけ整える（名前の形・重なり・数）
+    pub settings_tabs: Vec<String>,
+}
+
+/// v3.3.0：設定のタブの並びに置ける数と、名前の長さ
+pub const SETTINGS_TABS_MAX: usize = 32;
+const TAB_NAME_MAX: usize = 32;
+
+fn tab_name_ok(s: &str) -> bool {
+    !s.is_empty() && s.len() <= TAB_NAME_MAX && s.starts_with(|c: char| c.is_ascii_lowercase()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// v3.3.0：再生バーで隠せるボタン（画面の src/layout/visibility.ts と同じ並び）。
+/// 再生・一時停止・前・次・シークバーは、隠すと操作できなくなるので入れない
+pub const PLAYER_BUTTONS_HIDEABLE: &[&str] = &["shuffle", "repeat", "volume", "lyricsRow", "lyrics"];
+
+/// v3.3.0：サイドバーで隠せる項目（画面の src/layout/visibility.ts と同じ並び）。設定は戻れなくなるので入れない
+pub const SIDEBAR_ITEMS_HIDEABLE: &[&str] =
+    &["all", "artist", "album", "genre", "recent_added", "recent_played", "favorites", "queue", "playlists"];
+
+fn all_shown(keys: &[&str]) -> BTreeMap<String, bool> {
+    keys.iter().map(|k| (k.to_string(), true)).collect()
 }
 
 impl Default for UiSettings {
@@ -55,6 +86,10 @@ impl Default for UiSettings {
             sidebar_collapsed: false,
             columns,
             lyrics_row: true,
+            player_buttons: all_shown(PLAYER_BUTTONS_HIDEABLE),
+            sidebar_items: all_shown(SIDEBAR_ITEMS_HIDEABLE),
+            trash_button: false,
+            settings_tabs: Vec::new(),
         }
     }
 }
@@ -162,6 +197,14 @@ impl AppSettings {
         for (k, v) in default_shortcuts() {
             self.shortcuts.entry(k).or_insert(v);
         }
+        // v3.3.0：隠せるものだけを残す（再生・一時停止・前・次・シークバー・設定などのキーが来ても捨てる）。
+        // 無いキーは「出す」として扱う（古い設定・v2 の書き出し）
+        self.ui.player_buttons.retain(|k, _| PLAYER_BUTTONS_HIDEABLE.contains(&k.as_str()));
+        self.ui.sidebar_items.retain(|k, _| SIDEBAR_ITEMS_HIDEABLE.contains(&k.as_str()));
+        // v3.3.0：設定のタブの並び。形の合わない名前・重なりを捨て、数を抑える（どのタブを出すかは画面が決める）
+        let mut seen = std::collections::HashSet::new();
+        self.ui.settings_tabs.retain(|t| tab_name_ok(t) && seen.insert(t.clone()));
+        self.ui.settings_tabs.truncate(SETTINGS_TABS_MAX);
         // v3.2.0：着せ替え
         let sk = &mut self.skin;
         sk.character_scale = if sk.character_scale.is_finite() { sk.character_scale.clamp(0.75, 1.25) } else { 1.0 };
@@ -278,6 +321,63 @@ mod tests {
         assert_eq!(ok.skin.character_scale, 0.75);
     }
 
+    /// v3.3.0：再生バーのボタンとサイドバーの項目を隠す設定。古い設定（値が無い）では全部出す。
+    /// 隠せないもの（再生・一時停止・前・次・シークバー・設定）は、値が来ても捨てる
+    #[test]
+    fn hidden_items_default_and_unhideable() {
+        let d = AppSettings::default();
+        assert_eq!(d.ui.player_buttons.len(), PLAYER_BUTTONS_HIDEABLE.len());
+        assert!(d.ui.player_buttons.values().all(|v| *v));
+        assert_eq!(d.ui.sidebar_items.len(), SIDEBAR_ITEMS_HIDEABLE.len());
+        assert!(d.ui.sidebar_items.values().all(|v| *v));
+        assert!(!d.ui.trash_button);
+        // 3.2.0 までの設定（ui に新しい値が無い）：全部出す・ごみ箱のボタンは出さない
+        let old: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarCollapsed":false,"columns":{"album":true},"lyricsRow":true}}"#).unwrap();
+        let old = old.sanitize();
+        assert!(old.ui.player_buttons.values().all(|v| *v));
+        assert!(old.ui.sidebar_items.values().all(|v| *v));
+        assert!(!old.ui.trash_button);
+        // 一部だけ書いた設定：書いたものだけが効き、無いキーは捨てられない（出す扱い）
+        let some: AppSettings = serde_json::from_str(r#"{"ui":{"playerButtons":{"shuffle":false},"sidebarItems":{"genre":false}}}"#).unwrap();
+        let some = some.sanitize();
+        assert_eq!(some.ui.player_buttons.get("shuffle"), Some(&false));
+        assert_eq!(some.ui.player_buttons.get("repeat"), None);
+        assert_eq!(some.ui.sidebar_items.get("genre"), Some(&false));
+        // 隠せないもの・知らないキーは捨てる
+        let evil: AppSettings = serde_json::from_str(
+            r#"{"ui":{"playerButtons":{"playPause":false,"previous":false,"next":false,"seek":false,"seekBar":false,"volume":false},
+                "sidebarItems":{"settings":false,"Settings":false,"queue":false,"x":false}}}"#,
+        )
+        .unwrap();
+        let evil = evil.sanitize();
+        assert_eq!(evil.ui.player_buttons.keys().collect::<Vec<_>>(), vec!["volume"]);
+        assert_eq!(evil.ui.sidebar_items.keys().collect::<Vec<_>>(), vec!["queue"]);
+        for k in evil.ui.player_buttons.keys() {
+            assert!(PLAYER_BUTTONS_HIDEABLE.contains(&k.as_str()));
+        }
+        // 画面に送る名前（camelCase）
+        let j = serde_json::to_string(&AppSettings::default()).unwrap();
+        assert!(j.contains("\"playerButtons\":{") && j.contains("\"sidebarItems\":{") && j.contains("\"trashButton\":false"), "{j}");
+    }
+
+    /// v3.3.0：設定のタブの並び。古い設定には無い（空＝既定の順）。形の合わない名前・重なりは捨てる
+    #[test]
+    fn settings_tabs_shape() {
+        assert!(AppSettings::default().ui.settings_tabs.is_empty());
+        let old: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarCollapsed":true}}"#).unwrap();
+        assert!(old.sanitize().ui.settings_tabs.is_empty());
+        let s: AppSettings =
+            serde_json::from_str(r#"{"ui":{"settingsTabs":["keys","display","keys","<img>","","Display","future_tab","lyrics"]}}"#).unwrap();
+        assert_eq!(s.sanitize().ui.settings_tabs, vec!["keys", "display", "future_tab", "lyrics"]);
+        let long = format!(r#"{{"ui":{{"settingsTabs":["{}"]}}}}"#, "a".repeat(33));
+        assert!(serde_json::from_str::<AppSettings>(&long).unwrap().sanitize().ui.settings_tabs.is_empty());
+        let many: Vec<String> = (0..40).map(|i| format!("t{i}")).collect();
+        let mut m = AppSettings::default();
+        m.ui.settings_tabs = many;
+        assert_eq!(m.sanitize().ui.settings_tabs.len(), SETTINGS_TABS_MAX);
+        assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains("\"settingsTabs\":[]"));
+    }
+
     #[test]
     fn roundtrip_in_db() {
         let db = Db::open_memory("settings_rt").unwrap();
@@ -286,6 +386,10 @@ mod tests {
         s.hotkeys.insert("playPause".into(), "Ctrl+Alt+P".into());
         s.ui.lyrics_row = false;
         s.lyrics_online = true;
+        s.ui.player_buttons.insert("lyrics".into(), false);
+        s.ui.sidebar_items.insert("playlists".into(), false);
+        s.ui.trash_button = true;
+        s.ui.settings_tabs = vec!["keys".into(), "display".into()];
         save(&db, &s).unwrap();
         assert_eq!(load(&db), s);
     }

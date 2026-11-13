@@ -1,4 +1,5 @@
 // 上：検索と、取り込みの操作（ファイル選択・複数選択・フォルダ追加）。
+// v3.3.0 の直し（作者の要望）：設定の画面では、検索欄の場所に見出し「設定」を出す（設定の画面の中の見出しの行は無くした）。
 import { useEffect, useRef, useState } from "react";
 import { api } from "../ipc/commands";
 import { importProgress, route, search } from "../stores/library";
@@ -42,7 +43,8 @@ export function TopBar() {
   const searchable = r.view !== "settings" && r.view !== "lyrics";
   return (
     <header className="topbar">
-      <div className="search" style={{ visibility: searchable ? "visible" : "hidden" }}>
+      {r.view === "settings" ? <h1 className="view-title topbar-title">設定</h1> : null}
+      <div className="search" style={{ visibility: searchable ? "visible" : "hidden", display: r.view === "settings" ? "none" : undefined }}>
         <IconSearch />
         <input
           ref={inputRef}

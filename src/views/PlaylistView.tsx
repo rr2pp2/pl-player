@@ -74,6 +74,7 @@ export function PlaylistView() {
       {entries ? (
         <TrackTable
           tracks={tracks}
+          list="playlist"
           sortable
           sortableIds={sortIds}
           sortableList="playlist"

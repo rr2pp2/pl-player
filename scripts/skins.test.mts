@@ -3,6 +3,7 @@
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   applyCssVars,
@@ -19,7 +20,7 @@ import {
   validRgbTriple,
 } from "../src/skins/tokens.ts";
 import { pickIconPath, repeatState, shuffleState, starState, volumeState } from "../src/skins/icons.ts";
-import { characterLayout, clampScale, MIN_WINDOW_FOR_CHARACTER } from "../src/skins/character.ts";
+import { characterFrameKey, characterLayout, characterStage, clampScale, MIN_WINDOW_FOR_CHARACTER } from "../src/skins/character.ts";
 import { contrastWarnings, evaluate, ratio } from "../src/skins/contrast.ts";
 import { warningRows } from "../src/skins/warnings.ts";
 import { evaluate as evaluateFile, readTheme } from "./theme-contrast.mts";
@@ -193,6 +194,103 @@ test("立ち絵を出す・隠す：スキン・設定・歌詞画面・ウィ�
   assert.equal(characterLayout({ ...base, scale: 3 })!.widthPx, 225);
   assert.equal(characterLayout({ ...base, scale: 0.1 })!.maxHeightPx, 315);
   assert.equal(clampScale(Number.NaN), 1);
+});
+
+test("立ち絵（v3.3.0）：再生中と停止中の2枚を読み込んだまま、見せる方だけを切り替える（動く画像を頭に戻さない）", () => {
+  const ch = {
+    playing: { path: "playing.webp", still: "playing.first.png" },
+    stopped: { path: "stopped.gif", still: "stopped.first.png" },
+    widthPx: 180,
+    maxHeightPx: 420,
+    minWindowWidthPx: 920,
+  };
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, playing: false, reducedMotion: false };
+  const stopped = characterStage(base)!;
+  const playing = characterStage({ ...base, playing: true })!;
+  // 2枚とも同じ src で置き（並びも同じ）、見せる方だけが変わる＝要素も src も変わらない
+  const key = (s: typeof stopped) => s.frames.map((f) => `${f.state}:${f.src}:${f.key}`);
+  assert.deepEqual(key(stopped), ["stopped:stopped.gif:stopped.gif", "playing:playing.webp:playing.webp"]);
+  assert.deepEqual(key(playing), key(stopped));
+  assert.deepEqual(stopped.frames.map((f) => f.shown), [true, false]);
+  assert.deepEqual(playing.frames.map((f) => f.shown), [false, true]);
+  assert.ok(stopped.layout && playing.layout);
+  // 歌詞画面・狭い幅：読み込んだまま見えなくする（幅は取らない）。戻ったときも同じ要素・同じ src
+  for (const hidden of [{ view: "lyrics" }, { windowWidth: 800 }]) {
+    const h = characterStage({ ...base, ...hidden, playing: true })!;
+    assert.equal(h.layout, null);
+    assert.deepEqual(key(h), key(stopped));
+    assert.ok(h.frames.every((f) => !f.shown));
+  }
+  // 使う人が切った・立ち絵の無いスキン：外す（画像を手放す。次は頭から）
+  assert.equal(characterStage({ ...base, visible: false }), null);
+  assert.equal(characterStage({ ...base, character: null }), null);
+  // スキンを替えた：画像の場所が変わるので、別の要素になる（新しいスキンの頭から）
+  const other = characterStage({ ...base, character: { ...ch, stopped: { path: "x/stopped.gif", still: null } } })!;
+  assert.notDeepEqual(key(other), key(stopped));
+  // 動きを減らす：今の状態の止まった絵だけ（もう1枚は読まない）
+  const r1 = characterStage({ ...base, reducedMotion: true })!;
+  assert.deepEqual(r1.frames, [{ key: "stopped.first.png", state: "stopped", src: "stopped.first.png", shown: true }]);
+  const r2 = characterStage({ ...base, reducedMotion: true, playing: true })!;
+  assert.deepEqual(r2.frames, [{ key: "playing.first.png", state: "playing", src: "playing.first.png", shown: true }]);
+  // 止まった絵が無い（動かない画像）ならその絵
+  const still = characterStage({ ...base, reducedMotion: true, character: { ...ch, stopped: { path: "stopped.png", still: null } } })!;
+  assert.equal(still.frames[0].src, "stopped.png");
+  // 再生中と停止中が同じ画像なら1枚だけ（同じ画像を2回読まない）
+  const same = characterStage({ ...base, character: { ...ch, playing: { path: "one.webp", still: null }, stopped: { path: "one.webp", still: null } } })!;
+  assert.equal(same.frames.length, 1);
+  assert.equal(same.frames[0].shown, true);
+  // 大きさは出していないときも決まる（戻ったときにずれない）
+  assert.equal(characterStage({ ...base, view: "lyrics", scale: 1.25 })!.widthPx, 225);
+});
+
+test("立ち絵（v3.3.0）：画面の要素の key は再生・一時停止で変わらない（同じ画像の1枚・2枚・動きを減らす）", () => {
+  const ch = {
+    playing: { path: "playing.webp", still: "playing.first.png" },
+    stopped: { path: "stopped.gif", still: "stopped.first.png" },
+    widthPx: 180,
+    maxHeightPx: 420,
+    minWindowWidthPx: 920,
+  };
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, playing: false, reducedMotion: false };
+  // CharacterLayer.tsx が <img key> に使う値（React は key が変われば要素を作り直す＝動く画像が頭に戻る）
+  const keys = (i: typeof base) => characterStage(i)!.frames.map((f) => f.key);
+  const toggles = (i: typeof base) => {
+    const a = keys({ ...i, playing: false });
+    const b = keys({ ...i, playing: true });
+    const c = keys({ ...i, playing: false });
+    return [a, b, c];
+  };
+  // 再生中と停止中が同じ画像（1枚）：3.3.0 の最初の版は key に状態を入れていて、ここで key が変わっていた
+  const one = { ...ch, playing: { path: "one.webp", still: null }, stopped: { path: "one.webp", still: null } };
+  const [s1, p1, s1b] = toggles({ ...base, character: one });
+  assert.deepEqual(s1, ["one.webp"]);
+  assert.deepEqual(p1, s1);
+  assert.deepEqual(s1b, s1);
+  // 2枚：どちらの key も変わらない（並びも同じ）。2枚の key は重ならない
+  const [s2, p2, s2b] = toggles(base);
+  assert.deepEqual(s2, ["stopped.gif", "playing.webp"]);
+  assert.deepEqual(p2, s2);
+  assert.deepEqual(s2b, s2);
+  assert.equal(new Set(s2).size, 2);
+  // 一時的に隠す（歌詞画面・狭い幅）間も同じ key（戻ったときに作り直さない）
+  assert.deepEqual(keys({ ...base, view: "lyrics", playing: true }), s2);
+  assert.deepEqual(keys({ ...base, windowWidth: 800 }), s2);
+  // 動きを減らす：止まった絵が同じなら同じ key。違う絵なら変わる（別の画像なので作り直してよい）
+  const sameStill = { ...ch, playing: { path: "a.webp", still: "first.png" }, stopped: { path: "b.gif", still: "first.png" } };
+  const [r1, r2] = toggles({ ...base, character: sameStill, reducedMotion: true });
+  assert.deepEqual(r1, ["first.png"]);
+  assert.deepEqual(r2, r1);
+  const [d1, d2] = toggles({ ...base, reducedMotion: true });
+  assert.notDeepEqual(d1, d2);
+  // key は画像の場所だけで決まる（状態を混ぜない）
+  for (const st of [characterStage(base)!, characterStage({ ...base, playing: true })!]) {
+    for (const f of st.frames) assert.equal(f.key, characterFrameKey(f.src));
+  }
+  assert.equal(characterFrameKey("x.webp"), "x.webp");
+  // 画面（CharacterLayer.tsx）が、この key をそのまま <img key> に使っていること（状態を足していないこと）
+  const layer = readFileSync(fileURLToPath(new URL("../src/components/CharacterLayer.tsx", import.meta.url)), "utf8");
+  const used = [...layer.matchAll(/\bkey=\{([^}]*)\}/g)].map((m) => m[1].trim());
+  assert.deepEqual(used, ["f.key"]);
 });
 
 test("コントラストの計算は scripts/theme-contrast.mts と同じ（Light・Dark の全部の組み合わせ）", () => {

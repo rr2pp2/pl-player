@@ -298,6 +298,20 @@ function find7zip(env: NodeJS.ProcessEnv): string | null {
   return w.status === 0 && first ? first : null;
 }
 
+/**
+ * Windows PowerShell 5.1（powershell.exe）を呼ぶときに渡す環境：PSModulePath を外す（名前の大文字小文字は問わない）。
+ * PowerShell 7 の中から npm run release を走らせると、7 は PSModulePath の頭に 7 用のモジュールの場所を足している。node をはさむと
+ * それがそのまま 5.1 に渡り、5.1 が 7 用の Microsoft.PowerShell.Archive を読んで、Expand-Archive が
+ * 「"ExtractToDirectory" のオーバーロードで、引数の数が "3" であるものが見つかりません」で止まった（v3.3.0 で作者が踏んだ）。
+ * PSModulePath が無ければ、5.1 は起動のときに自分の既定（ユーザーと全ユーザーの WindowsPowerShell\Modules と $PSHOME\Modules）を組み立てる。
+ * Microsoft の about_PSModulePath（Starting Windows PowerShell from PowerShell 7）に、間に別のプロセスをはさむときの直し方として、この形が書いてある
+ */
+export function windowsPowerShellEnv(env: NodeJS.ProcessEnv, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) if (k.toLowerCase() !== "psmodulepath") out[k] = v;
+  return { ...out, ...extra };
+}
+
 /** cmake が PATH に無ければ、Visual Studio（Build Tools）に入っているものを足す（libopus を組むのに要る） */
 function withCmake(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (spawnSync("where", ["cmake"], { windowsHide: true }).status === 0) return env;
@@ -625,7 +639,8 @@ function main() {
   mkdirSync(unz, { recursive: true });
   const ps = run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath $env:PL_ZIP -DestinationPath $env:PL_UNZ"], {
     cwd: project,
-    env: { ...process.env, PL_ZIP: zipPath, PL_UNZ: unz },
+    // PSModulePath を外して渡す（PowerShell 7 から走らせても 5.1 が自分のモジュールを読むように。windowsPowerShellEnv）
+    env: windowsPowerShellEnv(process.env, { PL_ZIP: zipPath, PL_UNZ: unz }),
     quiet: true,
   });
   if (ps.status !== 0) fail(`zip を展開できませんでした：\n${ps.stdout}`);

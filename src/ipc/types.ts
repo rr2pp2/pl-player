@@ -35,7 +35,21 @@ export type ErrorCode =
   | "skin_builtin_readonly"
   | "skin_apply_failed"
   | "skin_import_expired"
+  // 曲をごみ箱へ移す（v3.3.0）
+  | "track_not_in_library"
+  | "trash_not_allowed"
+  | "trash_unavailable"
+  | "file_in_use"
+  | "trash_too_many"
   | "other";
+
+/** v3.3.0：曲をごみ箱へ移した結果。移せなかった曲は、ファイルもライブラリもそのまま */
+export interface TrashReport {
+  moved: number[];
+  failed: { trackId: number; code: ErrorCode; detail: string }[];
+  /** ごみ箱へは移せたのに、ライブラリから外せなかった曲（moved にも入る。「ライブラリから外す」で外せる） */
+  leftInLibrary: { trackId: number; code: ErrorCode; detail: string }[];
+}
 
 export interface AppError {
   code: ErrorCode;
@@ -196,7 +210,17 @@ export interface AppSettings {
   theme: string;
   background: Background;
   /** lyricsRow：再生バーの下の流れる歌詞の列（v3.0.2。既定はオン） */
-  ui: { sidebarCollapsed: boolean; columns: Record<string, boolean>; lyricsRow: boolean };
+  /** v3.3.0：playerButtons・sidebarItems（隠すものだけ false。無いキーは出す）・trashButton（既定はオフ）。古い設定には無い */
+  ui: {
+    sidebarCollapsed: boolean;
+    columns: Record<string, boolean>;
+    lyricsRow: boolean;
+    playerButtons?: Record<string, boolean>;
+    sidebarItems?: Record<string, boolean>;
+    trashButton?: boolean;
+    /** v3.3.0：設定のタブの並び（空・無ければ既定の順。知らない名前・抜けは画面が合わせる） */
+    settingsTabs?: string[];
+  };
   shortcuts: Record<string, string>;
   hotkeys: Record<string, string>;
   closeToTray: boolean;

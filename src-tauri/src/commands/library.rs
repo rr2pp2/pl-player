@@ -229,6 +229,26 @@ pub async fn library_remove_tracks(app: AppHandle, state: State<'_, AppState>, i
     Ok(())
 }
 
+/// 曲ファイルをごみ箱へ移し、移せた曲をライブラリから外す（v3.3.0）。画面からは曲の id だけを受ける（パスは DB から引く）。
+/// 設定（`ui.trash_button`）は見ない（v3.3.0 の直し・作者の決定）。右クリックのメニューには設定にかかわらず「ごみ箱へ移す…」を出すので、
+/// 設定は「行の右端にボタンを出すか」だけの意味になった。ここで設定を見ると、メニューからの操作が断られる。
+/// 「どこから押したか」を画面から受けて分ける形は取らない（呼べるのは同じ画面だけで、名乗りを信じることになり、守りにならない）。
+/// 守りは今までどおり：画面は必ず確認を出す（trashTracksFlow）。ここでは曲の id だけを受け、パスは DB から引き、
+/// 音声ファイルか・ごみ箱の有る場所か・数の上限を library::trash が確かめる（完全に消える操作はしない）
+#[tauri::command]
+pub async fn library_trash_tracks(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> AppResult<crate::library::trash::TrashReport> {
+    let db = state.db.clone();
+    let controller = state.controller.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || crate::library::trash::trash_tracks(&db, Some(&controller), &ids))
+        .await
+        .map_err(|e| crate::error::AppError::other(format!("trash task: {e}")))??;
+    if !report.moved.is_empty() {
+        let _ = app.emit(ev::LIBRARY, ());
+        let _ = app.emit(ev::PLAYLISTS, ());
+    }
+    Ok(report)
+}
+
 /// エクスプローラーでファイルの場所を開く（そのファイルを選んだ状態で）
 ///
 /// v1 の不具合：`Command::arg` は空白を含む引数を丸ごと引用符で囲む（`"/select,D:\Music\01 - a b.mp3"`）。

@@ -60,3 +60,60 @@ export function characterLayout(i: CharacterInput): CharacterLayout | null {
     railPx: widthPx + RAIL_PADDING,
   };
 }
+
+// ---------------- v3.3.0：動く画像を頭に戻さない ----------------
+//
+// 3.2.0 は、再生中・停止中で img の src を差し替えていた。差し替えると、動く画像（GIF・APNG・動く WebP）は最初のコマに戻る。
+// 3.3.0 は、2枚とも読み込んだまま重ねて置き、見せる方だけを切り替える（src を変えない・要素を外さない）。
+// - 一時停止の間も、見えていない方の絵の中の時間は止まるか進むか（WebView2 に任せる）。どちらでも頭には戻らない
+// - 「動きを減らす」：今までどおり、今の状態の止まった絵（最初のコマ）だけを読む（動かないので、差し替えても困らない）
+// - 歌詞画面・狭い幅で隠すとき：読み込んだまま見えなくする（幅は取らない）。戻ったら続きから
+// - 使う人が「立ち絵を出す」を切ったとき・スキンを替えたとき・立ち絵の無いスキン：外す（読み込んだ画像を手放す）。
+//   次に出すときは頭から（隠している間メモリを持ち続けないため）
+// - 再生中と停止中が同じ画像なら、1枚だけ
+// - 画面の要素の key（CharacterFrame.key）は画像の場所だけで決める。状態（再生中・停止中）を入れない。
+//   同じ画像の1枚のとき、状態を入れると再生・一時停止のたびに key が変わり、要素が作り直されて頭に戻るため
+//   （2枚のときは画像の場所が違うので、場所だけで重ならない）
+
+export interface CharacterFrame {
+  /** 画面の要素の key。画像の場所だけ（再生・一時停止で変わらない） */
+  key: string;
+  state: "playing" | "stopped";
+  src: string;
+  /** 見せている絵か（false なら読み込んだまま見えなくする） */
+  shown: boolean;
+}
+
+export interface CharacterStage {
+  /** 出しているときの置き方。一時的に隠しているときは null（幅も取らない） */
+  layout: CharacterLayout | null;
+  frames: CharacterFrame[];
+  widthPx: number;
+  maxHeightPx: number;
+}
+
+/** 立ち絵の画像を読み込んでおくか（外すときは null） */
+export function characterStage(i: CharacterInput): CharacterStage | null {
+  const c = i.character;
+  if (!c || !i.visible) return null;
+  const layout = characterLayout(i);
+  const scale = clampScale(i.scale);
+  const state = i.playing ? "playing" : "stopped";
+  const on = layout !== null;
+  const frame = (s: "playing" | "stopped", src: string, shown: boolean): CharacterFrame => ({ key: characterFrameKey(src), state: s, src, shown });
+  let frames: CharacterFrame[];
+  if (i.reducedMotion) {
+    const a = c[state];
+    frames = [frame(state, a.still ?? a.path, on)];
+  } else if (c.playing.path === c.stopped.path) {
+    frames = [frame(state, c.playing.path, on)];
+  } else {
+    frames = (["stopped", "playing"] as const).map((s) => frame(s, c[s].path, on && s === state));
+  }
+  return { layout, frames, widthPx: Math.round(c.widthPx * scale), maxHeightPx: Math.round(c.maxHeightPx * scale) };
+}
+
+/** 立ち絵の要素の key：画像の場所だけ（状態を入れない。上の「動く画像を頭に戻さない」） */
+export function characterFrameKey(src: string): string {
+  return src;
+}

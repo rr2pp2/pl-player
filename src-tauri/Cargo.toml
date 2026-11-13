@@ -1,6 +1,6 @@
 [package]
 name = "pl-player"
-version = "3.2.0"
+version = "3.3.0"
 description = "PL Player - local music player"
 license = "MIT"
 edition = "2021"
@@ -9,6 +9,15 @@ rust-version = "1.80"
 [lib]
 name = "pl_player_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# v3.3.0：テスト用の部品（ごみ箱へ移したテストのファイルを、ごみ箱からも消す処理）を、外のテスト（tests\device_playback.rs）に見せる。
+# 配布用のビルド（npm run release）は付けないので、配布物には入らない。新しいクレートは無い
+test-support = []
+
+[[test]]
+name = "device_playback"
+required-features = ["test-support"]
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }

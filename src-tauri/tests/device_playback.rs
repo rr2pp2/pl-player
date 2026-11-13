@@ -1,5 +1,6 @@
 //! 実際の出力デバイスを使う確認（音量 0 で鳴らす）。出力デバイスが無い PC では飛ばす。
-//! 走らせ方：cargo test --test device_playback -- --ignored --test-threads=1 --nocapture
+//! 走らせ方：cargo test --features test-support --test device_playback -- --ignored --test-threads=1 --nocapture
+//! （v3.3.0 から機能 `test-support` が要る。ごみ箱へ入れたテストのファイルを、ごみ箱からも消す処理を使うため。配布物には入らない）
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -267,4 +268,144 @@ fn mute_and_volume() {
     c.save_state();
     assert!(!c.snapshot().muted, "volume change must unmute");
     assert!(!db::state::load(&db).unwrap().muted);
+}
+
+/// v3.3.0：再生中の曲をごみ箱へ移す。先に止めてファイルを手放し、移せたら止まったまま（曲なし）になる。
+/// 移せなかったときは、同じ曲を続けて鳴らす。曲は一時フォルダに写したもの。ごみ箱へ入れた項目は、テストの終わりにごみ箱からも消す
+#[test]
+#[ignore]
+fn trash_playing_track() {
+    if !has_device() {
+        return;
+    }
+    for name in ["sine.flac", "sine_heaac.m4a"] {
+        println!("== {name}");
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("test-tmp")
+            .join(format!("plp-trash-play-{}-{}", std::process::id(), name.replace('.', "-")));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("thumbs")).unwrap();
+        let song = dir.join(name);
+        std::fs::copy(fixture(name), &song).unwrap();
+        let db = Arc::new(Db::open(&dir.join("library.db"), dir.join("thumbs")).unwrap());
+        db::state::save(&db, &db::state::SavedPlayback { volume: 0.0, repeat_mode: "one".into(), ..Default::default() }).unwrap();
+        let s = import::run(&db, &[song.clone()], false, false, &|_| {});
+        assert_eq!(s.added, 1, "{s:?}");
+        let id = db::tracks::all_paths(&db).unwrap()[0].0;
+        let c = Controller::new(db.clone());
+        c.set_repeat(Repeat::One);
+        c.play_context(vec![id], 0);
+        let t0 = Instant::now();
+        while c.snapshot().status != Status::Playing && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(c.snapshot().status, Status::Playing);
+        std::thread::sleep(Duration::from_millis(400));
+        // 移せなかった（使用中など）：ライブラリに残り、同じ曲を続けて鳴らす
+        let r = pl_player_lib::library::trash::trash_tracks_with(&db, Some(&c), &[id], &|_| Some(3), &|_| {
+            Err(pl_player_lib::error::AppError::new(pl_player_lib::error::ErrorKind::FileInUse, "test"))
+        })
+        .unwrap();
+        assert!(r.moved.is_empty() && r.failed.len() == 1);
+        let t1 = Instant::now();
+        while c.snapshot().status != Status::Playing && t1.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let snap = c.snapshot();
+        assert_eq!(snap.status, Status::Playing, "{snap:?}");
+        assert_eq!(snap.track.as_ref().map(|t| t.id), Some(id));
+        assert!(song.exists());
+        // 移せた：止まって曲なしになり、ファイルとライブラリから消える
+        let r = pl_player_lib::library::trash::trash_tracks_with(&db, Some(&c), &[id], &|_| Some(3), &|p| {
+            pl_player_lib::platform::windows::recycle::move_to_recycle_bin_then_purge(p).map(|_| ())
+        })
+        .unwrap();
+        assert_eq!(r.moved, vec![id], "{r:?}");
+        assert!(r.left_in_library.is_empty(), "{r:?}");
+        let snap = c.snapshot();
+        assert_eq!(snap.status, Status::Stopped, "{snap:?}");
+        assert!(snap.track.is_none());
+        assert!(!song.exists());
+        assert!(db::tracks::get(&db, id).unwrap().is_none());
+        drop(c);
+        std::thread::sleep(Duration::from_millis(200));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// v3.3.0：鳴っているのが、送った行とは別の綴り（フォルダ名の大文字小文字違い）で同じファイルを指す行のとき。
+/// 送った行が鳴っていなくても、同じファイルなので先に手放す。移せなかったら別の綴りの行を続けて鳴らし、
+/// 移せたら止まって曲なしになる（別の綴りの行はライブラリに残る。ファイルの無い曲として）
+#[test]
+#[ignore]
+fn trash_track_playing_under_another_spelling() {
+    if !has_device() {
+        return;
+    }
+    for name in ["sine.flac", "sine_heaac.m4a"] {
+        println!("== {name}");
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("test-tmp")
+            .join(format!("plp-trash-alias-{}-{}", std::process::id(), name.replace('.', "-")));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("thumbs")).unwrap();
+        let song = dir.join(name);
+        std::fs::copy(fixture(name), &song).unwrap();
+        let db = Arc::new(Db::open(&dir.join("library.db"), dir.join("thumbs")).unwrap());
+        db::state::save(&db, &db::state::SavedPlayback { volume: 0.0, repeat_mode: "one".into(), ..Default::default() }).unwrap();
+        let s = import::run(&db, &[song.clone()], false, false, &|_| {});
+        assert_eq!(s.added, 1, "{s:?}");
+        let id = db::tracks::all_paths(&db).unwrap()[0].0;
+        // 同じファイルを、フォルダ名の大文字小文字だけ違う綴りで指す行（ファイル名と拡張子はそのまま）
+        let t = db::tracks::get(&db, id).unwrap().unwrap();
+        let alias = song.to_string_lossy().replace(r"\test-tmp\", r"\TEST-TMP\");
+        assert_ne!(alias, t.path);
+        let (alias_id, _) = db::tracks::upsert(
+            &db.writer(),
+            &db::tracks::TrackInfo { path: alias.clone(), format: t.format.clone(), duration_ms: t.duration_ms, title: t.title.clone(), ..Default::default() },
+        )
+        .unwrap();
+        assert_ne!(alias_id, id);
+        let c = Controller::new(db.clone());
+        c.set_repeat(Repeat::One);
+        c.play_context(vec![alias_id], 0);
+        let wait_playing = |what: &str| {
+            let t0 = Instant::now();
+            while c.snapshot().status != Status::Playing && t0.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let snap = c.snapshot();
+            assert_eq!(snap.status, Status::Playing, "{what}: {snap:?}");
+            assert_eq!(snap.track.as_ref().map(|t| t.id), Some(alias_id), "{what}");
+        };
+        wait_playing("start");
+        std::thread::sleep(Duration::from_millis(400));
+        // 移せなかった：手放したあと、別の綴りの行を続けて鳴らす
+        let r = pl_player_lib::library::trash::trash_tracks_with(&db, Some(&c), &[id], &|_| Some(3), &|_| {
+            Err(pl_player_lib::error::AppError::new(pl_player_lib::error::ErrorKind::FileInUse, "test"))
+        })
+        .unwrap();
+        assert!(r.moved.is_empty() && r.failed.len() == 1, "{r:?}");
+        wait_playing("resumed");
+        assert!(song.exists());
+        // 移せた：止まって曲なしになる。送った行はライブラリから外れ、別の綴りの行は残る
+        let r = pl_player_lib::library::trash::trash_tracks_with(&db, Some(&c), &[id], &|_| Some(3), &|p| {
+            pl_player_lib::platform::windows::recycle::move_to_recycle_bin_then_purge(p).map(|_| ())
+        })
+        .unwrap();
+        assert_eq!(r.moved, vec![id], "{r:?}");
+        assert!(r.failed.is_empty() && r.left_in_library.is_empty(), "{r:?}");
+        let snap = c.snapshot();
+        assert_eq!(snap.status, Status::Stopped, "{snap:?}");
+        assert!(snap.track.is_none(), "{snap:?}");
+        assert_eq!(snap.context_len, 0, "{snap:?}");
+        assert!(!song.exists());
+        assert!(db::tracks::get(&db, id).unwrap().is_none());
+        assert!(db::tracks::get(&db, alias_id).unwrap().is_some());
+        drop(c);
+        std::thread::sleep(Duration::from_millis(200));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

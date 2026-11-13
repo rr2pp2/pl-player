@@ -27,6 +27,7 @@ import {
   sourceState,
   sumsText,
   type BuildInfo,
+  windowsPowerShellEnv,
   type SourceState,
 } from "./release.mts";
 import { makeZip, readZip } from "./release-zip.mts";
@@ -354,21 +355,23 @@ test("SHA256 の一覧：フォルダの付かない名前で書き、落とし�
     } else {
       t.diagnostic("sha256sum が無いので、sha256sum -c は飛ばした");
     }
-    const ps = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", block("Get-FileHash")], { cwd: dir, encoding: "utf8", windowsHide: true });
+    // PowerShell 7 の中から走らせても、5.1 が 7 用のモジュールを読まないように（release.mts の windowsPowerShellEnv と同じ扱い）
+    const psEnv = windowsPowerShellEnv(process.env);
+    const ps = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", block("Get-FileHash")], { cwd: dir, env: psEnv, encoding: "utf8", windowsHide: true });
     if (ps.error) {
       t.diagnostic("PowerShell が無いので飛ばした");
     } else {
       assert.equal(ps.status, 0, ps.stdout + ps.stderr);
       assert.deepEqual(ps.stdout.trim().split(/\r?\n/), [`OK  ${a.setup}`, `OK  ${a.portable}`]);
       writeFileSync(join(dir, a.setup), Buffer.alloc(3000, 9));
-      const ps2 = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", block("Get-FileHash")], { cwd: dir, encoding: "utf8", windowsHide: true });
+      const ps2 = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", block("Get-FileHash")], { cwd: dir, env: psEnv, encoding: "utf8", windowsHide: true });
       assert.deepEqual(ps2.stdout.trim().split(/\r?\n/), [`NG  ${a.setup}`, `OK  ${a.portable}`]);
       // 一覧と同じ名前のファイルが1つも無い（名前を変えて保存した）ときは、何も出ないのではなく、そう知らせる
       rmSync(join(dir, a.setup));
       rmSync(join(dir, a.portable));
       writeFileSync(join(dir, "renamed.exe"), Buffer.alloc(2000, 2));
       const utf8 = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; ";
-      const ps3 = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", utf8 + block("Get-FileHash")], { cwd: dir, encoding: "utf8", windowsHide: true });
+      const ps3 = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", utf8 + block("Get-FileHash")], { cwd: dir, env: psEnv, encoding: "utf8", windowsHide: true });
       assert.equal(ps3.status, 0, ps3.stdout + ps3.stderr);
       assert.match(ps3.stdout.trim(), /^照合できるファイルがありません/, ps3.stdout);
     }
@@ -594,4 +597,22 @@ test("リポジトリのファイルに、この PC のフォルダの場所が�
     }
   });
   assert.deepEqual(bad, []);
+});
+
+test("Windows PowerShell 5.1 へ渡す環境：PSModulePath を外す（PowerShell 7 から走らせても 5.1 が自分のモジュールを読む）", () => {
+  const env = { Path: "C:/x", PSModulePath: "C:/ps7/Modules", PL_A: "1" };
+  assert.deepEqual(windowsPowerShellEnv(env), { Path: "C:/x", PL_A: "1" });
+  // 名前の大文字小文字は問わない（Windows の環境変数）
+  assert.deepEqual(windowsPowerShellEnv({ psmodulepath: "a", PSMODULEPATH: "b", Other: "c" }), { Other: "c" });
+  // 足す値は残す。元の環境は変えない
+  const out = windowsPowerShellEnv(env, { PL_ZIP: "z" });
+  assert.equal(out.PL_ZIP, "z");
+  assert.equal(env.PSModulePath, "C:/ps7/Modules");
+  // powershell.exe を呼ぶ所は、どれもこの環境を渡している（release.mts とこのテスト）
+  for (const f of ["release.mts", "release-scan.test.mts"]) {
+    const src = readFileSync(join(project, "scripts", f), "utf8");
+    const calls = [...src.matchAll(/(?:run|spawnSync)\("powershell\.exe"[^\n]*(?:\n[^\n]*){0,3}/g)].map((m) => m[0]);
+    assert.ok(calls.length > 0, f);
+    for (const c of calls) assert.match(c, /env: (?:psEnv|windowsPowerShellEnv\()/, `${f}: ${c.slice(0, 80)}`);
+  }
 });

@@ -216,6 +216,7 @@ pub fn run() {
             commands::library::library_remove_folder,
             commands::library::library_rescan,
             commands::library::library_remove_tracks,
+            commands::library::library_trash_tracks,
             commands::library::reveal_in_explorer,
             commands::playback::playback_snapshot,
             commands::playback::play_context,

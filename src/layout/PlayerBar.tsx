@@ -1,4 +1,6 @@
 // 下：再生バー（画面下部に固定）。左：アート／中央：曲名・アーティスト・今の歌詞の1行・進み具合／右：操作と音量・歌詞。
+// v3.3.0：シャッフル・リピート・音量・流れる歌詞の列のオン・オフ・歌詞のボタンは、設定で隠せる（visibility.ts）。
+// 再生・一時停止・前・次・シークバーは隠せない。ボタンを隠しても、ショートカット（Ctrl+L など）はそのまま効く。
 import { api } from "../ipc/commands";
 import { playback } from "../stores/playback";
 import { navigate, route } from "../stores/library";
@@ -15,6 +17,7 @@ import { IconLyrics, IconLyricsRow, IconNext, IconPause, IconPlay, IconPrev, Ico
 import { LyricParts } from "../components/LyricParts";
 import { openMenu } from "../components/ContextMenu";
 import { trackMenu } from "../components/trackActions";
+import { playerButtonShown } from "./visibility";
 
 const REPEAT_LABEL = { off: "リピート：切", all: "リピート：全曲", one: "リピート：1曲" } as const;
 
@@ -77,6 +80,7 @@ export function PlayerBar() {
   const rowKey = comboLabel(st.shortcuts.toggleLyricsRow ?? "");
   // 流れる歌詞の列（v3.0.2）がオンのあいだは、下の小さな歌詞の1行を出さない
   const rowOn = lyricsRowOn(st);
+  const shown = (id: string) => playerButtonShown(st.ui, id);
   return (
     <footer className="player panel" aria-label="再生バー">
       <button
@@ -87,7 +91,7 @@ export function PlayerBar() {
       >
         <Artwork path={t?.artPath} className="player-art" />
       </button>
-      <div className="player-mid" onContextMenu={(e) => t && openMenu(e, trackMenu({ tracks: [t] }))}>
+      <div className="player-mid" onContextMenu={(e) => t && openMenu(e, trackMenu({ tracks: [t], list: "playerBar" }))}>
         <div className="player-title" title={t?.title}>
           {t ? t.title : "曲を選んでください"}
         </div>
@@ -110,43 +114,51 @@ export function PlayerBar() {
         <button className="icon-btn" onClick={() => void api.action("next")} title="次の曲 (Ctrl+→)" aria-label="次の曲">
           <IconNext />
         </button>
-        <button
-          className={"icon-btn" + (s.shuffle ? " on" : "")}
-          onClick={() => void api.setShuffle(!s.shuffle)}
-          title={s.shuffle ? "シャッフル：入 (S)" : "シャッフル：切 (S)"}
-          aria-pressed={s.shuffle}
-          aria-label="シャッフル"
-        >
-          <IconShuffle on={s.shuffle} />
-        </button>
-        <button
-          className={"icon-btn" + (s.repeat !== "off" ? " on" : "")}
-          onClick={() => void api.action("cycleRepeat")}
-          title={`${REPEAT_LABEL[s.repeat]} (R)`}
-          aria-label={REPEAT_LABEL[s.repeat]}
-        >
-          <IconRepeat one={s.repeat === "one"} mode={s.repeat} />
-        </button>
-        <VolumeControl />
+        {shown("shuffle") ? (
+          <button
+            className={"icon-btn" + (s.shuffle ? " on" : "")}
+            onClick={() => void api.setShuffle(!s.shuffle)}
+            title={s.shuffle ? "シャッフル：入 (S)" : "シャッフル：切 (S)"}
+            aria-pressed={s.shuffle}
+            aria-label="シャッフル"
+          >
+            <IconShuffle on={s.shuffle} />
+          </button>
+        ) : null}
+        {shown("repeat") ? (
+          <button
+            className={"icon-btn" + (s.repeat !== "off" ? " on" : "")}
+            onClick={() => void api.action("cycleRepeat")}
+            title={`${REPEAT_LABEL[s.repeat]} (R)`}
+            aria-label={REPEAT_LABEL[s.repeat]}
+          >
+            <IconRepeat one={s.repeat === "one"} mode={s.repeat} />
+          </button>
+        ) : null}
+        {shown("volume") ? <VolumeControl /> : null}
         {/* 流れる歌詞の列のオン・オフ（v3.0.2）。「歌詞」ボタンのすぐ左。オン・オフで位置は変わらない */}
-        <button
-          className={"icon-btn" + (rowOn ? " on" : "")}
-          onClick={() => void toggleLyricsRow()}
-          title={`流れる歌詞の列：${rowOn ? "入" : "切"} (${rowKey})`}
-          aria-label="流れる歌詞の列"
-          aria-pressed={rowOn}
-        >
-          <IconLyricsRow />
-        </button>
-        <button
-          className={"icon-btn lyrics-btn" + (lyricsOpen ? " on" : "")}
-          onClick={toggleLyricsView}
-          title={`歌詞 (${lyricsKey})`}
-          aria-label="歌詞"
-          aria-pressed={lyricsOpen}
-        >
-          <IconLyrics />
-        </button>
+        {shown("lyricsRow") ? (
+          <button
+            className={"icon-btn" + (rowOn ? " on" : "")}
+            onClick={() => void toggleLyricsRow()}
+            title={`流れる歌詞の列：${rowOn ? "入" : "切"} (${rowKey})`}
+            aria-label="流れる歌詞の列"
+            aria-pressed={rowOn}
+          >
+            <IconLyricsRow />
+          </button>
+        ) : null}
+        {shown("lyrics") ? (
+          <button
+            className={"icon-btn lyrics-btn" + (lyricsOpen ? " on" : "")}
+            onClick={toggleLyricsView}
+            title={`歌詞 (${lyricsKey})`}
+            aria-label="歌詞"
+            aria-pressed={lyricsOpen}
+          >
+            <IconLyrics />
+          </button>
+        ) : null}
       </div>
     </footer>
   );

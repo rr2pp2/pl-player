@@ -105,7 +105,7 @@ export function DialogHost() {
         </>
       }
     >
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{d.message}</p>
+      <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{d.message}</p>
     </Modal>
   );
 }

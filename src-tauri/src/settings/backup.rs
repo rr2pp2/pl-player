@@ -186,6 +186,8 @@ pub fn import(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<(AppSettings, Bac
     // v3.1.0（直し1回目）：「歌詞をネットから取る」は、読み込んだ値を使わず常にオフにする。
     // 他人から受け取った zip で、気づかないうちに通信がオンにならないように（オンにするのは設定画面でだけ）
     settings.lyrics_online = false;
+    // v3.3.0：行の「ごみ箱へ移す」ボタンも同じ。曲ファイルを動かす操作のボタンなので、受け取った zip で気づかないうちに行に出ないように
+    settings.ui.trash_button = false;
     // ライブラリのフォルダ。v3.1.1（ペネトレーションテスト v3.0.2 の5）：ネットワーク上の場所は入れない
     // （記録すると、起動時の再走査などで SMB の接続が出る）。判定は文字とドライブの種類だけで、そこへはつながない
     let (folders, rejected): (Vec<FolderOut>, Vec<FolderOut>) =
@@ -258,6 +260,13 @@ mod tests {
         s.theme = "light".into();
         s.ui.lyrics_row = false;
         s.lyrics_online = true;
+        // v3.3.0：隠した再生バーのボタン・サイドバーの項目は、書き出し・読み込みに入る。ごみ箱のボタンは読み込むとオフ
+        s.ui.player_buttons.insert("shuffle".into(), false);
+        s.ui.player_buttons.insert("lyricsRow".into(), false);
+        s.ui.sidebar_items.insert("genre".into(), false);
+        s.ui.sidebar_items.insert("playlists".into(), false);
+        s.ui.trash_button = true;
+        s.ui.settings_tabs = vec!["app".into(), "display".into()];
         s.background.path = Some(bg.to_string_lossy().into_owned());
         let zip_path = tmp.join("backup.zip");
         let r = export(&a, &s, &bg_dir, &zip_path).unwrap();
@@ -275,6 +284,14 @@ mod tests {
         assert!(std::str::from_utf8(&zip::read(&mut fs::File::open(&zip_path).unwrap(), &|_| true).unwrap().into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap().contains("\"lyricsOnline\": true"));
         assert!(!s2.lyrics_online);
         assert!(!store::load(&b).lyrics_online);
+        assert_eq!(s2.ui.player_buttons.get("shuffle"), Some(&false));
+        assert_eq!(s2.ui.player_buttons.get("lyricsRow"), Some(&false));
+        assert_eq!(s2.ui.player_buttons.get("repeat"), Some(&true));
+        assert_eq!(s2.ui.sidebar_items.get("genre"), Some(&false));
+        assert_eq!(s2.ui.sidebar_items.get("playlists"), Some(&false));
+        assert_eq!(s2.ui.sidebar_items.get("all"), Some(&true));
+        assert!(!s2.ui.trash_button);
+        assert_eq!(s2.ui.settings_tabs, vec!["app", "display"]);
         let bg2 = Path::new(s2.background.path.as_ref().unwrap());
         assert!(bg2.exists());
         // v3.1.1：取り出した背景は自前の名前（bg-<鍵>.png）

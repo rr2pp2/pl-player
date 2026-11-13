@@ -74,6 +74,17 @@ pub enum ErrorKind {
     SkinApplyFailed,
     /// 着せ替え：取り込みの確認が古い（別の zip を選んだ・取り消した）
     SkinImportExpired,
+    /// 曲をごみ箱へ移す（v3.3.0）：その曲はライブラリに無い（もう外した・一覧が古い）。何も動かしていない
+    TrackNotInLibrary,
+    /// 曲をごみ箱へ移す：ライブラリの曲ファイルとして確かめられない（音声ファイルの拡張子でない・フォルダ・リンク）。何も動かしていない
+    TrashNotAllowed,
+    /// 曲をごみ箱へ移す：ごみ箱の無い場所（USB メモリ・CD・RAM ディスク、ごみ箱を切ったドライブ、ごみ箱に入らない大きさ）。
+    /// 完全に消えてしまうので、移さずに断った
+    TrashUnavailable,
+    /// 曲をごみ箱へ移す：ほかのアプリがファイルを使っている
+    FileInUse,
+    /// 曲をごみ箱へ移す：1回に送れる曲の数（library::trash::MAX_TRACKS）を超えた。何も動かしていない
+    TrashTooMany,
     /// 上のどれにも当たらないもの（入力の誤りなど）
     Other,
 }
@@ -175,6 +186,11 @@ mod tests {
             ErrorKind::SkinBuiltinReadonly,
             ErrorKind::SkinApplyFailed,
             ErrorKind::SkinImportExpired,
+            ErrorKind::TrackNotInLibrary,
+            ErrorKind::TrashNotAllowed,
+            ErrorKind::TrashUnavailable,
+            ErrorKind::FileInUse,
+            ErrorKind::TrashTooMany,
             ErrorKind::Other,
         ] {
             let code = serde_json::to_value(k).unwrap();

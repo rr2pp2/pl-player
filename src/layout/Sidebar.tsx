@@ -1,5 +1,8 @@
 // 左：ライブラリ・プレイリスト。折りたたむとアイコンだけ。
 // プレイリストとキューは、曲のドラッグの受け手にもなる。
+// v3.3.0：使う人が隠した項目は出さない（設定は隠せない。決まりは visibility.ts）。
+// たたんでいるときは、項目にマウスを乗せる・キーボードで移ると項目名の吹き出しを出す（Tip）。
+// ウィンドウが狭くて自動でたたんでいるときは、切り替えボタンを押せない見た目にし、理由の吹き出しを出す。
 import { useDroppable } from "@dnd-kit/core";
 import { api } from "../ipc/commands";
 import type { ViewKind } from "../ipc/types";
@@ -8,6 +11,7 @@ import { notify } from "../stores/notices";
 import { useStore } from "../stores/store";
 import { openMenu } from "../components/ContextMenu";
 import { confirmDialog, promptText } from "../components/Modal";
+import { Tip } from "../components/Tip";
 import {
   IconClockPlus,
   IconDisc,
@@ -27,6 +31,8 @@ import {
   IconUser,
 } from "../components/Icons";
 import { playback } from "../stores/playback";
+import { settings } from "../stores/settings";
+import { sidebarItemShown, sidebarToggleInfo } from "./visibility";
 
 const LIB: { view: ViewKind; label: string; icon: any }[] = [
   { view: "all", label: "すべての曲", icon: <IconMusic /> },
@@ -38,20 +44,44 @@ const LIB: { view: ViewKind; label: string; icon: any }[] = [
   { view: "favorites", label: "お気に入り", icon: <IconStar /> },
 ];
 
-function DropNav(props: { id: string; active: boolean; onClick: () => void; onContextMenu?: (e: any) => void; icon: any; label: string; count?: number; title?: string }) {
-  const d = useDroppable({ id: props.id });
+/** たたんでいるときだけ、項目名の吹き出しを出す（広げているときは名前が見えるので、ブラウザの title だけ） */
+function NavTip(props: { collapsed: boolean; text: string; children: any; inline?: boolean }) {
   return (
-    <button
-      ref={d.setNodeRef}
-      className={"nav-item" + (props.active ? " active" : "") + (d.isOver ? " drop-over" : "")}
-      onClick={props.onClick}
-      onContextMenu={props.onContextMenu}
-      title={props.title ?? props.label}
-    >
-      {props.icon}
-      <span className="label">{props.label}</span>
-      {props.count !== undefined ? <span className="count">{props.count}</span> : null}
-    </button>
+    <Tip text={props.collapsed ? props.text : null} delay={350} className={props.inline ? "inline" : ""}>
+      {props.children}
+    </Tip>
+  );
+}
+
+function DropNav(props: {
+  id: string;
+  active: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+  onContextMenu?: (e: any) => void;
+  icon: any;
+  label: string;
+  count?: number;
+  title?: string;
+}) {
+  const d = useDroppable({ id: props.id });
+  const text = props.title ?? props.label;
+  return (
+    <NavTip collapsed={props.collapsed} text={props.count !== undefined ? `${text}（${props.count}）` : text}>
+      <button
+        ref={d.setNodeRef}
+        className={"nav-item" + (props.active ? " active" : "") + (d.isOver ? " drop-over" : "")}
+        onClick={props.onClick}
+        onContextMenu={props.onContextMenu}
+        title={props.collapsed ? undefined : text}
+        aria-label={props.label}
+        aria-current={props.active ? "page" : undefined}
+      >
+        {props.icon}
+        <span className="label">{props.label}</span>
+        {props.count !== undefined ? <span className="count">{props.count}</span> : null}
+      </button>
+    </NavTip>
   );
 }
 
@@ -89,52 +119,82 @@ export async function deletePlaylistFlow(id: number, name: string) {
   }
 }
 
-export function Sidebar(props: { onToggle: () => void }) {
+export function Sidebar(props: { onToggle: () => void; sidebarAuto: boolean; collapsed: boolean }) {
   const r = useStore(route);
   const pls = useStore(playlists);
   const pb = useStore(playback);
+  const ui = useStore(settings).ui;
+  const toggle = sidebarToggleInfo(props.sidebarAuto, props.collapsed);
+  const c = props.collapsed;
+  const lib = LIB.filter((l) => sidebarItemShown(ui, l.view));
+  const showQueue = sidebarItemShown(ui, "queue");
+  const showPlaylists = sidebarItemShown(ui, "playlists");
   return (
     <nav className="sidebar panel" aria-label="ライブラリとプレイリスト">
       <div className="sidebar-head">
-        <button className="icon-btn" onClick={props.onToggle} title="サイドバーの表示を切り替える">
-          <IconSidebar />
-        </button>
+        {/* 狭いときは disabled にしない（disabled だとマウスもキーボードも届かず、理由の吹き出しを出せない）。
+            aria-disabled で押せないことを伝え、押しても何もしない */}
+        <Tip text={toggle.hint} delay={500} className="inline">
+          <button
+            className="icon-btn"
+            onClick={toggle.disabled ? undefined : props.onToggle}
+            aria-disabled={toggle.disabled || undefined}
+            aria-label={toggle.label}
+            aria-expanded={toggle.disabled ? undefined : !c}
+            title={toggle.disabled ? undefined : toggle.label}
+          >
+            <IconSidebar />
+          </button>
+        </Tip>
         <span className="app-name">PL Player</span>
       </div>
       <div className="sidebar-scroll">
-        <div className="section-label">
-          <span>LIBRARY</span>
-        </div>
-        {LIB.map((l) => (
-          <button
-            key={l.view}
-            className={"nav-item" + (r.view === l.view && !r.key ? " active" : "")}
-            onClick={() => navigate({ view: l.view })}
-            title={l.label}
-          >
-            {l.icon}
-            <span className="label">{l.label}</span>
-          </button>
+        {lib.length || showQueue ? (
+          <div className="section-label">
+            <span>LIBRARY</span>
+          </div>
+        ) : null}
+        {lib.map((l) => (
+          <NavTip key={l.view} collapsed={c} text={l.label}>
+            <button
+              className={"nav-item" + (r.view === l.view && !r.key ? " active" : "")}
+              onClick={() => navigate({ view: l.view })}
+              title={c ? undefined : l.label}
+              aria-label={l.label}
+              aria-current={r.view === l.view && !r.key ? "page" : undefined}
+            >
+              {l.icon}
+              <span className="label">{l.label}</span>
+            </button>
+          </NavTip>
         ))}
-        <DropNav
-          id="drop:queue"
-          active={r.view === "queue"}
-          onClick={() => navigate({ view: "queue" })}
-          icon={<IconQueue />}
-          label="キュー"
-          count={pb.queueLen || undefined}
-          title="キュー（曲をここへドラッグすると追加）"
-        />
-        <div className="section-label">
-          <span>PLAYLISTS</span>
-          <button className="icon-btn small" onClick={createPlaylistFlow} title="プレイリストを作成">
-            <IconPlus />
-          </button>
-        </div>
-        {pls.map((p) => (
+        {showQueue ? (
+          <DropNav
+            id="drop:queue"
+            active={r.view === "queue"}
+            collapsed={c}
+            onClick={() => navigate({ view: "queue" })}
+            icon={<IconQueue />}
+            label="キュー"
+            count={pb.queueLen || undefined}
+            title="キュー（曲をここへドラッグすると追加）"
+          />
+        ) : null}
+        {showPlaylists ? (
+          <div className="section-label">
+            <span>PLAYLISTS</span>
+            <NavTip collapsed={c} text="プレイリストを作成" inline>
+              <button className="icon-btn small" onClick={createPlaylistFlow} title={c ? undefined : "プレイリストを作成"} aria-label="プレイリストを作成">
+                <IconPlus />
+              </button>
+            </NavTip>
+          </div>
+        ) : null}
+        {(showPlaylists ? pls : []).map((p) => (
           <DropNav
             key={p.id}
             id={`drop:playlist:${p.id}`}
+            collapsed={c}
             active={r.view === "playlist" && r.key === String(p.id)}
             onClick={() => navigate({ view: "playlist", key: String(p.id), title: p.name })}
             onContextMenu={(e) =>
@@ -151,19 +211,30 @@ export function Sidebar(props: { onToggle: () => void }) {
             count={p.count}
           />
         ))}
-        {pls.length === 0 ? (
-          <button className="nav-item" onClick={createPlaylistFlow} title="プレイリストを作成">
-            <IconPlus />
-            <span className="label" style={{ color: "var(--c-secondary)" }}>
-              プレイリストを作成
-            </span>
-          </button>
+        {showPlaylists && pls.length === 0 ? (
+          <NavTip collapsed={c} text="プレイリストを作成">
+            <button className="nav-item" onClick={createPlaylistFlow} title={c ? undefined : "プレイリストを作成"} aria-label="プレイリストを作成">
+              <IconPlus />
+              <span className="label" style={{ color: "var(--c-secondary)" }}>
+                プレイリストを作成
+              </span>
+            </button>
+          </NavTip>
         ) : null}
       </div>
-      <button className={"nav-item" + (r.view === "settings" ? " active" : "")} onClick={() => navigate({ view: "settings" })} title="設定">
-        <IconSettings />
-        <span className="label">設定</span>
-      </button>
+      {/* 設定は隠せない（隠すと戻れなくなる） */}
+      <NavTip collapsed={c} text="設定">
+        <button
+          className={"nav-item" + (r.view === "settings" ? " active" : "")}
+          onClick={() => navigate({ view: "settings" })}
+          title={c ? undefined : "設定"}
+          aria-label="設定"
+          aria-current={r.view === "settings" ? "page" : undefined}
+        >
+          <IconSettings />
+          <span className="label">設定</span>
+        </button>
+      </NavTip>
     </nav>
   );
 }

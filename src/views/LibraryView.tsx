@@ -128,6 +128,7 @@ export function LibraryView() {
       {tracks ? (
         <TrackTable
           tracks={tracks}
+          list="library"
           onPlay={play}
           empty={
             q ? (

@@ -296,6 +296,12 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 設定の見出し（v3.3.0 の直し・作者の要望）：設定の画面だけ、いちばん上の帯の左（ほかの画面で検索欄が来る所）に出す。
+   設定の画面の中の見出しの行は無く、タブがその下にすぐ続く（.settings-tabs の上の余白） */
+.topbar-title {
+  flex: none;
+  padding-left: 4px;
+}
 .view-sub {
   color: var(--c-secondary);
   font-size: var(--fs-artist);
@@ -926,6 +932,24 @@ textarea {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+/* 長い文のチェック：チェックは1行目の頭に置き、文だけを折り返す（設定の「データの整理」。v3.3.0） */
+.row.check-long {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.row.check-long > input {
+  flex: none;
+  /* 1行目の高さ（1lh）の中で、チェック（Chromium の既定で 13px）を上下の真ん中に置く */
+  margin-top: max(0px, calc((1lh - 13px) / 2));
+  margin-bottom: 0;
+}
+/* 文が折り返す欄：左の項目名を、右の1行目にそろえる（.field の中央寄せのままだと、右の1行目が項目名より上へずれる） */
+.field.field-top {
+  align-items: start;
+}
+.row.check-long > span {
   min-width: 0;
 }
 .input,
@@ -1930,4 +1954,121 @@ img.skin-icon {
   .skin-review-cols {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ---------- v3.3.0：吹き出し・押せないボタン・ごみ箱の列・設定のタブ ---------- */
+/* 読み上げだけに渡す文字（画面には出さない） */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.tip-anchor {
+  display: block;
+}
+.tip-anchor.inline {
+  display: inline-flex;
+}
+/* 吹き出し：document.body の直下に、ボタンの右へ出す */
+.tip-bubble {
+  position: fixed;
+  z-index: 1000;
+  transform: translateY(-50%);
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-border);
+  background: rgb(var(--c-panel-rgb));
+  color: var(--c-primary);
+  box-shadow: var(--shadow-panel);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  pointer-events: none;
+  white-space: normal;
+}
+/* 押しても何も起きないボタン（aria-disabled。マウスを乗せる・キーボードで移ると理由の吹き出しが出る） */
+.icon-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.icon-btn[aria-disabled="true"]:hover {
+  background: transparent;
+}
+/* 曲一覧の行の右端：ごみ箱へ移す（設定でオンのときだけ）。見出しの行に「ごみ箱」、行はアイコンだけ（列は 44px） */
+.t-trash {
+  display: flex;
+  justify-content: center;
+}
+.track-head .col-fav,
+.track-head .col-trash {
+  text-align: center;
+  white-space: nowrap;
+}
+.t-trash .icon-btn {
+  color: var(--c-secondary);
+}
+.t-trash .icon-btn:hover {
+  color: var(--c-danger);
+}
+/* 設定のタブ：入りきらなければ幅に合わせて複数行に折り返す（横には送らない）。
+   「元の順番に戻す」は1行目の右に置き、タブの列が狭くなりすぎる幅（タブの列が 240px を切る）では、タブの下の行へ回る */
+.settings-tabs {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+  padding: 10px 18px 8px;
+  min-width: 0;
+  border-bottom: 1px solid var(--c-border);
+}
+.settings-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 2px;
+}
+.settings-tab {
+  flex: none;
+  padding: 6px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--c-primary);
+  font-size: var(--fs-settings);
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: none;
+  transition: background var(--dur-hover) var(--ease);
+}
+.settings-tab:hover {
+  background: var(--c-hover);
+}
+.settings-tab[aria-selected="true"] {
+  background: var(--c-selected);
+  border-color: var(--c-accent);
+}
+.settings-tab.dragging {
+  opacity: 0.6;
+}
+.settings-tabs-reset {
+  flex: none;
+  margin: 2px 0 2px auto;
+}
+/* 立ち絵（v3.3.0）：再生中と停止中の2枚を読み込んだまま重ね、見せる方だけを切り替える（差し替えると動く画像が頭に戻るため） */
+.character-rail.parked {
+  display: none;
+}
+.character-img.waiting {
+  position: absolute;
+  bottom: 0;
+  visibility: hidden;
 }

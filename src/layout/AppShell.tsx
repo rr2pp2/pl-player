@@ -1,15 +1,16 @@
 // 骨組み：背景の層の上に、サイドバー・上の検索・一覧・下の再生バーを置く。
 // 画面内のドラッグ（曲 → プレイリスト／キュー、並び替え）はここでまとめて受ける。
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { api } from "../ipc/commands";
-import { playlists, route } from "../stores/library";
+import { navigate, playlists, route } from "../stores/library";
 import { notify } from "../stores/notices";
 import { lyricsRowOn, settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
 import { useLayoutSize } from "../components/useLayoutSize";
 import { CharacterLayer } from "../components/CharacterLayer";
-import { characterLayout } from "../skins/character";
+import { characterLayout, characterStage } from "../skins/character";
+import { fallbackView } from "./visibility";
 import { playingNow, reducedMotion, useSkin } from "../stores/skin";
 import type { DragData } from "../components/TrackTable";
 import { addToPlaylist } from "../components/trackActions";
@@ -46,7 +47,7 @@ export function AppShell() {
   const skin = useSkin();
   const playing = useStore(playingNow);
   const reduce = useStore(reducedMotion);
-  const character = characterLayout({
+  const characterInput = {
     character: skin?.character,
     visible: s.skin?.characterVisible ?? true,
     scale: s.skin?.characterScale ?? 1,
@@ -54,7 +55,16 @@ export function AppShell() {
     windowWidth: size.width,
     playing,
     reducedMotion: reduce,
-  });
+  };
+  const character = characterLayout(characterInput);
+  // v3.3.0：歌詞画面・狭い幅で一時的に隠すときも、立ち絵の画像は読み込んだままにする（出し直しで動く画像が頭に戻らないように）
+  const stage = characterStage(characterInput);
+  // v3.3.0：サイドバーの項目を隠したとき、その項目の画面を開いていれば、出している最初の項目へ移る（起動のときも同じ）
+  const sidebarItemsKey = JSON.stringify(s.ui.sidebarItems ?? {});
+  useEffect(() => {
+    const to = fallbackView(settings.get().ui, route.get().view);
+    if (to) navigate({ view: to as any });
+  }, [sidebarItemsKey]);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   // 少し動かしてからドラッグ開始（クリック・ダブルクリックと区別する）
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -98,6 +108,8 @@ export function AppShell() {
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragLabel(null)} autoScroll>
         <div className={"app" + (collapsed ? " sidebar-collapsed" : "") + (showRow ? " lyrics-row-on" : "")}>
           <Sidebar
+            sidebarAuto={size.sidebarAuto}
+            collapsed={collapsed}
             onToggle={() => {
               if (size.sidebarAuto) return; // 狭いときはアイコンだけのまま
               void updateSettings((x) => ({ ...x, ui: { ...x.ui, sidebarCollapsed: !x.ui.sidebarCollapsed } }));
@@ -109,7 +121,7 @@ export function AppShell() {
           >
             <TopBar />
             <Content />
-            {character ? <CharacterLayer layout={character} /> : null}
+            {stage ? <CharacterLayer stage={stage} /> : null}
           </main>
           <PlayerBar />
           {showRow ? <LyricsRow /> : null}

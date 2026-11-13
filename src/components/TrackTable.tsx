@@ -1,5 +1,8 @@
 // 曲一覧。見えている行だけを描く（大量の曲でも重くならないように）。
 // 列は幅に合わせて出し入れする（Genre → Album の順で隠す）。
+// v3.3.0：設定の「ごみ箱へ移すボタン」がオンのときだけ、行の右端に「ごみ箱へ移す」を出す（既定はオフ）。
+// 出すのはライブラリの曲一覧だけ（props.list。プレイリスト・キューの一覧には、行のボタンも右クリックのメニューも出さない）。
+// 対象は右クリックのメニューと同じ決まり：押した行が選んでいる行の中にあれば選んでいる全部、そうでなければその行だけ。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
@@ -14,8 +17,9 @@ import { notify } from "../stores/notices";
 import { Artwork } from "./Artwork";
 import { openMenu, type MenuItem } from "./ContextMenu";
 import { formatTime } from "./format";
-import { IconBars, IconStar } from "./Icons";
-import { trackMenu } from "./trackActions";
+import { IconBars, IconStar, IconTrash } from "./Icons";
+import { trackMenu, trashBusy, trashTracksFlow } from "./trackActions";
+import { trashButtonShown, trashTargets, type TrackListKind } from "../layout/visibility";
 import { useLayoutSize } from "./useLayoutSize";
 
 export interface DragData {
@@ -29,6 +33,8 @@ export interface DragData {
 
 interface Props {
   tracks: Track[];
+  /** どの一覧か（「ごみ箱へ移す」を出すかの決め手。src\layout\visibility.ts の trashButtonShown） */
+  list: TrackListKind;
   /** 並べ替えできる一覧なら、行ごとの ID（プレイリストの item / キューの位置） */
   sortableIds?: string[];
   sortableList?: "playlist" | "queue";
@@ -41,7 +47,9 @@ interface Props {
 
 export function TrackTable(props: Props) {
   const size = useLayoutSize();
-  const cfg = useStore(settings).ui.columns;
+  const ui = useStore(settings).ui;
+  const cfg = ui.columns;
+  const busy = useStore(trashBusy);
   const pb = useStore(playback);
   const sortState = useStore(sort);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -59,6 +67,7 @@ export function TrackTable(props: Props) {
     genre: cfg.genre !== false && !size.hideGenre,
     duration: cfg.duration !== false,
     favorite: cfg.favorite !== false,
+    trash: trashButtonShown(ui, props.list),
   };
   const template = [
     `${size.artSize}px`,
@@ -66,7 +75,10 @@ export function TrackTable(props: Props) {
     cols.album ? "minmax(0, 2fr)" : null,
     cols.genre ? "minmax(0, 1.2fr)" : null,
     cols.duration ? "52px" : null,
-    cols.favorite ? "32px" : null,
+    // お気に入りの列：見出しの「お気に入り」（12px の字で5字＝60px）が切れない 68px（v3.3.0 の作者の要望。マークの見た目は次の版のデザインの見直しで）
+    cols.favorite ? "68px" : null,
+    // ごみ箱の列：見出しの「ごみ箱」（12px の字で3字＝36px）が切れない 44px。窓の幅にかかわらず同じ
+    cols.trash ? "44px" : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -109,7 +121,16 @@ export function TrackTable(props: Props) {
       anchor.current = i;
     }
     const ts = idx.map((k) => props.tracks[k]).filter(Boolean);
-    openMenu(e, trackMenu({ tracks: ts, playAll: () => props.onPlay(idx[0]), extra: props.extraMenu?.(idx) }));
+    openMenu(e, trackMenu({ tracks: ts, list: props.list, playAll: () => props.onPlay(idx[0]), extra: props.extraMenu?.(idx) }));
+  };
+
+  const trashRow = (i: number) => {
+    const idx = trashTargets(selected, i);
+    if (idx.length === 1) {
+      setSelected(new Set([i]));
+      anchor.current = i;
+    }
+    void trashTracksFlow(idx.map((k) => props.tracks[k]).filter(Boolean));
   };
 
   const onKeyDown = (e: any) => {
@@ -168,6 +189,9 @@ export function TrackTable(props: Props) {
         onClick={(e) => clickRow(v.index, e)}
         onDoubleClick={() => props.onPlay(v.index)}
         onContextMenu={(e) => menuFor(v.index, e)}
+        onTrash={() => trashRow(v.index)}
+        trashLabel={selected.has(v.index) && selected.size > 1 ? `選んでいる ${selected.size} 曲をごみ箱へ移す` : "この曲をごみ箱へ移す"}
+        trashBusy={busy}
       />
     );
   });
@@ -182,7 +206,9 @@ export function TrackTable(props: Props) {
         {cols.duration ? (
           <span style={{ textAlign: "right" }}>{headBtn("duration", "時間")}</span>
         ) : null}
-        {cols.favorite ? <span /> : null}
+        {/* v3.3.0 の直し（作者の要望）：「時間」「ジャンル」と同じ見出しの行に「お気に入り」「ごみ箱」。並べ替えには使わないのでボタンにしない */}
+        {cols.favorite ? <span className="col-fav">お気に入り</span> : null}
+        {cols.trash ? <span className="col-trash">ごみ箱</span> : null}
       </div>
       <div className="track-scroll" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-rowcount={props.tracks.length}>
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>
@@ -203,7 +229,7 @@ interface RowProps {
   index: number;
   start: number;
   track: Track;
-  cols: { album: boolean; genre: boolean; duration: boolean; favorite: boolean };
+  cols: { album: boolean; genre: boolean; duration: boolean; favorite: boolean; trash: boolean };
   playing: boolean;
   isPlaying: boolean;
   selected: boolean;
@@ -213,6 +239,9 @@ interface RowProps {
   onClick: (e: any) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: any) => void;
+  onTrash: () => void;
+  trashLabel: string;
+  trashBusy: boolean;
 }
 
 function Row(p: RowProps) {
@@ -318,6 +347,25 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
             aria-pressed={t.favorite}
           >
             <IconStar filled={t.favorite} />
+          </button>
+        </div>
+      ) : null}
+      {p.cols.trash ? (
+        <div className="t-trash">
+          {/* 中身は列の見出し「ごみ箱」で分かるので、ボタンはアイコンだけ。読み上げ（aria-label）と吹き出し（title）で何をするかを伝える */}
+          <button
+            className="icon-btn small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!p.trashBusy) p.onTrash();
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            disabled={p.trashBusy}
+            title={`${p.trashLabel}（曲ファイルを Windows のごみ箱へ。確認あり）`}
+            aria-label={p.trashLabel}
+          >
+            <IconTrash />
           </button>
         </div>
       ) : null}

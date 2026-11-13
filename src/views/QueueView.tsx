@@ -55,6 +55,7 @@ export function QueueView() {
       {tracks ? (
         <TrackTable
           tracks={list}
+          list="queue"
           sortable
           sortableIds={ids}
           sortableList="queue"

@@ -18,6 +18,7 @@ import type {
   MetadataView,
   Playlist,
   PlaylistEntry,
+  TrashReport,
   SkinExportReport,
   SkinInspection,
   SkinState,
@@ -59,6 +60,8 @@ export const api = {
   libraryRemoveFolder: (path: string) => invoke<void>("library_remove_folder", { path }),
   libraryRescan: () => invoke<void>("library_rescan"),
   libraryRemoveTracks: (ids: number[]) => invoke<void>("library_remove_tracks", { ids }),
+  /** v3.3.0：曲ファイルをごみ箱へ移し、移せた曲をライブラリから外す（曲の id だけを渡す） */
+  libraryTrashTracks: (ids: number[]) => invoke<TrashReport>("library_trash_tracks", { ids }),
   revealInExplorer: (path: string) => invoke<void>("reveal_in_explorer", { path }),
 
   // 再生
