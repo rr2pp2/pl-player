@@ -945,6 +945,15 @@ textarea {
   margin-top: max(0px, calc((1lh - 13px) / 2));
   margin-bottom: 0;
 }
+/* キー操作の一覧：幅があれば2列（1列が 380px を切る幅では1列）。項目名の幅は詰める（v3.3.0） */
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  column-gap: 24px;
+}
+.key-grid > .field {
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+}
 /* 文が折り返す欄：左の項目名を、右の1行目にそろえる（.field の中央寄せのままだと、右の1行目が項目名より上へずれる） */
 .field.field-top {
   align-items: start;

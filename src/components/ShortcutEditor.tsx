@@ -59,6 +59,8 @@ export function ShortcutEditor() {
   };
   return (
     <>
+      {/* v3.3.0（作者の要望）：項目が多いので、幅があれば2列に並べる（狭いと1列。.key-grid） */}
+      <div className="key-grid">
       {SHORTCUT_ACTIONS.map((a) => (
         <div className="field" key={a}>
           <span className="flabel">{actionLabel[a]}</span>
@@ -72,6 +74,7 @@ export function ShortcutEditor() {
           </span>
         </div>
       ))}
+      </div>
       <div className="row" style={{ marginTop: 8 }}>
         <button className="btn" onClick={() => updateSettings((x) => ({ ...x, shortcuts: { ...DEFAULT_SHORTCUTS } }))}>
           既定に戻す
@@ -93,6 +96,7 @@ export function HotkeyEditor() {
         修飾キー無しのキーや Ctrl+C などを割り当てると、ほかのアプリでそのキーが効かなくなります。
         消すときは、枠を押してから Delete キーを押します。
       </p>
+      <div className="key-grid">
       {HOTKEY_ACTIONS.map((a) => {
         const h = statusOf(a);
         const bad = !!h && !h.registered && !!s.hotkeys[a];
@@ -120,6 +124,7 @@ export function HotkeyEditor() {
           </div>
         );
       })}
+      </div>
     </>
   );
 }
