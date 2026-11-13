@@ -1,7 +1,7 @@
 // event を受けるのはここだけ。名前は Rust 側（commands/mod.rs の ev）と同じ。
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { AppSettings, HotkeyStatus, ImportProgress, ImportSummary, LyricsFetchDone, LyricsFetchProgress, Notice, Snapshot } from "./types";
+import type { AppSettings, HotkeyStatus, ImportProgress, ImportSummary, LyricsFetchDone, LyricsFetchProgress, Notice, SkinState, Snapshot } from "./types";
 
 export const EV = {
   playback: "pl://playback",
@@ -17,6 +17,7 @@ export const EV = {
   settings: "pl://settings",
   lyricsFetchProgress: "pl://lyrics-fetch-progress",
   lyricsFetchDone: "pl://lyrics-fetch-done",
+  skin: "pl://skin",
 } as const;
 
 type Handlers = {
@@ -33,13 +34,17 @@ type Handlers = {
   settings: AppSettings;
   lyricsFetchProgress: LyricsFetchProgress;
   lyricsFetchDone: LyricsFetchDone;
+  skin: SkinState;
 };
 
 export function on<K extends keyof Handlers>(name: K, cb: (payload: Handlers[K]) => void): Promise<UnlistenFn> {
   return listen<Handlers[K]>(EV[name], (e) => cb(e.payload));
 }
 
-/** ローカルの画像ファイルを画面で表示できる URL にする（asset プロトコル。読めるのはデータフォルダだけ） */
+/**
+ * ローカルの画像ファイルを画面で表示できる URL にする（asset プロトコル。読めるのはデータフォルダの artwork・backgrounds・skins だけ）。
+ * v3.2.0：スキンの画像のパスは、Rust が確かめて返したもの（skins の下）だけを渡す
+ */
 export function fileUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   return convertFileSrc(path);

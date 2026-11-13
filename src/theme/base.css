@@ -1682,3 +1682,252 @@ body:has(.app.lyrics-row-on) .toasts {
   grid-column: 2;
   max-width: 320px;
 }
+
+/* ---------- 着せ替え（v3.2.0）。色・文字・角丸・動きは既存の変数だけを使う。既定のスキンでは、ここのどれも画面に出ない（設定の欄を除く） ---------- */
+/* スキンのアイコンの画像：SVG と同じ枠（大きさは .btn .icon・.icon-btn .icon などの決まりに従う） */
+img.skin-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex: none;
+  display: inline-block;
+}
+/* 立ち絵：右側に専用の幅を取る（曲一覧などはその左で終わる）。上の検索の段より下、中央の画面の下端にそろえる。
+   クリック・ドラッグ＆ドロップは下へ通す。再生バーと流れる歌詞の列は別の枠なので重ならない */
+.main.has-character-rail {
+  position: relative;
+}
+.main.has-character-rail > :not(.topbar):not(.character-rail) {
+  margin-right: var(--character-rail-w);
+}
+.character-rail {
+  position: absolute;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: var(--character-rail-w);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 6px;
+  pointer-events: none;
+  overflow: hidden;
+}
+.character-img {
+  display: block;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: bottom center;
+  user-select: none;
+}
+/* 設定の「着せ替え」 */
+.skin-lead {
+  margin: 0 0 6px;
+}
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+.skin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-input);
+}
+.skin-card.active {
+  border-color: var(--c-accent);
+  box-shadow: inset 0 0 0 1px var(--c-accent);
+}
+.skin-preview {
+  position: relative;
+  height: 84px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-small);
+  background: rgba(var(--c-overlay-rgb), 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.skin-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+/* 既定のスキンの見本：今の画面の形（サイドバーと一覧）を線で描く */
+.skin-preview.default {
+  background: linear-gradient(135deg, rgb(var(--c-panel-rgb)), var(--c-bg));
+}
+.skin-preview.default::before,
+.skin-preview.default::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  border-radius: 4px;
+  background: var(--c-border);
+}
+.skin-preview.default::before {
+  left: 10px;
+  bottom: 10px;
+  width: 22px;
+}
+.skin-preview.default::after {
+  left: 40px;
+  right: 10px;
+  height: 26px;
+  box-shadow: 0 36px 0 var(--c-border);
+}
+.skin-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-meta {
+  min-height: 1.3em;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skin-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.skin-tag {
+  padding: 1px 7px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  white-space: nowrap;
+}
+.skin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.skin-actions .btn {
+  height: 28px;
+  padding: 0 9px;
+}
+.skin-callout {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--c-accent);
+  border-radius: 0 var(--radius-small) var(--radius-small) 0;
+  background: var(--c-input);
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.skin-callout.warn {
+  border-left-color: var(--c-danger);
+  color: var(--c-primary);
+}
+.skin-callout.bad {
+  border-left-color: var(--c-danger);
+  color: var(--c-danger);
+}
+.skin-callout ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+/* 取り込みの確認画面 */
+.skin-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.skin-step {
+  padding: 3px 9px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.skin-step.active {
+  border-color: var(--c-accent);
+  background: var(--c-selected);
+  color: var(--c-primary);
+}
+.skin-review-summary {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.skin-review-preview {
+  height: 150px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: rgba(var(--c-overlay-rgb), 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.skin-review-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.skin-review-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.skin-review-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+.skin-review-desc {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.skin-review-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.skin-review h4 {
+  margin: 4px 0 6px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--c-secondary);
+}
+.skin-file-list {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+.skin-file-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--c-border);
+  font-size: var(--fs-small);
+}
+.skin-file-row:last-child {
+  border-bottom: 0;
+}
+@media (max-width: 719px) {
+  .skin-review-summary,
+  .skin-review-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

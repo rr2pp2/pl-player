@@ -8,6 +8,7 @@ pub mod playback;
 pub mod playlist;
 pub mod queue;
 pub mod settings;
+pub mod skins;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -36,6 +37,8 @@ pub mod ev {
     /// v3.1.0：歌詞をネットから取る（一括）の進み具合と終わり
     pub const LYRICS_FETCH_PROGRESS: &str = "pl://lyrics-fetch-progress";
     pub const LYRICS_FETCH_DONE: &str = "pl://lyrics-fetch-done";
+    /// v3.2.0：着せ替えの状態（適用・既定に戻す・セーフモード）
+    pub const SKIN: &str = "pl://skin";
 }
 
 pub struct Paths {
@@ -54,6 +57,8 @@ pub struct AppState {
     pub importing: Mutex<bool>,
     /// v3.1.0：歌詞をネットから取る処理（同時に1つだけ・やめるボタン・要求の間隔・進み具合）
     pub lyrics_fetch: crate::lyrics::online::Control,
+    /// v3.2.0：着せ替えの、起動中だけの状態（セーフモード・確認待ちの取り込み・いま当てているスキン）
+    pub skin: Mutex<crate::skins::runtime::Runtime>,
 }
 
 impl AppState {

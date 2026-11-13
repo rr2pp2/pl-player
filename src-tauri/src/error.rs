@@ -34,6 +34,46 @@ pub enum ErrorKind {
     LyricsOnlineBusy,
     /// ネットワーク上の場所（UNC・ネットワークドライブ）なので触らずに断った（v3.1.1）
     NetworkPathUnsupported,
+    /// 着せ替え（v3.2.0）：zip が壊れている・読めない形（分割・zip64・知らない圧縮方式・CRC 違い・重なり）
+    SkinZipInvalid,
+    /// 着せ替え：暗号化された zip
+    SkinZipEncrypted,
+    /// 着せ替え：大きさ・数の上限を超えた（zip・展開後・項目数・ファイル数・1ファイル・圧縮率）
+    SkinTooLarge,
+    /// 着せ替え：危ないパス（親フォルダへ出る・絶対パス・UNC・\ 区切り・リンク・大文字小文字だけ違う重複 など）
+    SkinPathUnsafe,
+    /// 着せ替え：知らないファイル・使われていないファイル・置いてはいけない場所
+    SkinFileNotAllowed,
+    /// 着せ替え：実行ファイル（拡張子か中身の MZ）
+    SkinExecutable,
+    /// 着せ替え：SVG（3.2.0 では受け付けない）
+    SkinSvgNotAllowed,
+    /// 着せ替え：CSS（3.2.0 では受け付けない）
+    SkinCssNotAllowed,
+    /// 着せ替え：フォントのファイル（3.2.0 では受け付けない）
+    SkinFontNotAllowed,
+    /// 着せ替え：skin.json が読めない・必須の項目が無い・型が違う・重複したキー
+    SkinManifestInvalid,
+    /// 着せ替え：format・schemaVersion がこの版で読めない
+    SkinSchemaUnsupported,
+    /// 着せ替え：立ち絵の置き方がこの版で使えない（right-rail だけ）
+    SkinPlacementUnsupported,
+    /// 着せ替え：skin.json が指す画像が zip・フォルダに無い
+    SkinAssetMissing,
+    /// 着せ替え：画像として最後まで読めない・拡張子と中身が違う
+    SkinImageInvalid,
+    /// 着せ替え：画像の縦横・画素・コマ数・長さの上限を超えた
+    SkinImageLimit,
+    /// 着せ替え：同じ id のスキンが既に入っている（上書きしない）
+    SkinIdExists,
+    /// 着せ替え：そのスキンが入っていない
+    SkinNotFound,
+    /// 着せ替え：既定のスキンは消せない・書き出せない
+    SkinBuiltinReadonly,
+    /// 着せ替え：入っているスキンが壊れていて使えない（既定の見た目に戻した）
+    SkinApplyFailed,
+    /// 着せ替え：取り込みの確認が古い（別の zip を選んだ・取り消した）
+    SkinImportExpired,
     /// 上のどれにも当たらないもの（入力の誤りなど）
     Other,
 }
@@ -115,6 +155,26 @@ mod tests {
             ErrorKind::LyricsOnlineDisabled,
             ErrorKind::LyricsOnlineBusy,
             ErrorKind::NetworkPathUnsupported,
+            ErrorKind::SkinZipInvalid,
+            ErrorKind::SkinZipEncrypted,
+            ErrorKind::SkinTooLarge,
+            ErrorKind::SkinPathUnsafe,
+            ErrorKind::SkinFileNotAllowed,
+            ErrorKind::SkinExecutable,
+            ErrorKind::SkinSvgNotAllowed,
+            ErrorKind::SkinCssNotAllowed,
+            ErrorKind::SkinFontNotAllowed,
+            ErrorKind::SkinManifestInvalid,
+            ErrorKind::SkinSchemaUnsupported,
+            ErrorKind::SkinPlacementUnsupported,
+            ErrorKind::SkinAssetMissing,
+            ErrorKind::SkinImageInvalid,
+            ErrorKind::SkinImageLimit,
+            ErrorKind::SkinIdExists,
+            ErrorKind::SkinNotFound,
+            ErrorKind::SkinBuiltinReadonly,
+            ErrorKind::SkinApplyFailed,
+            ErrorKind::SkinImportExpired,
             ErrorKind::Other,
         ] {
             let code = serde_json::to_value(k).unwrap();

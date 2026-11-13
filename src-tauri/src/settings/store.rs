@@ -59,6 +59,31 @@ impl Default for UiSettings {
     }
 }
 
+/// 着せ替え（v3.2.0）。古い設定に無ければ既定のスキン・立ち絵は出す・大きさ 100%
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SkinSettings {
+    /// 使っているスキン（`builtin:default` か、skins\ の下のフォルダの名前）。変えるのは skins::runtime の適用だけ
+    pub active_skin_id: String,
+    /// 立ち絵を出すか
+    pub character_visible: bool,
+    /// 立ち絵の大きさ 0.75〜1.25
+    pub character_scale: f32,
+    /// 次の起動だけ既定の見た目にする（起動したら消える）
+    pub safe_mode_next_start: bool,
+}
+
+impl Default for SkinSettings {
+    fn default() -> Self {
+        Self {
+            active_skin_id: crate::skins::names::BUILTIN_ID.into(),
+            character_visible: true,
+            character_scale: 1.0,
+            safe_mode_next_start: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -78,6 +103,8 @@ pub struct AppSettings {
     /// 設定の zip を読み込んだときは、値にかかわらずオフ（settings::backup::import）。
     /// オフのとき、歌詞を取る窓口（commands/lyrics.rs）は入口で断り、通信の処理にたどり着かない
     pub lyrics_online: bool,
+    /// v3.2.0：着せ替え。設定の zip の書き出しには入るが、読み込んでも今の値のまま（スキンは zip に入らないため）
+    pub skin: SkinSettings,
 }
 
 pub fn default_shortcuts() -> BTreeMap<String, String> {
@@ -113,6 +140,7 @@ impl Default for AppSettings {
             close_to_tray: true,
             rescan_on_start: false,
             lyrics_online: false,
+            skin: SkinSettings::default(),
         }
     }
 }
@@ -133,6 +161,12 @@ impl AppSettings {
         // 足りないショートカットは既定値で埋める
         for (k, v) in default_shortcuts() {
             self.shortcuts.entry(k).or_insert(v);
+        }
+        // v3.2.0：着せ替え
+        let sk = &mut self.skin;
+        sk.character_scale = if sk.character_scale.is_finite() { sk.character_scale.clamp(0.75, 1.25) } else { 1.0 };
+        if sk.active_skin_id != crate::skins::names::BUILTIN_ID && !crate::skins::names::valid_id(&sk.active_skin_id) {
+            sk.active_skin_id = crate::skins::names::BUILTIN_ID.into();
         }
         self
     }
@@ -230,6 +264,18 @@ mod tests {
         assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains("\"lyricsOnline\":false"));
         // 形が違う値は、設定全体を既定に戻す（今までの読み方と同じ）→ オフ
         assert!(serde_json::from_str::<AppSettings>(r#"{"lyricsOnline":"yes"}"#).is_err());
+        // v3.2.0：着せ替え。古い設定には無い → 既定のスキン・立ち絵を出す・100%
+        assert_eq!(p.skin, SkinSettings::default());
+        assert_eq!(p.skin.active_skin_id, "builtin:default");
+        let sk: AppSettings = serde_json::from_str(r#"{"skin":{"activeSkinId":"../x","characterScale":9}}"#).unwrap();
+        let sk = sk.sanitize();
+        assert_eq!(sk.skin.active_skin_id, "builtin:default");
+        assert_eq!(sk.skin.character_scale, 1.25);
+        assert!(sk.skin.character_visible);
+        let ok: AppSettings = serde_json::from_str(r#"{"skin":{"activeSkinId":"shape-test","characterScale":0.5}}"#).unwrap();
+        let ok = ok.sanitize();
+        assert_eq!(ok.skin.active_skin_id, "shape-test");
+        assert_eq!(ok.skin.character_scale, 0.75);
     }
 
     #[test]

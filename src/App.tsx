@@ -11,6 +11,7 @@ import { initPlayback } from "./stores/playback";
 import { initLyrics } from "./stores/lyrics";
 import { initLyricsFetch } from "./stores/lyricsFetch";
 import { initSettings } from "./stores/settings";
+import { initSkins } from "./stores/skin";
 import { initLibrary } from "./stores/library";
 import { initNotices, notify } from "./stores/notices";
 
@@ -23,6 +24,8 @@ export default function App() {
         await initSettings();
         await initLibrary();
         await initPlayback();
+        // 着せ替え（v3.2.0）：最初に描く前に、スキンの色と文字を当てる
+        await initSkins();
         initLyrics();
         await initLyricsFetch();
       } catch (e) {

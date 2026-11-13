@@ -61,7 +61,7 @@ export function PlaylistView() {
             title="リピート（全曲）の切り替え"
             aria-pressed={pb.repeat !== "off"}
           >
-            <IconRepeat one={pb.repeat === "one"} /> リピート
+            <IconRepeat one={pb.repeat === "one"} mode={pb.repeat} /> リピート
           </button>
           <button className="btn" onClick={() => void renamePlaylistFlow(id, name)}>
             <IconEdit /> 名前を変更

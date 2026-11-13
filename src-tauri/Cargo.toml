@@ -1,6 +1,6 @@
 [package]
 name = "pl-player"
-version = "3.1.2"
+version = "3.2.0"
 description = "PL Player - local music player"
 license = "MIT"
 edition = "2021"
@@ -33,6 +33,8 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151", features = ["raw_value"] }
 thiserror = "=2.0.21"
 walkdir = "=2.5.0"
+# v3.2.0：着せ替えの zip（人が圧縮したもの）を戻す。画像の部品（png 0.18.1）の下に既にある版を名指しする（新しいクレートは無い。docs\依存の候補.md）
+miniz_oxide = "=0.8.9"
 tracing = "=0.1.44"
 
 [target.'cfg(windows)'.dependencies]

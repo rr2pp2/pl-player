@@ -1,5 +1,5 @@
 // エラー種別 → 日本語の文。言い回しはここ1か所で直す（Rust 側では日本語の文を作らない）。
-import type { AppError, ErrorCode, InboxReport, LyricsFetchOne, LyricsFetchProgress, Notice } from "../ipc/types";
+import type { AppError, ErrorCode, InboxReport, LyricsFetchOne, LyricsFetchProgress, Notice, SkinNotice, SkinParts } from "../ipc/types";
 
 export const errorText: Record<ErrorCode, string> = {
   file_not_found: "ファイルが見つかりません。移動・削除されたか、ドライブが外れている可能性があります。",
@@ -15,6 +15,27 @@ export const errorText: Record<ErrorCode, string> = {
   lyrics_online_disabled: "「歌詞をネットから取る」がオフなので、通信しませんでした。設定の「歌詞をネットから取る」でオンにしてください。",
   lyrics_online_busy: "歌詞をネットから取っている途中です。終わってから、もう一度お試しください。",
   network_path_unsupported: "ネットワーク上の場所（\\\\ で始まる場所・ネットワークドライブ）は使えません。この PC のドライブにある場所を選んでください。",
+  // 着せ替え（v3.2.0）。取り込みで断ったときは、何も入れていない
+  skin_zip_invalid: "スキンの zip が壊れているか、読めない形です（分割・zip64・知らない圧縮方式・中身の破損など）。作り直した zip でお試しください。",
+  skin_zip_encrypted: "パスワード付き（暗号化）の zip は取り込めません。",
+  skin_too_large: "スキンが大きすぎます（zip 25MB・展開後 80MB・ファイル 64 個・画像1つ 15MB まで）。",
+  skin_path_unsafe: "スキンの zip に、使えない名前のファイルがあります（フォルダの外を指す名前・リンク・大文字小文字だけ違う名前・英数字と . _ - 以外の文字など）。",
+  skin_file_not_allowed: "スキンの zip に、入れられないファイルがあります（入れられるのは skin.json・preview と、icons・app・character の中の画像だけ。skin.json が使っていない画像も入れられません）。skin.json は zip のいちばん上か、zip の中のただ1つのフォルダの中に置いてください。",
+  skin_executable: "スキンの zip に、実行ファイルかスクリプトが入っています。取り込めません。",
+  skin_svg_not_allowed: "SVG の画像はこの版では使えません（PNG・WebP・GIF を使ってください）。",
+  skin_css_not_allowed: "CSS のファイルはこの版では使えません。色と文字は skin.json の決まった項目で指定してください。",
+  skin_font_not_allowed: "フォントのファイルはこの版では入れられません。PC にあるフォントの名前だけを skin.json に書けます。",
+  skin_manifest_invalid: "skin.json を読めません（JSON の誤り・必須の項目が無い・値の形が違う・同じ項目が2つある・名前に見えない書式の文字がある など）。",
+  skin_schema_unsupported: "この版のアプリでは読めないスキンの形式です（format・schemaVersion）。",
+  skin_placement_unsupported: "この版で使える立ち絵の置き方は right-rail（右側に専用の幅を取る）だけです。",
+  skin_asset_missing: "skin.json が指している画像が見つかりません（名前の大文字小文字も同じにしてください）。",
+  skin_image_invalid: "画像を最後まで読めませんでした（壊れている・拡張子と中身が違う・アプリのアイコンが動く画像 など）。",
+  skin_image_limit: "画像が大きすぎます（縦横 4096px・コマ数 120・長さ 90 秒まで）。",
+  skin_id_exists: "同じ id のスキンが入っています。上書きはしません。入っているほうを消してから取り込み直してください。",
+  skin_not_found: "そのスキンは入っていません。",
+  skin_builtin_readonly: "既定のスキンは消したり書き出したりできません。",
+  skin_apply_failed: "スキンを読めなかったので、既定の見た目に戻しました。",
+  skin_import_expired: "取り込みの確認が古くなりました。もう一度 zip を選んでください。",
   other: "処理を完了できませんでした。",
 };
 
@@ -228,4 +249,48 @@ export function lyricsFetchOneText(r: LyricsFetchOne): { level: "info" | "error"
     default:
       return { level: "error", text: `歌詞を取れませんでした（${lyricsFetchErrorText(r.error)}）` };
   }
+}
+
+// ---- 着せ替え（v3.2.0） ----
+
+/** 取り込みの警告（Rust 側 skins/manifest.rs の Warning.code）→ 文 */
+export const skinWarningText: Record<string, string> = {
+  unknown_field: "知らない項目は使いません",
+  layout_token_ignored: "レイアウトの寸法と背景の設定は、スキンからは変えられません（使いません）",
+  unknown_token_ignored: "知らない変数は使いません",
+  min_app_version_newer: "このスキンは、もっと新しい版のアプリ向けです。一部が使われないことがあります",
+  extensions_ignored: "あとの版のための項目（自作 CSS・フォント・音など）は、この版では読みません",
+  hide_on_lyrics_forced: "立ち絵は歌詞画面では常に隠します",
+  tray_playing_ignored: "再生中のトレイのアイコンは、この版では使いません",
+};
+
+export const skinWarning = (code: string): string => skinWarningText[code] ?? code;
+
+/** 起動・2つ目の起動・壊れたスキンの知らせ */
+export function skinNoticeText(n: SkinNotice): { level: "info" | "error"; text: string; detail: string } {
+  switch (n.code) {
+    case "broken_fallback":
+      return {
+        level: "error",
+        text: `前に選んでいたスキン「${n.id ?? ""}」を読めなかったので、既定の見た目で起動しました。`,
+        detail: n.error ? errorText[n.error] ?? "" : "",
+      };
+    case "safe_mode":
+      return { level: "info", text: "既定の見た目で起動しました（セーフモード）。保存しているスキンには、設定の「着せ替え」から戻せます。", detail: "" };
+    case "safe_mode_second":
+      return { level: "info", text: "既定の見た目に切り替えました（--safe-mode）。保存しているスキンには、設定の「着せ替え」から戻せます。", detail: "" };
+    default:
+      return { level: "info", text: n.code, detail: "" };
+  }
+}
+
+/** スキンの部品の札（一覧・確認画面） */
+export function skinPartLabels(p: SkinParts): string[] {
+  const out: string[] = [];
+  if (p.appearance) out.push("色・文字");
+  if (p.icons > 0) out.push(`アイコン ${p.icons}`);
+  if (p.application) out.push("アプリのアイコン");
+  if (p.character) out.push("立ち絵");
+  if (p.animated) out.push("動く画像");
+  return out;
 }

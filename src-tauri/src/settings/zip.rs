@@ -1,7 +1,11 @@
 //! 設定の書き出し用の、最小限の ZIP（無圧縮・stored のみ）。
 //!
 //! 承認済みの依存に ZIP の部品が無いため、書き出し・読み込みに要る範囲だけを自前で持つ。
-//! 読めるのは、このアプリが書いた形（無圧縮）だけ。それ以外は「非対応形式」として断る。
+//! 設定の読み込み（`read`）で読めるのは、このアプリが書いた形（無圧縮）だけ。それ以外は「非対応形式」として断る。
+//!
+//! v3.2.0：着せ替えの取り込み用に、人が作った zip（Windows のエクスプローラーなどで圧縮したもの）も読む
+//! `scan` と `extract` を足した。圧縮の方式は stored（無圧縮）と deflate だけ。deflate を戻すのは、
+//! 画像の部品（png）の下に既に入っている `miniz_oxide` 0.8.9（新しいクレートは無い）。設定の `read` は変えていない。
 
 use std::io::{Read, Write};
 
@@ -224,6 +228,244 @@ fn read_limited<R: Read>(input: &mut R, want: &dyn Fn(&str) -> bool, max: u64) -
         out.push(Entry { name, data: data.to_vec() });
     }
     Ok(out)
+}
+
+// ---- 着せ替えの取り込み用（v3.2.0） ----
+
+/// `scan` が見つけた項目。名前はまだ確かめていない（呼び出し側が決まりに当てる）
+#[derive(Debug, Clone)]
+pub struct ScanEntry {
+    /// 中央ディレクトリに書かれた名前のバイト列（そのまま）
+    pub raw_name: Vec<u8>,
+    /// 0 = stored、8 = deflate
+    pub method: u16,
+    pub crc: u32,
+    pub compressed: u64,
+    pub uncompressed: u64,
+    /// 作った道具の種類（上位バイト。3 = Unix）
+    pub made_by: u16,
+    pub external_attr: u32,
+    /// 名前が UTF-8 だという印（汎用の印のビット 11）
+    pub utf8_name: bool,
+    data_start: usize,
+    data_end: usize,
+}
+
+/// `scan`・`extract` の断り方。呼び出し側がエラーの種別に振り分ける
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ZipFault {
+    /// 壊れている・この部品では読めない形（zip64・分割・知らない圧縮方式・CRC 違い・重なり など）
+    Invalid(String),
+    /// 暗号化されている
+    Encrypted(String),
+    /// 項目が多すぎる・戻した大きさが上限を超える
+    TooLarge(String),
+}
+
+fn bad(s: impl Into<String>) -> ZipFault {
+    ZipFault::Invalid(s.into())
+}
+
+/// zip 全体（メモリに読んだもの）の中央ディレクトリを読み、項目を並べる。中身は戻さない。
+///
+/// 断るもの：終わりの記録が無い・後ろに余計なバイトがある・分割（複数ディスク）・zip64・中央ディレクトリの破損・
+/// 項目が `max_entries` より多い・暗号化（印のビット 0 と 6）・stored と deflate 以外の方式・
+/// ローカルヘッダの名前が中央ディレクトリと違う・データの範囲がほかの項目や中央ディレクトリと重なる（設定の `read` と同じ守り）
+pub fn scan(b: &[u8], max_entries: usize) -> Result<Vec<ScanEntry>, ZipFault> {
+    if b.len() < 22 {
+        return Err(bad("not a zip"));
+    }
+    let mut eocd = None;
+    let start = b.len().saturating_sub(22 + 65_535);
+    for i in (start..=b.len() - 22).rev() {
+        if u32_at(b, i) == Some(0x0605_4b50) {
+            eocd = Some(i);
+            break;
+        }
+    }
+    let eocd = eocd.ok_or_else(|| bad("end record not found"))?;
+    let disk = u16_at(b, eocd + 4).ok_or_else(|| bad("bad eocd"))?;
+    let cd_disk = u16_at(b, eocd + 6).ok_or_else(|| bad("bad eocd"))?;
+    let on_disk = u16_at(b, eocd + 8).ok_or_else(|| bad("bad eocd"))?;
+    let count = u16_at(b, eocd + 10).ok_or_else(|| bad("bad eocd"))?;
+    let cd_size = u32_at(b, eocd + 12).ok_or_else(|| bad("bad eocd"))?;
+    let cd_off = u32_at(b, eocd + 16).ok_or_else(|| bad("bad eocd"))?;
+    let comment_len = u16_at(b, eocd + 20).ok_or_else(|| bad("bad eocd"))? as usize;
+    if disk != 0 || cd_disk != 0 || on_disk != count {
+        return Err(bad("multi-disk zip is not supported"));
+    }
+    if count == 0xFFFF || cd_size == 0xFFFF_FFFF || cd_off == 0xFFFF_FFFF {
+        return Err(bad("zip64 is not supported"));
+    }
+    if eocd + 22 + comment_len != b.len() {
+        return Err(bad("extra bytes after the end record"));
+    }
+    let count = count as usize;
+    if count > max_entries {
+        return Err(ZipFault::TooLarge(format!("too many entries ({count} > {max_entries})")));
+    }
+    let (cd_off, cd_size) = (cd_off as usize, cd_size as usize);
+    let cd_end = cd_off.checked_add(cd_size).ok_or_else(|| bad("bad central directory"))?;
+    if cd_end != eocd {
+        return Err(bad("central directory does not end at the end record"));
+    }
+    let mut ranges: Vec<(usize, usize)> = vec![(cd_off, b.len())];
+    let mut out = Vec::with_capacity(count);
+    let mut p = cd_off;
+    for _ in 0..count {
+        if p + 46 > cd_end || u32_at(b, p) != Some(0x0201_4b50) {
+            return Err(bad("bad central directory"));
+        }
+        let made_by = u16_at(b, p + 4).ok_or_else(|| bad("short"))?;
+        let flags = u16_at(b, p + 8).ok_or_else(|| bad("short"))?;
+        let method = u16_at(b, p + 10).ok_or_else(|| bad("short"))?;
+        let crc = u32_at(b, p + 16).ok_or_else(|| bad("short"))?;
+        let csize = u32_at(b, p + 20).ok_or_else(|| bad("short"))?;
+        let usize_ = u32_at(b, p + 24).ok_or_else(|| bad("short"))?;
+        let name_len = u16_at(b, p + 28).ok_or_else(|| bad("short"))? as usize;
+        let extra_len = u16_at(b, p + 30).ok_or_else(|| bad("short"))? as usize;
+        let comment_len = u16_at(b, p + 32).ok_or_else(|| bad("short"))? as usize;
+        let disk_start = u16_at(b, p + 34).ok_or_else(|| bad("short"))?;
+        let external_attr = u32_at(b, p + 38).ok_or_else(|| bad("short"))?;
+        let local = u32_at(b, p + 42).ok_or_else(|| bad("short"))?;
+        if p + 46 + name_len > cd_end {
+            return Err(bad("bad central directory"));
+        }
+        let raw_name = b[p + 46..p + 46 + name_len].to_vec();
+        p += 46 + name_len + extra_len + comment_len;
+        if p > cd_end {
+            return Err(bad("bad central directory"));
+        }
+        let shown = String::from_utf8_lossy(&raw_name).into_owned();
+        // 暗号化（従来の暗号化＝ビット 0、強い暗号化＝ビット 6）
+        if flags & 0x0001 != 0 || flags & 0x0040 != 0 {
+            return Err(ZipFault::Encrypted(shown));
+        }
+        if disk_start != 0 {
+            return Err(bad("multi-disk zip is not supported"));
+        }
+        if csize == 0xFFFF_FFFF || usize_ == 0xFFFF_FFFF || local == 0xFFFF_FFFF {
+            return Err(bad("zip64 is not supported"));
+        }
+        if method != 0 && method != 8 {
+            return Err(bad(format!("compression method {method} is not supported: {shown}")));
+        }
+        if method == 0 && csize != usize_ {
+            return Err(bad(format!("size mismatch: {shown}")));
+        }
+        let local = local as usize;
+        if u32_at(b, local) != Some(0x0403_4b50) {
+            return Err(bad(format!("bad local header: {shown}")));
+        }
+        let lflags = u16_at(b, local + 6).ok_or_else(|| bad("short"))?;
+        let lmethod = u16_at(b, local + 8).ok_or_else(|| bad("short"))?;
+        if lflags & 0x0041 != 0 {
+            return Err(ZipFault::Encrypted(shown));
+        }
+        if lmethod != method {
+            return Err(bad(format!("local header mismatch: {shown}")));
+        }
+        let ln = u16_at(b, local + 26).ok_or_else(|| bad("short"))? as usize;
+        let le = u16_at(b, local + 28).ok_or_else(|| bad("short"))? as usize;
+        // 名前は中央ディレクトリとローカルヘッダで同じでなければ断る（片方だけ別の名前を見せる zip）
+        if b.get(local + 30..local + 30 + ln) != Some(&raw_name[..]) {
+            return Err(bad(format!("local header name mismatch: {shown}")));
+        }
+        let data_start = local + 30 + ln + le;
+        let data_end = data_start.checked_add(csize as usize).ok_or_else(|| bad("truncated"))?;
+        if data_end > cd_off {
+            return Err(bad(format!("entry overlaps the central directory: {shown}")));
+        }
+        ranges.push((local, data_end));
+        out.push(ScanEntry {
+            raw_name,
+            method,
+            crc,
+            compressed: csize as u64,
+            uncompressed: usize_ as u64,
+            made_by,
+            external_attr,
+            utf8_name: flags & 0x0800 != 0,
+            data_start,
+            data_end,
+        });
+    }
+    ranges.sort();
+    for w in ranges.windows(2) {
+        if w[0].1 > w[1].0 {
+            return Err(bad("overlapping entries"));
+        }
+    }
+    Ok(out)
+}
+
+/// deflate を戻し、戻したものと「使った入力のバイト数」を返す（`max_out` を超えたら HasMoreOutput）。
+/// `decompress_to_vec_with_limit` は使った入力の数を返さないので、同じ下の段（inflate::core::decompress）を直に回す
+fn inflate_counting(input: &[u8], max_out: usize) -> Result<(Vec<u8>, usize), miniz_oxide::inflate::TINFLStatus> {
+    use miniz_oxide::inflate::core::{decompress, inflate_flags, DecompressorOxide};
+    use miniz_oxide::inflate::TINFLStatus;
+    let flags = inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
+    let mut out: Vec<u8> = vec![0; input.len().saturating_mul(2).clamp(64, max_out.max(64))];
+    let mut d = Box::<DecompressorOxide>::default();
+    let (mut in_pos, mut out_pos) = (0usize, 0usize);
+    loop {
+        let (status, used_in, used_out) = decompress(&mut d, &input[in_pos..], &mut out, out_pos, flags);
+        in_pos += used_in;
+        out_pos += used_out;
+        match status {
+            TINFLStatus::Done => {
+                if out_pos > max_out {
+                    return Err(TINFLStatus::HasMoreOutput);
+                }
+                out.truncate(out_pos);
+                return Ok((out, in_pos));
+            }
+            TINFLStatus::HasMoreOutput => {
+                if out.len() >= max_out || in_pos > input.len() {
+                    return Err(TINFLStatus::HasMoreOutput);
+                }
+                let n = out.len().saturating_mul(2).min(max_out);
+                out.resize(n, 0);
+            }
+            s => return Err(s),
+        }
+    }
+}
+
+/// 項目の中身を戻す。`max_out` を1バイトでも超えたら止めて断る（申告の大きさは信じない）。
+/// 戻した大きさが中央ディレクトリの申告と違う・CRC が違うときも断る
+pub fn extract(b: &[u8], e: &ScanEntry, max_out: u64) -> Result<Vec<u8>, ZipFault> {
+    let name = String::from_utf8_lossy(&e.raw_name).into_owned();
+    if e.uncompressed > max_out {
+        return Err(ZipFault::TooLarge(format!("{name}: {} bytes", e.uncompressed)));
+    }
+    let src = b.get(e.data_start..e.data_end).ok_or_else(|| bad(format!("truncated: {name}")))?;
+    let data = match e.method {
+        0 => src.to_vec(),
+        8 => {
+            let limit = usize::try_from(e.uncompressed).unwrap_or(usize::MAX);
+            let (v, used) = inflate_counting(src, limit).map_err(|status| {
+                if status == miniz_oxide::inflate::TINFLStatus::HasMoreOutput {
+                    ZipFault::TooLarge(format!("{name}: expands beyond the declared size"))
+                } else {
+                    bad(format!("{name}: deflate: {status:?}"))
+                }
+            })?;
+            // 申告の圧縮後の大きさと、deflate が実際に使った入力が合うか（後ろにごみを付けた項目を断る）
+            if used != src.len() {
+                return Err(bad(format!("{name}: {} bytes after the end of the deflate data", src.len() - used)));
+            }
+            v
+        }
+        m => return Err(bad(format!("compression method {m} is not supported: {name}"))),
+    };
+    if data.len() as u64 != e.uncompressed {
+        return Err(bad(format!("{name}: size mismatch after inflating")));
+    }
+    if crc32(&data) != e.crc {
+        return Err(bad(format!("crc mismatch: {name}")));
+    }
+    Ok(data)
 }
 
 #[cfg(test)]

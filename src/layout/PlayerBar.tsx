@@ -117,7 +117,7 @@ export function PlayerBar() {
           aria-pressed={s.shuffle}
           aria-label="シャッフル"
         >
-          <IconShuffle />
+          <IconShuffle on={s.shuffle} />
         </button>
         <button
           className={"icon-btn" + (s.repeat !== "off" ? " on" : "")}
@@ -125,7 +125,7 @@ export function PlayerBar() {
           title={`${REPEAT_LABEL[s.repeat]} (R)`}
           aria-label={REPEAT_LABEL[s.repeat]}
         >
-          <IconRepeat one={s.repeat === "one"} />
+          <IconRepeat one={s.repeat === "one"} mode={s.repeat} />
         </button>
         <VolumeControl />
         {/* 流れる歌詞の列のオン・オフ（v3.0.2）。「歌詞」ボタンのすぐ左。オン・オフで位置は変わらない */}

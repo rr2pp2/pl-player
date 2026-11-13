@@ -18,6 +18,10 @@ import type {
   MetadataView,
   Playlist,
   PlaylistEntry,
+  SkinExportReport,
+  SkinInspection,
+  SkinState,
+  SkinSummary,
   Snapshot,
   TagValues,
   Track,
@@ -128,4 +132,16 @@ export const api = {
   lyricsFetchCancel: () => invoke<void>("lyrics_fetch_cancel"),
   lyricsFetchStatus: () => invoke<LyricsFetchProgress>("lyrics_fetch_status"),
   lyricsFetchTrack: (trackId: number) => invoke<LyricsFetchOne>("lyrics_fetch_track", { trackId }),
+
+  // 着せ替え（v3.2.0）。画面からパスは渡さない（zip は Rust がファイルを選ぶ画面を出す。スキンは id、取り込みは確認の印で指す）
+  skinsState: () => invoke<SkinState>("skins_state"),
+  skinsList: () => invoke<SkinSummary[]>("skins_list"),
+  skinsPickAndInspect: () => invoke<SkinInspection | null>("skins_pick_and_inspect"),
+  skinsImportCommit: (token: string) => invoke<SkinSummary>("skins_import_commit", { token }),
+  skinsImportCancel: (token: string) => invoke<void>("skins_import_cancel", { token }),
+  skinsApply: (id: string) => invoke<SkinState>("skins_apply", { id }),
+  skinsReset: () => invoke<SkinState>("skins_reset"),
+  skinsExitSafeMode: () => invoke<SkinState>("skins_exit_safe_mode"),
+  skinsDelete: (id: string) => invoke<SkinState>("skins_delete", { id }),
+  skinsExport: (id: string) => invoke<SkinExportReport | null>("skins_export", { id }),
 };

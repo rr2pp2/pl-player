@@ -8,6 +8,9 @@ import { notify } from "../stores/notices";
 import { lyricsRowOn, settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
 import { useLayoutSize } from "../components/useLayoutSize";
+import { CharacterLayer } from "../components/CharacterLayer";
+import { characterLayout } from "../skins/character";
+import { playingNow, reducedMotion, useSkin } from "../stores/skin";
 import type { DragData } from "../components/TrackTable";
 import { addToPlaylist } from "../components/trackActions";
 import { BackgroundLayer } from "./BackgroundLayer";
@@ -39,6 +42,19 @@ export function AppShell() {
   // 流れる歌詞の列（v3.0.2）：設定がオンで、歌詞画面を開いていないときだけ出す（閉じたら設定どおりに戻る）
   const view = useStore(route).view;
   const showRow = lyricsRowOn(s) && view !== "lyrics";
+  // 着せ替えの立ち絵（v3.2.0）：出さないとき（既定のスキンも）は、画面の作りを今のまま変えない
+  const skin = useSkin();
+  const playing = useStore(playingNow);
+  const reduce = useStore(reducedMotion);
+  const character = characterLayout({
+    character: skin?.character,
+    visible: s.skin?.characterVisible ?? true,
+    scale: s.skin?.characterScale ?? 1,
+    view,
+    windowWidth: size.width,
+    playing,
+    reducedMotion: reduce,
+  });
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   // 少し動かしてからドラッグ開始（クリック・ダブルクリックと区別する）
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -87,9 +103,13 @@ export function AppShell() {
               void updateSettings((x) => ({ ...x, ui: { ...x.ui, sidebarCollapsed: !x.ui.sidebarCollapsed } }));
             }}
           />
-          <main className="main panel">
+          <main
+            className={"main panel" + (character ? " has-character-rail" : "")}
+            style={character ? ({ ["--character-rail-w" as any]: `${character.railPx}px` } as any) : undefined}
+          >
             <TopBar />
             <Content />
+            {character ? <CharacterLayer layout={character} /> : null}
           </main>
           <PlayerBar />
           {showRow ? <LyricsRow /> : null}

@@ -1,4 +1,4 @@
-//! タスクトレイ。メニューは「表示」「再生/一時停止」「次」「前」「終了」。
+//! タスクトレイ。メニューは「表示」「再生/一時停止」「次」「前」「既定の見た目に戻す」（v3.2.0）「終了」。
 
 use std::sync::Arc;
 
@@ -31,8 +31,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
     let next = MenuItem::with_id(app, "next", "次の曲", true, None::<&str>)?;
     let prev = MenuItem::with_id(app, "previous", "前の曲", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
+    // v3.2.0：着せ替えの逃げ道（画面が読めない配色にしてしまったときも、ここから戻せる）
+    let reset_skin = MenuItem::with_id(app, "reset-skin", "既定の見た目に戻す", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &toggle, &next, &prev, &sep, &quit_item])?;
+    let menu = Menu::with_items(app, &[&show, &toggle, &next, &prev, &sep, &reset_skin, &sep2, &quit_item])?;
     let mut b = TrayIconBuilder::with_id("main")
         .tooltip("PL Player 3")
         .menu(&menu)
@@ -42,6 +45,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
             "toggle" => super::hotkeys::dispatch(app, "playPause"),
             "next" => super::hotkeys::dispatch(app, "next"),
             "previous" => super::hotkeys::dispatch(app, "previous"),
+            "reset-skin" => {
+                if let Err(e) = crate::skins::runtime::reset(app) {
+                    crate::commands::notice_error(app, &e);
+                }
+                show_main(app);
+            }
             "quit" => quit(app),
             _ => {}
         })

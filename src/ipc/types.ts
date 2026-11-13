@@ -14,6 +14,27 @@ export type ErrorCode =
   | "lyrics_online_disabled"
   | "lyrics_online_busy"
   | "network_path_unsupported"
+  // 着せ替え（v3.2.0）
+  | "skin_zip_invalid"
+  | "skin_zip_encrypted"
+  | "skin_too_large"
+  | "skin_path_unsafe"
+  | "skin_file_not_allowed"
+  | "skin_executable"
+  | "skin_svg_not_allowed"
+  | "skin_css_not_allowed"
+  | "skin_font_not_allowed"
+  | "skin_manifest_invalid"
+  | "skin_schema_unsupported"
+  | "skin_placement_unsupported"
+  | "skin_asset_missing"
+  | "skin_image_invalid"
+  | "skin_image_limit"
+  | "skin_id_exists"
+  | "skin_not_found"
+  | "skin_builtin_readonly"
+  | "skin_apply_failed"
+  | "skin_import_expired"
   | "other";
 
 export interface AppError {
@@ -182,6 +203,17 @@ export interface AppSettings {
   rescanOnStart: boolean;
   /** v3.1.0：歌詞をネットから取る（LRCLIB）。既定はオフ。古い設定には無い（無ければオフ） */
   lyricsOnline?: boolean;
+  /** v3.2.0：着せ替え。activeSkinId は skins_apply だけが変える（設定の保存では変わらない） */
+  skin: SkinSettings;
+}
+
+export interface SkinSettings {
+  activeSkinId: string;
+  characterVisible: boolean;
+  /** 0.75〜1.25 */
+  characterScale: number;
+  /** 次の起動だけ既定の見た目にする */
+  safeModeNextStart: boolean;
 }
 
 export interface HotkeyStatus {
@@ -310,4 +342,137 @@ export interface LyricsFetchOne {
   /** synced / plain / instrumental / not_found / too_large / kept / no_metadata / manual / error / stopped */
   status: string;
   error: string | null;
+}
+
+// ---- 着せ替え（v3.2.0）。Rust 側 skins/package.rs・skins/runtime.rs と同じ形 ----
+
+/** 画像。パスは Rust が確かめた skins の下の場所だけ（画面は fileUrl で URL にするだけ） */
+export interface SkinAsset {
+  path: string;
+  /** 動く画像の最初の1コマ（「動きを減らす」のとき使う）。静止画は null */
+  still: string | null;
+  width: number;
+  height: number;
+  animated: boolean;
+}
+
+export interface SkinThemedAsset {
+  dark: SkinAsset | null;
+  light: SkinAsset | null;
+}
+
+export interface SkinThemeAppearance {
+  tokens: Record<string, string>;
+  shadow: "none" | "soft" | "standard" | null;
+}
+
+export interface SkinAppearance {
+  dark: SkinThemeAppearance | null;
+  light: SkinThemeAppearance | null;
+  fontFamily: string[];
+  tokens: Record<string, string>;
+}
+
+export interface SkinCharacter {
+  playing: SkinAsset;
+  stopped: SkinAsset;
+  widthPx: number;
+  maxHeightPx: number;
+  minWindowWidthPx: number;
+}
+
+export interface ResolvedSkin {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  appearance: SkinAppearance | null;
+  /** アイコンの名前 → 状態 → 画像 */
+  icons: Record<string, Record<string, SkinThemedAsset>>;
+  hasApplication: boolean;
+  character: SkinCharacter | null;
+}
+
+export interface SkinNotice {
+  /** broken_fallback / safe_mode / safe_mode_second */
+  code: string;
+  id: string | null;
+  error: ErrorCode | null;
+}
+
+export interface SkinState {
+  activeId: string;
+  effectiveId: string;
+  safeMode: boolean;
+  skin: ResolvedSkin | null;
+  notice: SkinNotice | null;
+}
+
+export interface SkinParts {
+  appearance: boolean;
+  icons: number;
+  application: boolean;
+  character: boolean;
+  animated: boolean;
+}
+
+export interface SkinSummary {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  builtin: boolean;
+  parts: SkinParts;
+  preview: string | null;
+  /** 読めないスキン（消すことだけできる） */
+  broken: ErrorCode | null;
+}
+
+export interface SkinWarning {
+  code: string;
+  detail: string;
+}
+
+export interface SkinFileRow {
+  path: string;
+  bytes: number;
+  width: number;
+  height: number;
+  frames: number;
+  durationMs: number;
+  animated: boolean;
+}
+
+export interface SkinInspection {
+  token: string;
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  minAppVersion: string | null;
+  parts: SkinParts;
+  files: SkinFileRow[];
+  zipBytes: number;
+  unpackedBytes: number;
+  fileCount: number;
+  maxFiles: number;
+  /** 種類ごとに3件まで（Rust の WARNINGS_PER_CODE） */
+  warnings: SkinWarning[];
+  /** 上の上限を超えて出さなかった数（種類ごと）。画面は「ほか N 件」と出す */
+  warningsOmitted: { code: string; count: number }[];
+  /** 飛ばした OS のファイル（`__MACOSX/`・`.DS_Store`・`Thumbs.db`・`desktop.ini` の種類ごとの数） */
+  ignored: { name: string; count: number }[];
+  /** フォルダごと zip にした形だったので、そのフォルダを外して読んだ */
+  unwrapped: boolean;
+  /** 同じ id のスキンが入っている（取り込めない） */
+  conflict: boolean;
+  previewDataUrl: string | null;
+  appearance: SkinAppearance | null;
+}
+
+export interface SkinExportReport {
+  files: number;
+  bytes: number;
 }

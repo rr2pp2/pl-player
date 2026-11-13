@@ -10,6 +10,7 @@ pub mod lyrics;
 pub mod platform;
 pub mod playback;
 pub mod settings;
+pub mod skins;
 
 use std::sync::{Arc, Mutex};
 
@@ -54,7 +55,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         bg_dir: data_dir.join("backgrounds"),
         data_dir: data_dir.clone(),
     };
-    for d in [&paths.data_dir, &paths.thumbs_dir, &paths.art_dir, &paths.bg_dir] {
+    for d in [&paths.data_dir, &paths.thumbs_dir, &paths.art_dir, &paths.bg_dir, &data_dir.join("skins")] {
         std::fs::create_dir_all(d)?;
     }
     logging::init(data_dir.join("logs"));
@@ -96,12 +97,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         settings: Mutex::new(settings.clone()),
         importing: Mutex::new(false),
         lyrics_fetch: Default::default(),
+        skin: Default::default(),
     });
 
     // タスクトレイ
     if tray::build(&handle).is_ok() {
         controller.add_listener(tray::listener(&handle));
     }
+
+    // 着せ替え（v3.2.0）：画面が最初に描く前に、使うスキンを確かめる（壊れていたら既定に戻して知らせる）。
+    // ウィンドウ・トレイのアイコンもここで差し替える。起動の指定 --safe-mode か「次の起動を既定の見た目にする」なら既定の見た目
+    skins::runtime::startup(&handle, has_safe_mode_arg(std::env::args()));
 
     // SMTC（メディアキー）とサムネイルボタン：ウィンドウに結びつける
     if let Some(w) = app.get_webview_window("main") {
@@ -137,9 +143,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// 画面（asset プロトコル）が読んでよいフォルダ（v3.1.1）。曲の縮小版（artwork\embedded）・外部画像と見本（artwork\external）・背景
-pub(crate) fn asset_dirs(data_dir: &std::path::Path) -> [std::path::PathBuf; 2] {
-    [data_dir.join("artwork"), data_dir.join("backgrounds")]
+/// 画面（asset プロトコル）が読んでよいフォルダ（v3.1.1）。曲の縮小版（artwork\embedded）・外部画像と見本（artwork\external）・背景。
+/// v3.2.0：入っているスキン（skins）。確認待ちの一時の場所（skins-staging）は入れない
+pub(crate) fn asset_dirs(data_dir: &std::path::Path) -> [std::path::PathBuf; 3] {
+    [data_dir.join("artwork"), data_dir.join("backgrounds"), data_dir.join("skins")]
+}
+
+/// 起動の指定に `--safe-mode` があるか（v3.2.0。既定の見た目で起動する）
+pub(crate) fn has_safe_mode_arg<I: IntoIterator<Item = String>>(args: I) -> bool {
+    args.into_iter().skip(1).any(|a| a.eq_ignore_ascii_case("--safe-mode"))
 }
 
 fn controller_db(app: &tauri::AppHandle) -> Arc<db::Db> {
@@ -148,8 +160,13 @@ fn controller_db(app: &tauri::AppHandle) -> Arc<db::Db> {
 
 pub fn run() {
     let app = tauri::Builder::default()
-        // 二重起動の防止：2つ目を起動したら1つ目を前に出す（最初に登録する）
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // 二重起動の防止：2つ目を起動したら1つ目を前に出す（最初に登録する）。
+        // v3.2.0：2つ目の起動に --safe-mode が付いていたら、前からあるアプリを既定の見た目にする
+        // （閉じてもトレイに残るので、2つ目の起動の指定はこの知らせでしか届かない）
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if has_safe_mode_arg(args) && app.try_state::<AppState>().is_some() {
+                skins::runtime::enter_safe_mode(app);
+            }
             tray::show_main(app);
         }))
         .plugin({
@@ -251,6 +268,16 @@ pub fn run() {
             commands::lyrics::lyrics_fetch_cancel,
             commands::lyrics::lyrics_fetch_status,
             commands::lyrics::lyrics_fetch_track,
+            commands::skins::skins_state,
+            commands::skins::skins_list,
+            commands::skins::skins_pick_and_inspect,
+            commands::skins::skins_import_commit,
+            commands::skins::skins_import_cancel,
+            commands::skins::skins_apply,
+            commands::skins::skins_reset,
+            commands::skins::skins_exit_safe_mode,
+            commands::skins::skins_delete,
+            commands::skins::skins_export,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PL Player");
@@ -375,6 +402,7 @@ mod tests {
     }
 
     /// v3.1.1（ペネトレーションテスト v3.0.2 の14）：asset プロトコルで画面が読めるのは artwork と backgrounds だけ。
+    /// v3.2.0：入っているスキン（skins）を足した。確認待ちの一時の場所（skins-staging）は読めない
     /// 画面が表示に使う画像（曲の縮小版・外部画像と見本・背景）はその中にあり、library.db・ログ・歌詞・WebView のデータは外。
     /// 音声は Rust が読んで鳴らすので、asset プロトコルは通らない
     #[test]
@@ -382,7 +410,7 @@ mod tests {
         let conf = json("tauri.conf.json");
         assert_eq!(
             conf["app"]["security"]["assetProtocol"]["scope"],
-            serde_json::json!(["$APPDATA/artwork/**", "$APPDATA/backgrounds/**"])
+            serde_json::json!(["$APPDATA/artwork/**", "$APPDATA/backgrounds/**", "$APPDATA/skins/**"])
         );
         let data = Path::new(r"C:\Users\x\AppData\Roaming\jp.local.plplayer3");
         let dirs = super::asset_dirs(data);
@@ -393,6 +421,8 @@ mod tests {
             data.join("artwork").join("external").join("album-0123456789abcdef.png"),
             data.join("artwork").join("external").join("staged-0123456789abcdef.png"),
             data.join("backgrounds").join("bg-0123456789abcdef.webp"),
+            data.join("skins").join("shape-test").join("character").join("playing.gif"),
+            data.join("skins").join("shape-test").join("derived").join("0123456789abcdef.png"),
         ] {
             assert!(allowed(&ok), "{}", ok.display());
         }
@@ -403,6 +433,7 @@ mod tests {
             data.join("lyrics").join("inbox").join("1.lrc"),
             data.join("webview").join("EBWebView"),
             data.join("window-state.json"),
+            data.join("skins-staging").join("0123456789abcdef").join("skin.json"),
             data.parent().unwrap().join("jp.local.plplayer2").join("library.db"),
         ] {
             assert!(!allowed(&ng), "{}", ng.display());

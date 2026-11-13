@@ -12,7 +12,7 @@ use crate::platform::windows::hotkeys::{self, HotkeyStatus};
 use crate::settings::backup::{self, BackupReport};
 use crate::settings::store::{self, AppSettings};
 
-fn store_and_emit(app: &AppHandle, state: &AppState, s: AppSettings) -> AppResult<AppSettings> {
+pub(crate) fn store_and_emit(app: &AppHandle, state: &AppState, s: AppSettings) -> AppResult<AppSettings> {
     let s = s.sanitize();
     store::save(&state.db, &s)?;
     *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = s.clone();
@@ -29,13 +29,21 @@ pub async fn settings_get(state: State<'_, AppState>) -> AppResult<AppSettings> 
 #[tauri::command]
 pub async fn settings_set(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> AppResult<AppSettings> {
     let before = state.settings();
-    let settings = keep_background_inside(settings, &before, &state.paths.bg_dir);
+    let settings = from_screen(settings, &before, &state.paths.bg_dir);
     let s = store_and_emit(&app, &state, settings)?;
     if before.hotkeys != s.hotkeys {
         let statuses = hotkeys::apply(&app, &s.hotkeys);
         let _ = app.emit(ev::HOTKEYS, &statuses);
     }
     Ok(s)
+}
+
+/// 画面から来た設定のうち、画面に変えさせない値を今の値に戻す
+pub(crate) fn from_screen(s: AppSettings, before: &AppSettings, bg_dir: &Path) -> AppSettings {
+    let mut s = keep_background_inside(s, before, bg_dir);
+    // v3.2.0：使うスキンは skins_apply（確かめてから当てる）だけが変える。画面から来た値は使わない
+    s.skin.active_skin_id = before.skin.active_skin_id.clone();
+    s
 }
 
 /// 画面から来た設定の背景のパスは、データフォルダの backgrounds の中だけを受ける（v3.1.1。ペネトレーションテスト v3.0.2 の4）。
@@ -161,5 +169,27 @@ mod tests {
         ok.background.path = Some(r"C:\data\backgrounds\bg-2.png".into());
         assert_eq!(keep_background_inside(ok.clone(), &before, bg).background.path, ok.background.path);
         assert_eq!(keep_background_inside(AppSettings::default(), &before, bg).background.path, None);
+    }
+
+    /// v3.2.0：画面から来た設定では、使うスキンは変わらない（変えるのは skins_apply だけ）。立ち絵の設定などは画面の値を受ける
+    #[test]
+    fn settings_set_keeps_active_skin() {
+        let bg = Path::new(r"C:\data\backgrounds");
+        let mut before = AppSettings::default();
+        before.skin.active_skin_id = "quiet-paper".into();
+        let mut from = before.clone();
+        from.skin.active_skin_id = "never-checked".into();
+        from.skin.character_visible = false;
+        from.skin.character_scale = 0.8;
+        from.skin.safe_mode_next_start = true;
+        from.theme = "light".into();
+        let s = from_screen(from, &before, bg);
+        assert_eq!(s.skin.active_skin_id, "quiet-paper");
+        assert!(!s.skin.character_visible && s.skin.safe_mode_next_start);
+        assert!((s.skin.character_scale - 0.8).abs() < 1e-6);
+        assert_eq!(s.theme, "light");
+        // 既定のスキンのときに、画面から別の id が来ても既定のまま
+        let s = from_screen(AppSettings { skin: crate::settings::store::SkinSettings { active_skin_id: "x".into(), ..Default::default() }, ..AppSettings::default() }, &AppSettings::default(), bg);
+        assert_eq!(s.skin.active_skin_id, crate::skins::names::BUILTIN_ID);
     }
 }

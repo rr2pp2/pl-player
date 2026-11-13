@@ -2,7 +2,7 @@
 
 pub mod backup;
 pub mod store;
-mod zip;
+pub(crate) mod zip;
 
 /// テスト用：zip と同じ CRC-32（PNG の CRC もこれ）
 #[cfg(test)]

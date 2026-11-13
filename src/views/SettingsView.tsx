@@ -1,4 +1,4 @@
-// 設定：表示（テーマ・背景）・再生デバイス・ライブラリ・歌詞をネットから取る（v3.1.0）・ショートカット・グローバルホットキー・ウィンドウ・バックアップ・情報。
+// 設定：表示（テーマ・背景）・着せ替え（v3.2.0）・再生デバイス・ライブラリ・歌詞をネットから取る（v3.1.0）・ショートカット・グローバルホットキー・ウィンドウ・バックアップ・情報。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
 import { on } from "../ipc/events";
@@ -17,6 +17,7 @@ import { dropState, IMAGE_RE, registerDropZone } from "../components/FileDrop";
 import { HotkeyEditor, ShortcutEditor } from "../components/ShortcutEditor";
 import { confirmDialog } from "../components/Modal";
 import { IconFolder, IconFolderPlus, IconImage, IconRefresh, IconTrash, IconX } from "../components/Icons";
+import { SkinsSection } from "./SettingsSkins";
 
 const BG_ZONE = "settings-bg";
 const THEMES = [
@@ -220,6 +221,8 @@ export function SettingsView() {
             <span className="hint">ウィンドウが狭いときは、ジャンル → アルバムの順に自動で隠れます。</span>
           </div>
         </section>
+
+        <SkinsSection />
 
         <section>
           <h3>再生デバイス</h3>
@@ -466,7 +469,7 @@ export function SettingsView() {
                 読み込む…
               </button>
             </span>
-            <span className="hint">対象：テーマ・背景・UI 設定・ショートカット・プレイリスト・お気に入り・ライブラリ設定（1つの zip）。歌詞は入りません。「歌詞をネットから取る」は、読み込むと常にオフになります。</span>
+            <span className="hint">対象：テーマ・背景・UI 設定・ショートカット・プレイリスト・お気に入り・ライブラリ設定（1つの zip）。歌詞とスキンは入りません（着せ替えの選択は、読み込んでも今のまま）。「歌詞をネットから取る」は、読み込むと常にオフになります。</span>
           </div>
         </section>
 

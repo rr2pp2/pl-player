@@ -228,6 +228,8 @@ pub fn import(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<(AppSettings, Bac
         db::playlists::add_tracks(db, id, &ids)?;
         report.playlists += 1;
     }
+    // v3.2.0：着せ替えの設定は読み込まない（スキンそのものは zip に入らず、別の PC には無いことがあるため）
+    settings.skin = store::load(db).skin;
     store::save(db, &settings)?;
     let folder_list = folders.into_iter().map(|f| (f.path, f.recursive)).collect();
     Ok((settings, report, folder_list))
@@ -425,6 +427,34 @@ mod tests {
         let p = tmp.join("bomb.zip");
         fs::write(&p, &z).unwrap();
         assert_eq!(import(&db, &p, &tmp.join("bgs")).unwrap_err().kind, ErrorKind::UnsupportedFormat);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.2.0：設定の読み込みは着せ替えの設定を変えない（スキンそのものは zip に入らず、読み込む側の PC には無いことがある）
+    #[test]
+    fn import_keeps_skin_settings_of_this_pc() {
+        let tmp = tmp_dir("skin");
+        let a = Db::open_memory("backup_skin_a").unwrap();
+        let mut s = AppSettings::default();
+        s.theme = "light".into();
+        s.skin.active_skin_id = "from-other-pc".into();
+        s.skin.character_visible = false;
+        s.skin.character_scale = 1.25;
+        s.skin.safe_mode_next_start = true;
+        let zip_path = tmp.join("backup.zip");
+        export(&a, &s, &tmp.join("no-bg"), &zip_path).unwrap();
+
+        let b = Db::open_memory("backup_skin_b").unwrap();
+        let mut mine = AppSettings::default();
+        mine.skin.active_skin_id = "quiet-paper".into();
+        mine.skin.character_scale = 0.9;
+        store::save(&b, &mine).unwrap();
+        let (s2, _, _) = import(&b, &zip_path, &tmp.join("bgs")).unwrap();
+        // ほかの設定は読み込む
+        assert_eq!(s2.theme, "light");
+        // 着せ替えは、読み込む前のこの PC の値のまま（返す値も、保存した値も）
+        assert_eq!(s2.skin, mine.skin);
+        assert_eq!(store::load(&b).skin, mine.skin);
         let _ = fs::remove_dir_all(&tmp);
     }
 }

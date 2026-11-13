@@ -2922,12 +2922,13 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "pl-player"
-version = "3.1.2"
+version = "3.2.0"
 dependencies = [
  "cpal",
  "crossbeam-channel",
  "image",
  "lofty",
+ "miniz_oxide 0.8.9",
  "rtrb",
  "rubato",
  "rusqlite",
