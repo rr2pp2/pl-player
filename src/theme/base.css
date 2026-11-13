@@ -949,8 +949,11 @@ textarea {
   font-size: var(--fs-small);
   color: var(--c-secondary);
 }
-/* v3.5.0：古い文字コードのタグの読み直しの進み具合の帯（狭いときは下の @media で1列目へ。そのため、この決まりは @media より前に置く） */
-.field .legacy-reread-progress {
+/* 進み具合の帯：古い文字コードのタグの読み直し（v3.5.0）と、歌詞をネットから取る（v3.1.0）。
+   狭いときは下の @media で1列目へ。そのため、この決まりは @media より前に置く
+   （@media の後ろに置くと、1列の段でも2列目のままになり、幅 0 の暗黙の列に入って帯が見えなくなる） */
+.field .legacy-reread-progress,
+.field .lyrics-fetch-progress {
   grid-column: 2;
   max-width: 320px;
 }
@@ -1164,8 +1167,9 @@ textarea.input {
   .field .hint {
     grid-column: 1;
   }
-  /* v3.5.0：古い文字コードのタグの読み直しの進み具合の帯も、1列に並べる */
-  .field .legacy-reread-progress {
+  /* 進み具合の帯（古い文字コードのタグの読み直し・歌詞をネットから取る）も、1列に並べる */
+  .field .legacy-reread-progress,
+  .field .lyrics-fetch-progress {
     grid-column: 1;
   }
 }
@@ -1742,10 +1746,7 @@ body:has(.app.lyrics-row-on) .toasts {
   flex-direction: column;
   gap: 2px;
 }
-.field .lyrics-fetch-progress {
-  grid-column: 2;
-  max-width: 320px;
-}
+/* 進み具合の帯（.field .lyrics-fetch-progress）の置き場所は「フォーム（設定・編集）」の節（狭い幅の @media より前に置くため） */
 
 /* ---------- 着せ替え（v3.2.0）。色・文字・角丸・動きは既存の変数だけを使う。既定のスキンでは、ここのどれも画面に出ない（設定の欄を除く） ---------- */
 /* スキンのアイコンの画像：SVG と同じ枠（大きさは .btn .icon・.icon-btn .icon などの決まりに従う） */

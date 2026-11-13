@@ -191,6 +191,19 @@ pub(crate) fn write_repaired(conn: &Connection, id: i64, old: &LegacyFields, old
     Ok(true)
 }
 
+/// 1曲の7項目（`LegacyFields` の並び）を、渡した接続で読む。曲が無ければ None。
+/// 編集画面の保存（`commands::metadata::write_and_reload`）が、書き込みの鍵の中で「保存する前のライブラリの値」を取り直すのに使う
+/// （読み取りの接続の鍵を取らないので、書き込みの鍵を持ったまま呼んでも鍵の順が増えない）
+pub(crate) fn legacy_fields(conn: &Connection, id: i64) -> AppResult<Option<LegacyFields>> {
+    Ok(conn
+        .query_row(
+            "SELECT title, artist, album, album_artist, genre, composer, comment FROM tracks WHERE id = ?1",
+            [id],
+            |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?]),
+        )
+        .optional()?)
+}
+
 /// 編集画面で手で変えた項目に印を付ける（v3.5.0。`fields` は `LegacyFields` の並びのビット。前の印に足す）。
 /// 古い文字コードの読み直し（`library::legacy_reread`）は、印の付いた項目を書き換えない
 pub fn mark_manual_edits(conn: &Connection, id: i64, fields: i64) -> AppResult<()> {

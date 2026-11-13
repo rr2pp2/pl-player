@@ -29,7 +29,7 @@ use serde::Serialize;
 
 use super::legacy_text;
 use super::tags_read::TagValues;
-use crate::db::tracks::{self, LegacyFields, Track};
+use crate::db::tracks::{self, LegacyFields};
 use crate::db::Db;
 use crate::error::{AppError, AppResult, ErrorKind};
 
@@ -136,15 +136,16 @@ pub fn begin_import(importing: &Mutex<bool>, ctl: &Control) -> Result<(), &'stat
 /// 編集画面で保存した値のうち、手で変えた項目（保存する前のライブラリの値と違う項目）のビット（`LegacyFields` の並び）。
 /// 比べるのは前後の空白を落とした値（書き込みは前後の空白を落として書く）。
 /// 曲名のタグが空でファイル名を曲名にしている曲で、曲名を空のまま保存したときも「変えた」に数える（印が多い側。読み直しは曲名に当てない）
-pub fn edited_fields(before: &Track, after: &TagValues) -> i64 {
+/// `before` は保存する直前の DB の値（`tracks::legacy_fields`。編集画面を開いたときの値ではない）
+pub fn edited_fields(before: &LegacyFields, after: &TagValues) -> i64 {
     let pairs = [
-        (&before.title, &after.title),
-        (&before.artist, &after.artist),
-        (&before.album, &after.album),
-        (&before.album_artist, &after.album_artist),
-        (&before.genre, &after.genre),
-        (&before.composer, &after.composer),
-        (&before.comment, &after.comment),
+        (&before[0], &after.title),
+        (&before[1], &after.artist),
+        (&before[2], &after.album),
+        (&before[3], &after.album_artist),
+        (&before[4], &after.genre),
+        (&before[5], &after.composer),
+        (&before[6], &after.comment),
     ];
     let mut bits = 0;
     for (i, (b, a)) in pairs.iter().enumerate() {
@@ -266,7 +267,7 @@ fn run_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::tracks::TrackInfo;
+    use crate::db::tracks::{Track, TrackInfo};
     use crate::library::legacy_text::test_mojibake;
 
     // 名前はどれも架空のもの・一般語だけ
@@ -378,8 +379,8 @@ mod tests {
         // 「×」を含む名前は、今の決まりでは直らない。決まりを変えた版で「直る」ことになったと見立てる
         let id = add(&db, r"C:\plp-no-such-dir\a.mp3", "Ñandú Brûlé Ça", "Ñandú Brûlé Ça", "Ñandú Brûlé Ça");
         let other = add(&db, r"C:\plp-no-such-dir\b.mp3", "Ñandú Brûlé Ça", "Plain", "Plain");
-        // 編集画面で曲名とアルバムを変えて保存した（印は edited_fields で作る）
-        let before = get(&db, id);
+        // 編集画面で曲名とアルバムを変えて保存した（印は edited_fields で作る。比べるのは保存する直前の DB の値）
+        let before = tracks::legacy_fields(&db.reader(), id).unwrap().unwrap();
         let after = TagValues {
             title: "Ñandú Brûlé Ça".into(),
             artist: "Ñandú Brûlé Ça".into(),
@@ -388,7 +389,7 @@ mod tests {
         };
         // 同じ値（前後の空白だけ違う）は変えていない
         assert_eq!(edited_fields(&before, &after), 0);
-        let after = TagValues { title: "Ñandú Brûlé Ça!".into(), album: "Ñandú".into(), artist: before.artist.clone(), ..Default::default() };
+        let after = TagValues { title: "Ñandú Brûlé Ça!".into(), album: "Ñandú".into(), artist: before[1].clone(), ..Default::default() };
         let bits = edited_fields(&before, &after);
         assert_eq!(bits, 1 | 4);
         // DB の値はそのままにして、印だけを付ける（編集画面の保存が付ける印と同じ）

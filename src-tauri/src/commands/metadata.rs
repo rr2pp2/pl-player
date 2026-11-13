@@ -56,7 +56,7 @@ pub async fn metadata_write(
     let result = with_resume(
         || controller.release_for_write(id),
         |r| controller.resume_after_write(r),
-        || write_and_reload(&state.db, &track, &path, &values, &art),
+        || write_and_reload(&state.db, id, &path, &values, &art),
     );
     state.controller.refresh_track(id);
     let _ = app.emit(ev::LIBRARY, ());
@@ -65,19 +65,43 @@ pub async fn metadata_write(
 }
 
 /// 曲ファイルのタグに書き、成否に関わらずライブラリの値を実ファイルから読み直す。
-/// v3.5.0：書けたら、手で変えた項目（保存する前のライブラリの値と違う項目）に印を付ける（古い文字コードの読み直しで書き換えないため）
-pub(crate) fn write_and_reload(db: &Db, track: &Track, path: &Path, values: &TagValues, art: &ArtChange) -> AppResult<()> {
-    let edited = crate::library::legacy_reread::edited_fields(track, values);
+/// v3.5.0：書けたら、手で変えた項目（保存する前のライブラリの値と違う項目）に印を付ける（古い文字コードの読み直しで書き換えないため）。
+///
+/// 比べる「保存する前のライブラリの値」は、書き込みの鍵（`db.writer()`）を取ってから、同じ接続で読む。
+/// 編集画面を開いたときの値（呼び出し側が先に取った `Track`）とは比べない。その間に古い文字コードの読み直し・取り込みが
+/// その曲を書き換えていると、古い値と比べることになるため（3.5.0 の検査の指摘。決まりが同じ 3.5.0 では起きないが、決まりを変える版で効く）。
+/// - 鍵の順：書き込みの鍵の中では、読み取りの鍵（`db.reader()`）を取らない（同じ接続で読む）。読み直し・取り込みも
+///   読み取りの鍵を手放してから書き込みの鍵を取るので、鍵を持ったまま相手の鍵を待つ組み合わせが無い
+/// - 曲ファイルから読み直した値と印を、1つのトランザクションで書く。古い文字コードの読み直しが「新しい値なのに印が無い」途中の形を読んで、手で入れた値を直してしまわないため
+/// - 曲ファイルを読む・書くのは鍵の外（重い処理の間、ほかの書き込みを止めない）
+pub(crate) fn write_and_reload(db: &Db, id: i64, path: &Path, values: &TagValues, art: &ArtChange) -> AppResult<()> {
     let result = tags_write::write_tags(path, values, art);
     let read = tags_read::read_track(path, &db.thumbs_dir);
-    let conn = db.writer();
-    if let Ok(info) = read {
-        let _ = tracks::upsert(&conn, &info);
-    }
-    if result.is_ok() {
-        if let Err(e) = tracks::mark_manual_edits(&conn, track.id, edited) {
-            tracing::warn!("could not mark manual tag edits: {:?}", e.kind);
+    let mut conn = db.writer();
+    let tx = match conn.transaction() {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::warn!("could not reload the saved tags: {e}");
+            return result;
         }
+    };
+    // 書き込みの鍵の中で取り直す（曲がライブラリから外されていれば None：印を付ける行が無い）
+    let before = if result.is_ok() { tracks::legacy_fields(&tx, id) } else { Ok(None) };
+    if let Ok(info) = read {
+        let _ = tracks::upsert(&tx, &info);
+    }
+    match before {
+        Ok(Some(before)) => {
+            let edited = crate::library::legacy_reread::edited_fields(&before, values);
+            if let Err(e) = tracks::mark_manual_edits(&tx, id, edited) {
+                tracing::warn!("could not mark manual tag edits: {:?}", e.kind);
+            }
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("could not read the values before saving: {:?}", e.kind),
+    }
+    if let Err(e) = tx.commit() {
+        tracing::warn!("could not reload the saved tags: {e}");
     }
     result
 }
@@ -189,7 +213,7 @@ mod tests {
         // 編集画面に出た値のまま、アルバムだけを手で入れて保存する
         let mut v = tags_read::read_values(&mp3).unwrap();
         v.album = "手で入れたアルバム".into();
-        write_and_reload(&db, &track, &mp3, &v, &ArtChange::Keep).unwrap();
+        write_and_reload(&db, track.id, &mp3, &v, &ArtChange::Keep).unwrap();
         let marks = |db: &Db| -> Option<i64> {
             db.reader()
                 .query_row("SELECT fields FROM tag_manual_edits WHERE track_id = ?1", [id], |r| r.get(0))
@@ -200,7 +224,7 @@ mod tests {
         // 次にアーティストを手で直す（印は足される）
         let track = tracks::get(&db, id).unwrap().unwrap();
         v.artist = "Ñandú Brûlé Ça".into();
-        write_and_reload(&db, &track, &mp3, &v, &ArtChange::Keep).unwrap();
+        write_and_reload(&db, track.id, &mp3, &v, &ArtChange::Keep).unwrap();
         assert_eq!(marks(&db), Some(4 | 2));
         // 決まりを変えた版で、西欧の名前も「直る」ことになったと見立てても、手で直したアーティストは書き換えない
         let future = |s: &str, _: Option<&str>| -> Option<String> { s.contains('Ñ').then(|| "変わった".to_string()) };
@@ -214,8 +238,47 @@ mod tests {
         let t2 = tracks::get(&db2, id2).unwrap().unwrap();
         std::fs::remove_file(&mp3).unwrap();
         let bad = TagValues { title: "別の名前".into(), ..v.clone() };
-        assert!(write_and_reload(&db2, &t2, &mp3, &bad, &ArtChange::Keep).is_err());
+        assert!(write_and_reload(&db2, t2.id, &mp3, &bad, &ArtChange::Keep).is_err());
         assert_eq!(marks(&db2), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v3.5.0（検査の指摘）：編集画面を開いてから保存するまでに DB の値が変わっていたら、印は変わったあとの値と比べて付ける
+    /// （開いたときの古い値とは比べない）。曲名・名前は架空のもの
+    #[test]
+    fn marks_compare_with_the_values_just_before_saving() {
+        let dir = crate::test_tmp().join(format!("plp-edit-fresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mp3 = tags_read::test_legacy_mp3(
+            &dir,
+            "a.mp3",
+            &[(b"TIT2", b"\x82\xb3\x82\xad\x82\xe7\x90F\x82\xcc\x8d\xe2\x93\xb9"), (b"TPE1", b"\xd1and\xfa Br\xfbl\xe9")],
+            None,
+        );
+        let db = Db::open_memory("edit_mark_fresh").unwrap();
+        crate::library::import::run(&db, &[mp3.clone()], false, false, &|_| {});
+        let id = tracks::id_by_path(&db, &mp3.to_string_lossy()).unwrap().unwrap();
+        // 編集画面を開いた（このときのライブラリの値は 曲名「さくら色の坂道」・アーティスト「Ñandú Brûlé」）
+        let opened = tracks::get(&db, id).unwrap().unwrap();
+        let mut v = tags_read::read_values(&mp3).unwrap();
+        assert_eq!((v.title.as_str(), v.artist.as_str()), (opened.title.as_str(), opened.artist.as_str()));
+        // 保存する前に、決まりを変えた版の読み直しがアーティストを直し、ほかの書き込みが曲名を変えたと見立てる
+        let future = |s: &str, _: Option<&str>| -> Option<String> { s.contains('Ñ').then(|| "変わった名前".to_string()) };
+        let (_, fixed) = crate::library::legacy_reread::run_with(&db, &AtomicBool::new(false), &future, 200, &mut |_| {});
+        assert_eq!(fixed, vec![id]);
+        db.writer().execute("UPDATE tracks SET title = '別の曲名' WHERE id = ?1", [id]).unwrap();
+        // 保存する値：アーティストは今の DB と同じ（手で変えていない）、曲名は開いたときのまま（今の DB とは違う）、アルバムは手で入れた
+        v.artist = "変わった名前".into();
+        v.album = "手で入れたアルバム".into();
+        write_and_reload(&db, opened.id, &mp3, &v, &ArtChange::Keep).unwrap();
+        let marks: i64 = db
+            .reader()
+            .query_row("SELECT fields FROM tag_manual_edits WHERE track_id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        // 開いたときの値と比べると「アーティスト・アルバム」（2 | 4）になる。保存する直前の値と比べて「曲名・アルバム」
+        assert_eq!(marks, 1 | 4);
+        let t = tracks::get(&db, id).unwrap().unwrap();
+        assert_eq!((t.title.as_str(), t.artist.as_str(), t.album.as_str()), ("さくら色の坂道", "変わった名前", "手で入れたアルバム"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

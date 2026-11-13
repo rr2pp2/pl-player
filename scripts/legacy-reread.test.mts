@@ -90,3 +90,20 @@ test("設定画面：ライブラリのタブに置き、押すと確認を出�
   // 曲名は画面に出さない（件数だけ）
   assert.ok(!field.includes(".title}"));
 });
+
+test("進み具合の帯：読み直しと「歌詞を取ってくる」は、広いと2列目・狭い幅（設定の欄が1列になる 719px 以下）では1列目", () => {
+  const css = read("src/theme/base.css");
+  const narrowAt = css.indexOf("@media (max-width: 719px) {");
+  assert.ok(narrowAt > 0);
+  const narrow = css.slice(narrowAt, css.indexOf("\n}\n", narrowAt));
+  assert.match(narrow, /\.field \{\s*grid-template-columns: minmax\(0, 1fr\);/, "the field is one column");
+  for (const cls of ["legacy-reread-progress", "lyrics-fetch-progress"]) {
+    // 2列目へ置く決まりは、狭い幅の @media より前に1つだけ（後ろにあると、同じ強さの決まりが @media に勝って2列目のまま残る）
+    const wide = [...css.matchAll(new RegExp(`\\.field \\.${cls}[^{]*\\{[^}]*grid-column: 2;`, "g"))];
+    assert.equal(wide.length, 1, cls);
+    assert.ok(wide[0].index! < narrowAt, `${cls}: before the narrow @media`);
+    assert.match(narrow, new RegExp(`\\.field \\.${cls}[^{]*\\{\\s*grid-column: 1;`), `${cls}: one column when narrow`);
+    // 画面でもこの名前の帯を .field の中に置いている
+    assert.ok(read("src/views/SettingsView.tsx").includes(`progress-line ${cls}`), cls);
+  }
+});
