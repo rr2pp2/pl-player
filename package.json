@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "release": "node scripts/release.mts",
     "tauri": "tauri"
   },
   "dependencies": {
