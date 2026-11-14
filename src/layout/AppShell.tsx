@@ -25,6 +25,7 @@ import { PlaylistView } from "../views/PlaylistView";
 import { QueueView } from "../views/QueueView";
 import { SettingsView } from "../views/SettingsView";
 import { LyricsView } from "../views/LyricsView";
+import { YearlyView } from "../views/YearlyView";
 
 function Content() {
   const r = useStore(route);
@@ -32,6 +33,7 @@ function Content() {
   if (r.view === "lyrics") return <LyricsView />;
   if (r.view === "queue") return <QueueView />;
   if (r.view === "playlist") return <PlaylistView />;
+  if (r.view === "yearly_top") return <YearlyView />;
   if ((r.view === "artist" || r.view === "album" || r.view === "genre") && (r.key === undefined || r.key === null)) return <GroupView />;
   return <LibraryView />;
 }

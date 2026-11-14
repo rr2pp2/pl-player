@@ -30,6 +30,8 @@ export const SIDEBAR_ITEMS = [
   { id: "genre", label: "ジャンル" },
   { id: "recent_added", label: "最近追加" },
   { id: "recent_played", label: "最近再生" },
+  // v3.6.0。3.5.0 までの設定には値が無いので出す（sidebarItemShown の「値が無ければ出す」）
+  { id: "yearly_top", label: "年間まとめ" },
   { id: "favorites", label: "お気に入り" },
   { id: "queue", label: "キュー" },
   { id: "playlists", label: "プレイリスト（節ごと）" },
@@ -84,7 +86,8 @@ export function sidebarToggleInfo(sidebarAuto: boolean, collapsed: boolean): { d
 
 /**
  * 曲の操作（行の右端のボタン・右クリックのメニュー）を出す場所。
- * library：ライブラリの曲一覧（すべての曲・最近追加・最近再生・お気に入り・アーティスト／アルバム／ジャンルを開いたところ。src\views\LibraryView.tsx）
+ * library：ライブラリの曲一覧（すべての曲・最近追加・最近再生・お気に入り・アーティスト／アルバム／ジャンルを開いたところ。src\views\LibraryView.tsx。
+ *          v3.6.0 の年間まとめ（src\views\YearlyView.tsx）も、ライブラリの曲を並べた一覧なので同じ）
  * playlist：プレイリストの一覧　queue：キューの一覧　playerBar：再生バーの曲名の右クリック
  */
 export type TrackListKind = "library" | "playlist" | "queue" | "playerBar";

@@ -92,6 +92,17 @@ export const IconHistory = (p: P) => (
     </S>
   </Skinned>
 );
+/** 年間まとめ（v3.6.0）：表彰台（真ん中が1位）。再生中の印（IconBars の塗った棒）と見分けるため、線で描く */
+export const IconRanking = (p: P) => (
+  <Skinned name="IconRanking" p={p}>
+    <S {...p}>
+      <path d="M9 20V8h6v12" />
+      <path d="M3 20v-7h6M15 20v-4h6v4" />
+      <path d="M2 20h20" />
+      <path d="M11.5 11l1-1v4" />
+    </S>
+  </Skinned>
+);
 export const IconStar = (p: P & { filled?: boolean }) => (
   <Skinned name="IconStar" state={starState(p.filled)} p={p}>
     <S {...p} fill={p.filled}>

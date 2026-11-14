@@ -23,6 +23,7 @@ import {
   IconPlay,
   IconPlus,
   IconQueue,
+  IconRanking,
   IconSettings,
   IconShuffle,
   IconSidebar,
@@ -43,6 +44,8 @@ const LIB: { view: ViewKind; label: string; icon: any }[] = [
   { view: "genre", label: "ジャンル", icon: <IconTag /> },
   { view: "recent_added", label: "最近追加", icon: <IconClockPlus /> },
   { view: "recent_played", label: "最近再生", icon: <IconHistory /> },
+  // v3.6.0：年間まとめ（src\views\YearlyView.tsx）。隠せる（visibility.ts の SIDEBAR_ITEMS）
+  { view: "yearly_top", label: "年間まとめ", icon: <IconRanking /> },
   { view: "favorites", label: "お気に入り", icon: <IconStar /> },
 ];
 

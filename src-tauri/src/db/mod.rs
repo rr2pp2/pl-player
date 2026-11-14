@@ -2,6 +2,7 @@
 //!
 //! 接続は2本：書き込み用と読み取り用。どちらも Mutex で守る。
 
+pub mod history;
 pub mod lyrics;
 pub mod playlists;
 pub mod queue;
@@ -23,6 +24,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, include_str!("migrations/003_lyrics_fetch.sql")),
     (4, include_str!("migrations/004_legacy_text.sql")),
     (5, include_str!("migrations/005_tag_manual_edits.sql")),
+    (6, include_str!("migrations/006_play_history.sql")),
 ];
 
 /// 移行 4（v3.1.2）：SQL のあとに、同じトランザクションの中で走らせる Rust の処理（古い文字コードの値を直す）
@@ -153,7 +155,7 @@ mod tests {
         conn.execute("INSERT INTO album_art_overrides (album_key, image_path, updated_at) VALUES (?1, 'x.png', 0)", [&old_key]).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        // v3.5.0 から移行 5 まで続けて走る
+        // v3.5.0 から移行 5、v3.6.0 から移行 6 まで続けて走る
         assert_eq!(v, MIGRATIONS.last().unwrap().0);
         assert!(v >= LEGACY_TEXT_VERSION);
         let get = |id: i64| -> (String, String, String, String) {
@@ -193,7 +195,8 @@ mod tests {
         .unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 5);
+        // v3.6.0 から移行 6 まで続けて走る
+        assert_eq!(v, MIGRATIONS.last().unwrap().0);
         let (t, a): (String, String) = conn.query_row("SELECT title, artist FROM tracks", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!((t.as_str(), a.as_str()), ("Plain", "\u{93}A\u{94}"));
         let marks: i64 = conn.query_row("SELECT count(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap();
@@ -205,6 +208,82 @@ mod tests {
         conn.execute("DELETE FROM tracks WHERE id = 1", []).unwrap();
         let marks: i64 = conn.query_row("SELECT count(*) FROM tag_manual_edits", [], |r| r.get(0)).unwrap();
         assert_eq!(marks, 0);
+    }
+
+    /// v3.6.0：移行 6 は、再生の記録の表と数え始めた時刻を作るだけ。3.5.0 までの再生回数・最後に再生した時刻は変えず、
+    /// そこから記録を作り出さない（時刻が無いので嘘になる）。2回目の起動では走らず、数え始めた時刻も変わらない
+    #[test]
+    fn migration_6_adds_play_history_without_backfill() {
+        let conn = test_conn_at_version("migration6", 5);
+        conn.execute(
+            "INSERT INTO tracks (path, title, album_key, added_at, last_played_at, play_count) VALUES ('C:\\m\\a.mp3', 'Plain', '', 0, 1700000000000, 7)",
+            [],
+        )
+        .unwrap();
+        let before = now_ms();
+        migrate(&conn).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 6);
+        let (last, count): (i64, i64) =
+            conn.query_row("SELECT last_played_at, play_count FROM tracks WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((last, count), (1_700_000_000_000, 7));
+        let rows: i64 = conn.query_row("SELECT count(*) FROM play_history", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "3.5.0 までの再生から記録を作らない");
+        let started = history::started_at(&conn).unwrap().unwrap();
+        assert!(started >= before - 1000 && started <= now_ms() + 1000);
+        // 索引：期間で数える（played_at, track_id）と、曲を外すときに記録を探す（track_id）
+        let idx: Vec<String> = {
+            let mut s = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'play_history' ORDER BY name").unwrap();
+            let v = s.query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+            v
+        };
+        assert_eq!(idx, vec!["idx_play_history_played_at".to_string(), "idx_play_history_track".to_string()]);
+        let plan: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT track_id, COUNT(*), MAX(played_at) FROM play_history WHERE played_at >= 1 AND played_at <= 2 GROUP BY track_id",
+                [],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("COVERING INDEX idx_play_history_played_at"), "{plan}");
+        // 2回目は走らない
+        conn.execute("UPDATE play_history_meta SET started_at = 5 WHERE id = 1", []).unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(history::started_at(&conn).unwrap(), Some(5));
+    }
+
+    /// v3.6.0：3.5.0 の版で移行 6 の DB を開いても壊れない。
+    /// 3.5.0 の `migrate` は「今の版より大きい移行だけを当てる」形で、知らない版（6）を断らず、何も当てない。
+    /// 3.5.0 の書き込み（再生回数を +1・曲を外す・取り込み）は、知らない表があっても通り、曲を外せば記録も消える（表の決まり）。
+    /// 3.5.0 で再生した分は記録されない（README の既知の制限）。実物の 3.5.0 のコードでも同じことを確かめた（作業の報告）
+    #[test]
+    fn a_v6_db_opened_by_3_5_0_stays_intact() {
+        let conn = test_conn_at_version("migration6_old", 6);
+        conn.execute("INSERT INTO tracks (path, title, album_key, added_at) VALUES ('C:\\m\\a.mp3', 'Plain', '', 0)", []).unwrap();
+        conn.execute("INSERT INTO tracks (path, title, album_key, added_at) VALUES ('C:\\m\\b.mp3', 'Other', '', 0)", []).unwrap();
+        conn.execute("INSERT INTO play_history (track_id, played_at) VALUES (1, 10), (1, 20), (2, 30)", []).unwrap();
+        // 3.5.0 の移行の一覧（1〜5）と、3.5.0 の migrate と同じ当て方
+        let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let old: Vec<i64> = MIGRATIONS.iter().map(|(v, _)| *v).filter(|v| *v <= 5).filter(|v| *v > current).collect();
+        assert!(old.is_empty(), "3.5.0 は版 6 の DB に何も当てない");
+        // 3.5.0 の書き込み
+        conn.execute("UPDATE tracks SET last_played_at = 40, play_count = play_count + 1 WHERE id = 2", []).unwrap();
+        conn.execute("DELETE FROM tracks WHERE id = 1", []).unwrap();
+        conn.execute("INSERT INTO tracks (path, title, album_key, added_at) VALUES ('C:\\m\\c.mp3', 'New', '', 0)", []).unwrap();
+        let rows: Vec<(i64, i64)> = {
+            let mut s = conn.prepare("SELECT track_id, played_at FROM play_history ORDER BY id").unwrap();
+            let v = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+            v
+        };
+        assert_eq!(rows, vec![(2, 30)]);
+        let ok: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(ok, "ok");
+        let fk: i64 = conn.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0)).unwrap();
+        assert_eq!(fk, 0);
+        // 3.6.0 に戻すと、移行は走らず、記録はそのまま使える
+        migrate(&conn).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 6);
     }
 }
 

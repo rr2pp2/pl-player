@@ -206,6 +206,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::library::app_info,
             commands::library::library_query,
+            commands::library::library_yearly_top,
             commands::library::library_groups,
             commands::library::track_get,
             commands::library::tracks_get,

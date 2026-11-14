@@ -8,6 +8,8 @@
 // 選択・再生中の印・ドラッグ・右クリック・お気に入り・ごみ箱の列は今までどおり。
 // v3.5.0（作者の要望）：設定の「曲一覧の列」の「アーティスト」（ui.columns.artist。無ければオン）。コンパクト表示では列を、
 // 通常の表示ではタイトルの下の段を出し入れする（行の高さは変えない）。幅では隠さない。
+// v3.6.0：年間まとめ（src\views\YearlyView.tsx）では、順位の列（左端）と期間中の回数の列（時間の前）を足す（props.ranking）。
+// 並びは Rust が決めた順位の順のまま（props.fixedOrder：見出しで並べ替えない）。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
@@ -49,6 +51,10 @@ interface Props {
   extraMenu?: (indexes: number[]) => MenuItem[];
   onDeleteKey?: (indexes: number[]) => void;
   empty?: any;
+  /** v3.6.0：年間まとめ。行ごとの順位と期間中の回数（tracks と同じ並び）。あれば「順位」「回数」の列を出す */
+  ranking?: { rank: number; plays: number }[];
+  /** v3.6.0：並びが決まっている一覧（年間まとめ）。見出しを押しても並べ替えず、矢印も出さない */
+  fixedOrder?: boolean;
 }
 
 export function TrackTable(props: Props) {
@@ -74,6 +80,9 @@ export function TrackTable(props: Props) {
   // v3.5.0：アーティストを出すか（設定。古い設定でキーが無ければオン）。アルバム・ジャンルと違い、幅の段では隠さない
   const artistOn = cfg.artist !== false;
   const cols = {
+    // v3.6.0：年間まとめの順位（左端）と期間中の回数（時間の前）。どちらもコンパクトにも幅の段にもかかわらず出す
+    rank: !!props.ranking,
+    plays: !!props.ranking,
     // アーティストの列（コンパクト表示のとき）と、タイトルの下の段（通常の表示のとき）。どちらか一方だけが true になる
     artist: compact && artistOn,
     artistLine: !compact && artistOn,
@@ -84,6 +93,8 @@ export function TrackTable(props: Props) {
     trash: trashButtonShown(ui, props.list),
   };
   const template = [
+    // 順位の列（v3.6.0）：見出しの「順位」（12px の字で2字）と「100」が入る 40px
+    cols.rank ? "40px" : null,
     // ジャケットの列：コンパクト表示では出さない（見出しの行の空き枠も出さない）
     compact ? null : `${size.artSize}px`,
     // タイトルの列（通常の表示では「タイトル / アーティスト」の2段。アーティストを切ればタイトルだけ）
@@ -93,6 +104,8 @@ export function TrackTable(props: Props) {
     cols.artist ? "minmax(0, 2fr)" : null,
     cols.album ? "minmax(0, 2fr)" : null,
     cols.genre ? "minmax(0, 1.2fr)" : null,
+    // 期間中の回数の列（v3.6.0）：見出しの「回数」と4桁の数が入る 44px（1年に 1万回は、1日に 27 回を超えるので見込まない）
+    cols.plays ? "44px" : null,
     cols.duration ? "52px" : null,
     // お気に入りの列：見出しの「お気に入り」（12px の字で5字＝60px）が切れない 68px（v3.3.0 の作者の要望）。
     // v3.5.0 で一度、見出しを星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーの項目に出す）
@@ -193,16 +206,18 @@ export function TrackTable(props: Props) {
     }
   };
 
+  // v3.6.0：並びが決まっている一覧（年間まとめ）では、押せず、矢印も出さない（並べ替えの設定は一覧ごとに navigate で戻る）
+  const sortedBy = props.fixedOrder ? null : sortState.by;
   const headBtn = (key: string, label: string, cls = "") => (
     <button
-      className={cls + (sortState.by === key ? " sorted" : "")}
-      disabled={props.sortable}
+      className={cls + (sortedBy === key ? " sorted" : "")}
+      disabled={props.sortable || props.fixedOrder}
       onClick={() =>
         sort.set((s) => (s.by === key ? (s.desc ? { by: null, desc: false } : { by: key, desc: true }) : { by: key, desc: false }))
       }
     >
       {label}
-      {sortState.by === key ? (sortState.desc ? " ↓" : " ↑") : ""}
+      {sortedBy === key ? (sortState.desc ? " ↓" : " ↑") : ""}
     </button>
   );
 
@@ -218,6 +233,8 @@ export function TrackTable(props: Props) {
         index={v.index}
         start={v.start}
         track={t}
+        rank={props.ranking?.[v.index]?.rank}
+        plays={props.ranking?.[v.index]?.plays}
         cols={cols}
         compact={compact}
         playing={pb.track?.id === t.id}
@@ -239,6 +256,7 @@ export function TrackTable(props: Props) {
   return (
     <div className={"track-table" + (compact ? " compact" : "")} style={{ ["--cols" as any]: template, ["--row-h" as any]: `${rowH}px` }}>
       <div className="track-head" role="row">
+        {cols.rank ? <span className="col-rank">順位</span> : null}
         {compact ? null : <span />}
         {/* コンパクト表示では「タイトル」「アーティスト」の2つの見出し（v3.5.0）。アーティストの並べ替えは Rust の order_clause の "artist"（アーティスト→アルバム→ディスク→曲番号）。
             通常の表示は「タイトル / アーティスト」。アーティストを切ったときは、どちらの表示でも「タイトル」だけ */}
@@ -246,6 +264,7 @@ export function TrackTable(props: Props) {
         {cols.artist ? headBtn("artist", "アーティスト", "col-artist") : null}
         {cols.album ? headBtn("album", "アルバム", "col-album") : null}
         {cols.genre ? headBtn("genre", "ジャンル", "col-genre") : null}
+        {cols.plays ? <span className="col-plays">回数</span> : null}
         {cols.duration ? (
           <span style={{ textAlign: "right" }}>{headBtn("duration", "時間")}</span>
         ) : null}
@@ -272,8 +291,21 @@ interface RowProps {
   index: number;
   start: number;
   track: Track;
-  /** artist：アーティストの列（コンパクト表示）。artistLine：タイトルの下のアーティストの段（通常の表示） */
-  cols: { artist: boolean; artistLine: boolean; album: boolean; genre: boolean; duration: boolean; favorite: boolean; trash: boolean };
+  /** v3.6.0：年間まとめの順位と期間中の回数（cols.rank・cols.plays のときだけ使う） */
+  rank?: number;
+  plays?: number;
+  /** artist：アーティストの列（コンパクト表示）。artistLine：タイトルの下のアーティストの段（通常の表示）。rank・plays：年間まとめ（v3.6.0） */
+  cols: {
+    rank: boolean;
+    artist: boolean;
+    artistLine: boolean;
+    album: boolean;
+    genre: boolean;
+    plays: boolean;
+    duration: boolean;
+    favorite: boolean;
+    trash: boolean;
+  };
   /** v3.4.0：コンパクト表示（ジャケットなし・1行） */
   compact: boolean;
   playing: boolean;
@@ -372,6 +404,7 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
       onContextMenu={p.onContextMenu}
       title={t.missing ? "ファイルが見つかりません" : undefined}
     >
+      {p.cols.rank ? <div className="t-rank">{p.rank}</div> : null}
       {p.compact ? null : <Artwork path={t.artPath} className="t-art" />}
       {p.compact ? (
         // コンパクト表示：タイトルだけを1行に（アーティストは次の列）。入りきらなければ省略記号で切る
@@ -395,6 +428,7 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
       {p.cols.artist ? <div className="t-cell col-artist">{t.artist || "不明なアーティスト"}</div> : null}
       {p.cols.album ? <div className="t-cell col-album">{t.album}</div> : null}
       {p.cols.genre ? <div className="t-cell col-genre">{t.genre}</div> : null}
+      {p.cols.plays ? <div className="t-plays" title={`期間中に ${p.plays} 回再生`}>{p.plays}</div> : null}
       {p.cols.duration ? <div className="t-dur">{formatTime(t.durationMs)}</div> : null}
       {p.cols.favorite ? (
         <div className="t-fav">

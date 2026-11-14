@@ -512,11 +512,25 @@ pub fn set_favorite(db: &Db, ids: &[i64], favorite: bool) -> AppResult<()> {
     Ok(())
 }
 
+/// 再生を始めた1回を数える（再生の司令塔の `play_id` が、曲を鳴らし始めたときに呼ぶ）
 pub fn mark_played(db: &Db, id: i64) -> AppResult<()> {
-    db.writer().execute(
+    mark_played_at(db, id, now_ms())
+}
+
+/// 再生回数（`play_count`・`last_played_at`）と、v3.6.0 の再生の記録（`play_history`。年間まとめ）を、
+/// 同じ時刻で1つのトランザクションに書く。**数えるのはここだけ**（数え方を2か所で別々に持たない）。
+/// ライブラリに無い曲（再生を始めた直後に外された）は、どちらにも書かない
+pub(crate) fn mark_played_at(db: &Db, id: i64, at: i64) -> AppResult<()> {
+    let mut conn = db.writer();
+    let tx = conn.transaction()?;
+    let n = tx.execute(
         "UPDATE tracks SET last_played_at = ?2, play_count = play_count + 1 WHERE id = ?1",
-        params![id, now_ms()],
+        params![id, at],
     )?;
+    if n > 0 {
+        super::history::record_play(&tx, id, at)?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -528,7 +542,8 @@ pub fn set_missing(db: &Db, id: i64, missing: bool) -> AppResult<()> {
     Ok(())
 }
 
-/// ライブラリから外す（ファイルは消さない）
+/// ライブラリから外す（ファイルは消さない）。プレイリスト・キュー・歌詞・手で直した印・再生の記録（v3.6.0）も、
+/// 表の `ON DELETE CASCADE` で一緒に消える
 pub fn remove(db: &Db, ids: &[i64]) -> AppResult<()> {
     let mut conn = db.writer();
     let tx = conn.transaction()?;

@@ -28,6 +28,7 @@ import type {
   TagValues,
   Track,
   TrackQuery,
+  YearlyTop,
 } from "./types";
 
 export type PlaybackAction =
@@ -49,6 +50,8 @@ export const api = {
 
   // ライブラリ
   libraryQuery: (query: TrackQuery) => invoke<Track[]>("library_query", { query }),
+  /** v3.6.0：年間まとめ（画面を開いた時点の今から 365 日さかのぼって、再生した回数の上位 100 曲） */
+  libraryYearlyTop: (search?: string | null) => invoke<YearlyTop>("library_yearly_top", { search: search ?? null }),
   libraryGroups: (kind: string, search?: string | null) =>
     invoke<Group[]>("library_groups", { kind, search: search || null }),
   trackGet: (id: number) => invoke<Track | null>("track_get", { id }),
@@ -106,7 +109,8 @@ export const api = {
   // メタデータ・アート
   metadataRead: (id: number) => invoke<MetadataView>("metadata_read", { id }),
   metadataWrite: (id: number, values: TagValues, art: ArtChange) =>
-    invoke<Track>("metadata_write", { id, values, art }),
+    // v3.6.0：曲ファイルには書いたが、その間に曲がライブラリから外された（ライブラリには戻していない）ときは null
+    invoke<Track | null>("metadata_write", { id, values, art }),
   pickImage: (title?: string) => invoke<string | null>("pick_image", { title: title ?? null }),
   stageImage: (path: string) => invoke<string>("stage_image", { path }),
   albumArtSetExternal: (albumKey: string, imagePath: string) =>

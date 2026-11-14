@@ -89,6 +89,8 @@ pub enum ErrorKind {
     LegacyRereadBusy,
     /// 古い文字コードのタグの読み直し：曲の取り込み・再走査が走っているので始めなかった。何も変えていない
     LibraryImportBusy,
+    /// タグの編集画面の保存（v3.6.0）：保存の時点で、その曲はもうライブラリから外されていた。曲ファイルに書かず、ライブラリにも戻していない
+    TrackRemovedBeforeSave,
     /// 上のどれにも当たらないもの（入力の誤りなど）
     Other,
 }
@@ -197,6 +199,7 @@ mod tests {
             ErrorKind::TrashTooMany,
             ErrorKind::LegacyRereadBusy,
             ErrorKind::LibraryImportBusy,
+            ErrorKind::TrackRemovedBeforeSave,
             ErrorKind::Other,
         ] {
             let code = serde_json::to_value(k).unwrap();

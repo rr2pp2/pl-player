@@ -2,8 +2,8 @@
 // 保存は「一時ファイル → 検証 → 置換」（Rust 側 library/tags_write.rs）。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
-import type { ArtChange, MetadataView, TagValues } from "../ipc/types";
-import { errorMessage } from "../messages/ja";
+import type { AppError, ArtChange, MetadataView, TagValues } from "../ipc/types";
+import { errorMessage, metadataSavedText } from "../messages/ja";
 import { notify } from "../stores/notices";
 import { useStore } from "../stores/store";
 import { Artwork } from "./Artwork";
@@ -75,10 +75,17 @@ function MetadataEditor(props: { id: number; onClose: () => void }) {
     setSaving(true);
     setError(null);
     try {
-      await api.metadataWrite(props.id, v, art);
-      notify({ level: "info", text: "タグを保存しました" });
+      // v3.6.0：曲ファイルには書いたが、その間に曲がライブラリから外された（ライブラリには戻していない）ときは null
+      const saved = await api.metadataWrite(props.id, v, art);
+      notify({ level: "info", text: metadataSavedText(saved !== null) });
       props.onClose();
     } catch (e) {
+      // v3.6.0：保存の時点で曲がもうライブラリに無い（曲ファイルにも書いていない）。読み直す曲が無いので、知らせて閉じる
+      if ((e as Partial<AppError> | undefined)?.code === "track_removed_before_save") {
+        notify({ level: "error", error: e });
+        props.onClose();
+        return;
+      }
       setError(errorMessage(e));
       void load();
     } finally {

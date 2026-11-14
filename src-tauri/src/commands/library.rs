@@ -34,6 +34,12 @@ pub async fn library_query(state: State<'_, AppState>, query: TrackQuery) -> App
     tracks::query(&state.db, &query)
 }
 
+/// v3.6.0：年間まとめ（画面を開いた時点の今から 365 日さかのぼって、再生した回数の上位 100 曲。決まりは db::history）
+#[tauri::command]
+pub async fn library_yearly_top(state: State<'_, AppState>, search: Option<String>) -> AppResult<crate::db::history::YearlyTop> {
+    crate::db::history::yearly_top(&state.db, crate::db::now_ms(), search.as_deref())
+}
+
 #[tauri::command]
 pub async fn library_groups(
     state: State<'_, AppState>,

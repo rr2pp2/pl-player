@@ -111,9 +111,10 @@ fn tab_name_ok(s: &str) -> bool {
 /// 再生・一時停止・前・次・シークバーは、隠すと操作できなくなるので入れない
 pub const PLAYER_BUTTONS_HIDEABLE: &[&str] = &["shuffle", "repeat", "volume", "lyricsRow", "lyrics"];
 
-/// v3.3.0：サイドバーで隠せる項目（画面の src/layout/visibility.ts と同じ並び）。設定は戻れなくなるので入れない
+/// v3.3.0：サイドバーで隠せる項目（画面の src/layout/visibility.ts と同じ並び）。設定は戻れなくなるので入れない。
+/// v3.6.0：`yearly_top`（年間まとめ）を「最近再生」の次に足した。3.5.0 までの設定・zip には無いので出す（無いキーは出す、の決まりのまま）
 pub const SIDEBAR_ITEMS_HIDEABLE: &[&str] =
-    &["all", "artist", "album", "genre", "recent_added", "recent_played", "favorites", "queue", "playlists"];
+    &["all", "artist", "album", "genre", "recent_added", "recent_played", "yearly_top", "favorites", "queue", "playlists"];
 
 /// 曲一覧の列のオン・オフ（画面の src\views\SettingsView.tsx の COLS と同じ並び）。
 /// v3.5.0：`artist` を足した（作者の要望）。3.4.0 までの設定・zip には無いので、読むときにオンで埋める
@@ -410,6 +411,24 @@ mod tests {
         // 画面に送る名前（camelCase）
         let j = serde_json::to_string(&AppSettings::default()).unwrap();
         assert!(j.contains("\"playerButtons\":{") && j.contains("\"sidebarItems\":{") && j.contains("\"trashButton\":false"), "{j}");
+    }
+
+    /// v3.6.0：サイドバーの「年間まとめ」（yearly_top）。既定は出す。3.5.0 までの設定（ほかの項目を書いてあっても）には無いので、
+    /// 読んでもキーは無いまま（画面は「無いキーは出す」で読む）。隠した値は残る。並びは「最近再生」の次
+    #[test]
+    fn yearly_top_sidebar_item() {
+        assert_eq!(AppSettings::default().ui.sidebar_items.get("yearly_top"), Some(&true));
+        let pos = |k: &str| SIDEBAR_ITEMS_HIDEABLE.iter().position(|x| *x == k).unwrap();
+        assert_eq!(pos("yearly_top"), pos("recent_played") + 1);
+        let old: AppSettings = serde_json::from_str(
+            r#"{"ui":{"sidebarItems":{"all":true,"artist":true,"album":true,"genre":false,"recent_added":true,"recent_played":true,"favorites":true,"queue":true,"playlists":true}}}"#,
+        )
+        .unwrap();
+        let old = old.sanitize();
+        assert_eq!(old.ui.sidebar_items.get("yearly_top"), None);
+        assert_eq!(old.ui.sidebar_items.get("genre"), Some(&false));
+        let hidden: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarItems":{"yearly_top":false}}}"#).unwrap();
+        assert_eq!(hidden.sanitize().ui.sidebar_items.get("yearly_top"), Some(&false));
     }
 
     /// v3.3.0：設定のタブの並び。古い設定には無い（空＝既定の順）。形の合わない名前・重なりは捨てる

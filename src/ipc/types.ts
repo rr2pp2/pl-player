@@ -44,6 +44,8 @@ export type ErrorCode =
   // 古い文字コードのタグの読み直し（v3.5.0）
   | "legacy_reread_busy"
   | "library_import_busy"
+  // タグの編集画面の保存（v3.6.0）
+  | "track_removed_before_save"
   | "other";
 
 /** v3.3.0：曲をごみ箱へ移した結果。移せなかった曲は、ファイルもライブラリもそのまま */
@@ -92,6 +94,7 @@ export type ViewKind =
   | "genre"
   | "recent_added"
   | "recent_played"
+  | "yearly_top"
   | "favorites"
   | "playlist"
   | "queue"
@@ -104,6 +107,28 @@ export interface TrackQuery {
   search?: string | null;
   sort?: string | null;
   desc?: boolean | null;
+}
+
+/** v3.6.0：年間まとめの1曲（Rust の db::history::RankedTrack） */
+export interface RankedTrack {
+  /** 順位（1 から）。検索で絞っても、絞る前の順位のまま */
+  rank: number;
+  /** 期間の中で再生した回数 */
+  plays: number;
+  /** 期間の中で最後に再生した時刻（ミリ秒） */
+  lastPlayedAt: number;
+  track: Track;
+}
+
+/** v3.6.0：年間まとめ（Rust の db::history::YearlyTop）。時刻はどれも 1970-01-01 UTC からのミリ秒 */
+export interface YearlyTop {
+  since: number;
+  until: number;
+  /** 数え始めた時刻（3.6.0 に上げて最初に起動した時刻） */
+  startedAt: number | null;
+  /** 検索で絞る前の曲の数 */
+  ranked: number;
+  entries: RankedTrack[];
 }
 
 export interface Group {

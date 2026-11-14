@@ -310,6 +310,12 @@ textarea {
   font-size: var(--fs-artist);
   white-space: nowrap;
 }
+/* 見出しの下の短い知らせ（v3.6.0：年間まとめの「3.6.0 から数え始めた」）。狭い窓では折り返す */
+.view-note {
+  color: var(--c-secondary);
+  font-size: var(--fs-artist);
+  margin-top: 2px;
+}
 .view-actions {
   display: flex;
   gap: 6px;
@@ -506,6 +512,33 @@ textarea {
 .t-fav {
   display: flex;
   justify-content: center;
+}
+/* 年間まとめ（v3.6.0）：順位（左端）と期間中の回数（時間の前）。数は桁を揃え、回数は時間と同じく右に寄せる */
+.t-rank,
+.t-plays {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* 5桁の回数（1曲を1日に 27 回を超えて1年続けたとき）は列に入らないので、隣へはみ出さず「…」で切る（数は吹き出しに出る） */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.t-rank {
+  text-align: center;
+  font-weight: 600;
+  color: var(--c-secondary);
+}
+.t-plays {
+  text-align: right;
+  color: var(--c-secondary);
+}
+.track-head .col-rank {
+  text-align: center;
+  white-space: nowrap;
+}
+.track-head .col-plays {
+  text-align: right;
+  white-space: nowrap;
 }
 .eq {
   width: 14px;

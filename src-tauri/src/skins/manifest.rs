@@ -21,8 +21,10 @@ pub const SCHEMA_VERSION: u64 = 1;
 /// skin.json の大きさの上限
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
-/// 差し替えられるアイコン（src\components\Icons.tsx の export 名）と、使える状態
-pub const ICONS: [(&str, &[&str]); 33] = [
+/// 差し替えられるアイコン（src\components\Icons.tsx の export 名）と、使える状態。
+/// v3.6.0：IconRanking（サイドバーの「年間まとめ」）を足した（34 個）。3.5.0 までの版は知らない名前として断るので、
+/// 使うスキンは minAppVersion を 3.6.0 にする（docs\スキンの作り方.md）
+pub const ICONS: [(&str, &[&str]); 34] = [
     ("IconMusic", &["default"]),
     ("IconUser", &["default"]),
     ("IconDisc", &["default"]),
@@ -56,6 +58,7 @@ pub const ICONS: [(&str, &[&str]); 33] = [
     ("IconLyrics", &["default"]),
     ("IconBack", &["default"]),
     ("IconLyricsRow", &["default"]),
+    ("IconRanking", &["default"]),
 ];
 
 /// 立ち絵の置き方の値（3.2.0 は right-rail だけ）

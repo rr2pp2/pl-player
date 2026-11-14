@@ -55,6 +55,8 @@ export const errorText: Record<ErrorCode, string> = {
   // 古い文字コードのタグの読み直し（v3.5.0）。断ったときは何も変えていない
   legacy_reread_busy: "古い文字コードのタグを読み直している途中です。終わってから、もう一度お試しください。",
   library_import_busy: "曲の取り込み・再走査の途中なので、古い文字コードのタグの読み直しを始めませんでした。終わってから、もう一度お試しください。",
+  // タグの編集画面の保存（v3.6.0）
+  track_removed_before_save: "この曲はライブラリから外されたので、保存しませんでした（曲ファイルは変えていません）。",
   other: "処理を完了できませんでした。",
 };
 
@@ -353,4 +355,41 @@ export function skinPartLabels(p: SkinParts): string[] {
   if (p.character) out.push("立ち絵");
   if (p.animated) out.push("動く画像");
   return out;
+}
+
+// ---- タグの編集画面の保存（v3.6.0） ----
+
+/** 保存できたときの知らせ。曲ファイルには書いたが、その間に曲がライブラリから外された（Rust が null を返した）ときは、戻していないことを言う */
+export function metadataSavedText(inLibrary: boolean): string {
+  return inLibrary
+    ? "タグを保存しました"
+    : "タグを曲ファイルに保存しました。保存の途中でこの曲がライブラリから外されたので、ライブラリには戻していません。";
+}
+
+// ---- 年間まとめ（v3.6.0） ----
+
+/** 数え始めた版（記録が無い・少ないときの知らせに出す） */
+export const YEARLY_SINCE_VERSION = "3.6.0";
+
+/** 時刻（ミリ秒）を、この PC の時刻の日付に（「2026年11月14日」） */
+export function yearlyDate(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 数えた期間（「2025年11月14日〜2026年11月14日」。365 日さかのぼったところから、画面を開いた時点まで） */
+export function yearlyPeriodText(t: { since: number; until: number }): string {
+  return `${yearlyDate(t.since)}〜${yearlyDate(t.until)}`;
+}
+
+/** 記録がまだ無いとき（期間の中に1回も無い）の一覧の文 */
+export const yearlyEmptyText = `まだ再生の記録がありません。${YEARLY_SINCE_VERSION} から、再生した回数を数え始めました（それより前の再生は数えていません）。`;
+
+/**
+ * 記録が1年に満たないときの知らせ（数え始めたのが期間の始まりより後）。それ以外は null。
+ * 記録が無いときは一覧の文（yearlyEmptyText）が同じことを言うので、ここでは出さない
+ */
+export function yearlyStartNote(t: { since: number; startedAt: number | null; ranked: number }): string | null {
+  if (t.ranked === 0 || t.startedAt === null || t.startedAt <= t.since) return null;
+  return `${YEARLY_SINCE_VERSION} から数え始めたので、${yearlyDate(t.startedAt)}より前の再生は入っていません。`;
 }

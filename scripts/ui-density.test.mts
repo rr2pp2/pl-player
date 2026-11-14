@@ -149,7 +149,7 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   assert.equal(eqs.length, 2, "再生中の印は2つの形のどちらにも");
   // （v3.5.0：アーティストだけは、コンパクトかどうかで列か段かが変わる。それ以外の列はコンパクトにかかわらず同じ）
   const colsBlock = tt.slice(tt.indexOf("const cols = {"), tt.indexOf("};", tt.indexOf("const cols = {")));
-  for (const k of ["album", "genre", "duration", "favorite", "trash"]) {
+  for (const k of ["rank", "album", "genre", "plays", "duration", "favorite", "trash"]) {
     const l = colsBlock.split(/\r?\n/).find((x) => x.trim().startsWith(`${k}:`));
     assert.ok(l, k);
     assert.ok(!/compact/.test(l!), `列の出し方はコンパクトにかかわらず同じ：${k}`);
@@ -163,7 +163,7 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   assert.match(line![1], /min-width: 0;/);
 });
 
-test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、同じ条件の列を同じ順に並べる（コンパクトのアーティストの列・幅の段で消えるアルバムとジャンルを含む）", () => {
+test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、同じ条件の列を同じ順に並べる（コンパクトのアーティストの列・幅の段で消えるアルバムとジャンル・年間まとめの順位と回数を含む）", () => {
   const tt = read("src/components/TrackTable.tsx");
   // 列の幅（template）：1項目1行。`X ? null : …` は X でないとき、`X ? … : null` は X のとき、条件の無いものはいつも
   const tplBlock = tt.slice(tt.indexOf("const template = ["), tt.indexOf("]", tt.indexOf("const template = [")));
@@ -208,7 +208,8 @@ test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、�
   const head = items(tt.slice(headStart, tt.indexOf('<div className="track-scroll"', headStart)), 8);
   const rowStart = tt.indexOf("onContextMenu={p.onContextMenu}");
   const row = items(tt.slice(rowStart, tt.indexOf("export function useTrackIdsMemo", rowStart)), 6).map((c) => c.replace(/^(!?)p\./, "$1"));
-  const expected = ["!compact", "always", "cols.artist", "cols.album", "cols.genre", "cols.duration", "cols.favorite", "cols.trash"];
+  // v3.6.0：年間まとめの順位（左端）と期間中の回数（時間の前）
+  const expected = ["cols.rank", "!compact", "always", "cols.artist", "cols.album", "cols.genre", "cols.plays", "cols.duration", "cols.favorite", "cols.trash"];
   assert.deepEqual(tpl, expected, "template");
   assert.deepEqual(head, expected, "header");
   assert.deepEqual(row, expected, "row");
@@ -216,11 +217,15 @@ test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、�
   assert.match(tt, /const artistOn = cfg\.artist !== false;/);
   assert.match(tt, /\n\s*artist: compact && artistOn,\r?\n/);
   assert.match(tt, /\n\s*artistLine: !compact && artistOn,\r?\n/);
-  // 幅の段（900・820px 未満でジャンル・アルバムが消える）×コンパクトの有無×アーティストの出し入れ×列の設定で、
+  // v3.6.0：順位と回数の列は、年間まとめ（props.ranking があるとき）だけ。どちらも同じ条件
+  assert.match(tt, /\n\s*rank: !!props\.ranking,\r?\n/);
+  assert.match(tt, /\n\s*plays: !!props\.ranking,\r?\n/);
+  // 幅の段（900・820px 未満でジャンル・アルバムが消える）×コンパクトの有無×アーティストの出し入れ×列の設定×年間まとめかどうかで、
   // 見出しと行の列の数が列の幅の数と同じ（cols.artist は上の作り方どおり compact と設定から決める）
   const count = (seq: string[], v: Record<string, boolean>) =>
     seq.filter((c) => c === "always" || (c.startsWith("!") ? !v[c.slice(1)] : v[c])).length;
   let combos = 0;
+  for (const ranking of [false, true])
   for (const compact of [false, true])
     for (const artistOn of [false, true])
       for (const album of [false, true])
@@ -228,6 +233,8 @@ test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、�
           for (const rest of [false, true]) {
             const v = {
               compact,
+              "cols.rank": ranking,
+              "cols.plays": ranking,
               "cols.artist": compact && artistOn,
               "cols.album": album,
               "cols.genre": genre,
@@ -235,15 +242,16 @@ test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、�
               "cols.favorite": rest,
               "cols.trash": !rest,
             };
-            const label = JSON.stringify({ ...v, artistOn });
+            const label = JSON.stringify({ ...v, artistOn, ranking });
             assert.equal(count(head, v), count(tpl, v), label);
             assert.equal(count(row, v), count(tpl, v), label);
             // 列の数：ジャケット（通常のとき）＋タイトル＋アーティスト（コンパクトで出すとき）＋…。アーティストを切ったコンパクトは1つ減る
-            const want = (compact ? 0 : 1) + 1 + (compact && artistOn ? 1 : 0) + (album ? 1 : 0) + (genre ? 1 : 0) + (rest ? 2 : 1);
+            // 年間まとめなら、順位と回数の2つが増える
+            const want = (ranking ? 2 : 0) + (compact ? 0 : 1) + 1 + (compact && artistOn ? 1 : 0) + (album ? 1 : 0) + (genre ? 1 : 0) + (rest ? 2 : 1);
             assert.equal(count(tpl, v), want, label);
             combos++;
           }
-  assert.equal(combos, 32);
+  assert.equal(combos, 64);
   // アルバム・ジャンルは幅の段で消える（JS の cols と、CSS の .col-album・.col-genre の両方）。アーティストの列はどの幅でも消さない
   assert.match(tt, /album: cfg\.album !== false && !size\.hideAlbum,/);
   assert.match(tt, /genre: cfg\.genre !== false && !size\.hideGenre,/);
