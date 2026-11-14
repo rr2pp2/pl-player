@@ -134,7 +134,7 @@ textarea {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px; /* v3.7.0：2 → 4px（項目の間を少し空ける） */
 }
 .section-label {
   font-size: 11px;
@@ -148,12 +148,13 @@ textarea {
   white-space: nowrap;
 }
 .nav-item {
+  position: relative; /* 選んだ項目の左の線（v3.7.0）の置き場 */
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   padding: 8px 10px;
-  min-height: 38px;
+  min-height: 40px; /* v3.7.0：38 → 40px。アイコンを大きくしたときは、今までどおり行が伸びる（高さは固定しない） */
   border: none;
   background: transparent;
   border-radius: var(--radius);
@@ -168,6 +169,23 @@ textarea {
 }
 .nav-item.active {
   background: var(--c-selected);
+  font-weight: 600;
+}
+/* 選んだ項目（v3.7.0）：背景の色だけに頼らず、左端に 3px のアクセントの線と、少し太い字でも示す。
+   線は項目の中に描く（たたんだサイドバーでも、項目の幅とアイコンの位置は変えない。下の .sidebar-collapsed では 2px） */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--c-accent);
+}
+.nav-item:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px; /* 項目の一覧は横にはみ出した分を隠すので、枠は内側に描く */
 }
 .nav-item.drop-over {
   outline: 2px solid var(--c-accent);
@@ -204,6 +222,10 @@ textarea {
   justify-content: center;
   padding: 8px 0;
 }
+/* たたんだサイドバーの中は 36px で、いちばん大きいアイコン（32px）の左は 2px しか空かない。線をアイコンに重ねないよう 2px にする */
+.sidebar-collapsed .sidebar .nav-item.active::before {
+  width: 2px;
+}
 .sidebar-collapsed .sidebar .section-label {
   justify-content: center;
   padding: 10px 0 4px;
@@ -239,7 +261,7 @@ textarea {
   padding: 0 12px;
   border-radius: var(--radius);
   background: var(--c-input);
-  border: 1px solid transparent;
+  border: 1px solid var(--c-outline); /* v3.7.0：入力欄と分かる輪郭（今までは枠なし） */
   transition: border-color var(--dur-hover) var(--ease);
 }
 .search:focus-within {
@@ -343,7 +365,8 @@ textarea {
   height: 32px;
   padding: 0 12px;
   border-radius: var(--radius-small);
-  border: 1px solid var(--c-border);
+  /* v3.7.0：操作部の輪郭は --c-outline（3:1。--c-border は飾りの区切り線として残す）。Light は今までと同じ値 */
+  border: 1px solid var(--c-outline);
   background: var(--c-input);
   cursor: pointer;
   white-space: nowrap;
@@ -353,6 +376,10 @@ textarea {
   background: var(--c-hover);
   border-color: var(--c-secondary);
 }
+.btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
 .btn.primary {
   background: var(--c-accent);
   border-color: var(--c-accent);
@@ -361,8 +388,13 @@ textarea {
 .btn.primary:hover {
   filter: brightness(1.08);
 }
+/* 危険な操作（削除・ごみ箱へ移す など）：赤で塗らず、危険の色の文字と輪郭で見分ける（v3.7.0 で輪郭を足した） */
 .btn.danger {
   color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+.btn.danger:hover {
+  border-color: var(--c-danger);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -389,10 +421,15 @@ textarea {
 .icon-btn:hover {
   background: var(--c-hover);
 }
+.icon-btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
 .icon-btn .icon {
   width: 20px;
   height: 20px;
 }
+/* オンの印（シャッフル・リピート・ミュート・歌詞など）はアクセントの色。お気に入りの星だけは黄色（下の .t-fav。作者の決定） */
 .icon-btn.on {
   color: var(--c-accent);
 }
@@ -417,8 +454,8 @@ textarea {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
-  column-gap: 14px;
-  padding: 0 18px;
+  column-gap: 12px; /* v3.7.0：列の間 14 → 12px・左右 18 → 16px */
+  padding: 0 16px;
 }
 .track-head {
   flex: none;
@@ -458,6 +495,18 @@ textarea {
 }
 .track-row.selected {
   background: var(--c-selected);
+}
+/* 選んだ行（v3.7.0）：背景の色に加えて、左端に 3px のアクセントの線（色だけに頼らない）。
+   行は TrackTable が絶対位置で置くので、線は行の中の絶対位置（列の格子には入らない）。コンパクト表示（36px）でも同じ */
+.track-row.selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--c-accent);
 }
 .track-row.playing .t-title {
   color: var(--c-accent);
@@ -630,6 +679,12 @@ textarea {
 .group-card:hover {
   background: var(--c-hover);
 }
+/* v3.7.0：キーボードで移ったときの枠を、曲一覧・歌詞の行・サイドバーと同じ形に（アーティスト・アルバム・ジャンルの一覧） */
+.group-card:focus-visible,
+.group-row:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
 .group-card .art {
   width: 100%;
   aspect-ratio: 1;
@@ -715,18 +770,24 @@ textarea {
   color: var(--c-secondary);
   font-variant-numeric: tabular-nums;
 }
+/* 再生の操作（v3.7.0）：主な操作の再生・一時停止を 44px、ほかのボタン（前・次・シャッフル・リピート・ミュート・歌詞）を 36px、間を 4px。
+   並び・出し入れ（設定の「再生バーのボタン」）は変えない */
 .player-controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
-.play-btn {
-  width: 42px;
-  height: 42px;
+.player-controls .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+.player-controls .play-btn {
+  width: 44px;
+  height: 44px;
   background: var(--c-primary);
   color: var(--c-bg);
 }
-.play-btn:hover {
+.player-controls .play-btn:hover {
   background: var(--c-primary);
   transform: scale(1.04);
 }
@@ -771,9 +832,23 @@ textarea {
   opacity: 0;
   transition: opacity var(--dur-hover) var(--ease);
 }
+/* つまみは指を乗せたとき・キーボードで移ったときに出す。済んだところ（--c-accent の帯）は、つまみが無くてもいつも見える。
+   v3.7.0：出したつまみはパネルの色の縁取りで帯から浮かせ、キーボードで移ったときは帯の周りにフォーカスの枠も描く */
 .range:hover::-webkit-slider-thumb,
 .range:focus-visible::-webkit-slider-thumb {
   opacity: 1;
+  box-shadow: 0 0 0 2px rgb(var(--c-panel-rgb)), 0 0 0 3px var(--c-accent);
+}
+.range:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.range:disabled {
+  cursor: default;
+}
+.range:disabled::-webkit-slider-thumb {
+  opacity: 0;
 }
 
 /* ---------- 重ねて出すもの ---------- */
@@ -846,13 +921,26 @@ textarea {
   background: transparent;
   text-align: left;
   padding: 8px 10px;
+  min-height: 36px; /* v3.7.0：項目の高さを 36px 以上にそろえる */
   border-radius: var(--radius-small);
   cursor: pointer;
   white-space: nowrap;
 }
 .menu-item:hover,
+.menu-item:focus-visible,
 .menu-item.open {
   background: var(--c-hover);
+}
+.menu-item:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.menu-item:disabled:hover {
+  background: transparent;
 }
 .menu-item.danger {
   color: var(--c-danger);
@@ -861,6 +949,10 @@ textarea {
   width: 16px;
   height: 16px;
   color: var(--c-secondary);
+}
+/* 危険な項目（ライブラリから外す・ごみ箱へ移す・削除）は、アイコンも危険の色に（v3.7.0）。スキンの画像には色を掛けない（color は SVG にだけ効く） */
+.menu-item.danger .icon {
+  color: var(--c-danger);
 }
 .menu-sep {
   height: 1px;
@@ -1022,8 +1114,11 @@ textarea {
 .key-grid > .field {
   grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
 }
-/* 文が折り返す欄：左の項目名を、右の1行目にそろえる（.field の中央寄せのままだと、右の1行目が項目名より上へずれる） */
-.field.field-top {
+/* 文が折り返す欄：左の項目名を、右の1行目にそろえる（.field の中央寄せのままだと、右の1行目が項目名より上へずれる）。
+   v3.7.0：チェックを並べた欄（再生バーのボタン・サイドバーの項目・曲一覧の列など）は、幅によって複数行に折り返すので、
+   field-top を付けなくても同じく1行目にそろえる（項目名とチェックの文字は同じ大きさなので、上をそろえれば1行目の文字がそろう） */
+.field.field-top,
+.field:has(> .row > label.row) {
   align-items: start;
 }
 .row.check-long > span {
@@ -1037,7 +1132,7 @@ textarea.input {
   height: 34px;
   padding: 0 10px;
   border-radius: var(--radius-small);
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-outline); /* v3.7.0：操作部の輪郭 */
   background: var(--c-input);
   outline: none;
   user-select: text;
@@ -1052,7 +1147,7 @@ textarea.input {
 }
 .seg {
   display: inline-flex;
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-outline);
   border-radius: var(--radius-small);
   overflow: hidden;
 }
@@ -1061,6 +1156,14 @@ textarea.input {
   background: transparent;
   padding: 6px 14px;
   cursor: pointer;
+  transition: background var(--dur-hover) var(--ease);
+}
+.seg button:hover {
+  background: var(--c-hover);
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
 }
 .seg button.on {
   background: var(--c-accent);
@@ -1071,7 +1174,7 @@ textarea.input {
   height: 32px;
   padding: 0 10px;
   border-radius: var(--radius-small);
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-outline);
   background: var(--c-input);
   display: inline-flex;
   align-items: center;
@@ -1199,6 +1302,10 @@ textarea.input {
   .editor-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+/* 設定の欄（v3.7.0：719px 以下 → 760px 以下）：項目名 → 操作 → 説明の1列に並べる。
+   760px 以下では、サイドバー（たたんで 64px）と余白を引くと設定の節が 650px ほどになり、項目名の列（最大 200px）を取ると操作の列が狭くなるため */
+@media (max-width: 760px) {
   .field {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1583,7 +1690,7 @@ textarea.input.lyrics-input {
 }
 
 /* ---------- 流れる歌詞の列（v3.0.2）。再生バーの下に 48px。色は既存の変数だけ ---------- */
-/* 列を出している間：再生バーは上の 84px のまま（高さと中身の並びは変えない）。下の角だけ列とつなぐ */
+/* 列を出している間：再生バーは上の --player-h（80px。v3.7.0 で 84 → 80px）のまま（高さと中身の並びは変えない）。下の角だけ列とつなぐ */
 .app.lyrics-row-on .player {
   align-self: start;
   height: var(--player-h);
@@ -2089,11 +2196,34 @@ img.skin-icon {
   text-align: center;
   white-space: nowrap;
 }
+/* 行のボタン（お気に入り・ごみ箱。v3.7.0）：32px の面と操作部の輪郭（--c-outline）。オフは中間の色（--c-secondary）。
+   スキンの画像のアイコン（img.skin-icon）には色も薄さも掛けない（color は SVG の線と塗りにだけ効く）。オン・オフは面と輪郭でも分かる */
+.t-fav .icon-btn,
 .t-trash .icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--c-outline);
   color: var(--c-secondary);
+}
+.t-fav .icon-btn:hover {
+  color: var(--c-primary);
+}
+/* お気に入りのオン（作者の決定：星は黄色）：塗った星を --c-favorite、面は薄い選ぶ色（--c-selected）。ほかのオンの印（.icon-btn.on）はアクセントの色のまま */
+.t-fav .icon-btn.on,
+.t-fav .icon-btn.on:hover {
+  color: var(--c-favorite);
+  background: var(--c-selected);
 }
 .t-trash .icon-btn:hover {
   color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+/* コンパクト表示（行 36px）：上下に 4px を残すため 28px（面・輪郭・色は通常の行と同じ） */
+.track-table.compact .t-fav .icon-btn,
+.track-table.compact .t-trash .icon-btn {
+  width: 28px;
+  height: 28px;
 }
 /* 設定のタブ：入りきらなければ幅に合わせて複数行に折り返す（横には送らない）。
    「元の順番に戻す」は1行目の右に置き、タブの列が狭くなりすぎる幅（タブの列が 240px を切る）では、タブの下の行へ回る */
@@ -2115,12 +2245,14 @@ img.skin-icon {
   min-width: 0;
   padding: 2px;
 }
+/* v3.7.0：選んでいないタブは枠を付けず控えめな面（--c-input）、選んだタブは薄い選ぶ色の面と下のアクセントの線。
+   キーボードで移ったときはフォーカスの枠。並べ替え（ドラッグ・キーボード）・折り返し・「元の順番に戻す」は変えない */
 .settings-tab {
   flex: none;
   padding: 6px 14px;
-  border: 1px solid var(--c-border);
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  background: transparent;
+  background: var(--c-input);
   color: var(--c-primary);
   font-size: var(--fs-settings);
   white-space: nowrap;
@@ -2133,7 +2265,11 @@ img.skin-icon {
 }
 .settings-tab[aria-selected="true"] {
   background: var(--c-selected);
-  border-color: var(--c-accent);
+  box-shadow: inset 0 -2px 0 var(--c-accent); /* 字の太さは変えない（選ぶたびにタブの幅が変わり、折り返しがずれるため） */
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
 }
 .settings-tab.dragging {
   opacity: 0.6;
@@ -2150,4 +2286,37 @@ img.skin-icon {
   position: absolute;
   bottom: 0;
   visibility: hidden;
+}
+
+/* ---------- v3.7.0：デザインの見直し（動きを減らす設定） ---------- */
+/* 行のごみ箱のボタン：移している途中は押せない（disabled）ことを薄さで示す（押せないボタン .btn:disabled と同じ 0.45） */
+.t-trash .icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.t-trash .icon-btn:disabled:hover {
+  color: var(--c-secondary);
+  border-color: var(--c-outline);
+  background: transparent;
+}
+/* 動きを減らす設定：色・面の移り変わりを即時にし、再生ボタンの拡大を止める（並べ替えの位置の動きは dnd-kit が決める。サイドバーの動きは今までどおり） */
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn,
+  .btn,
+  .nav-item,
+  .track-row,
+  .group-card,
+  .group-row,
+  .seg button,
+  .settings-tab,
+  .search,
+  .range::-webkit-slider-thumb {
+    transition: none;
+  }
+  .player-controls .play-btn:hover {
+    transform: none;
+  }
+  .play-btn .icon {
+    transition: none;
+  }
 }

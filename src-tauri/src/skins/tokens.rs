@@ -2,8 +2,10 @@
 //! 画面側（src\skins\tokens.ts）も、当てる前に同じ決まりで確かめ直す（二重の守り）。
 //! 値は形をそろえて返す（`#abc` → `#aabbcc`、`rgb(…)` → `#rrggbb`、`rgba(…)` → `rgba(r, g, b, a)`、`r,g,b` → `r, g, b`）。
 
-/// テーマごとに変えてよい色（src\theme\dark.css・light.css と同じ名前）
-pub const COLOR_VARS: [&str; 13] = [
+/// テーマごとに変えてよい色（src\theme\dark.css・light.css と同じ名前）。
+/// v3.7.0 で `--c-outline`（操作部の輪郭）と `--c-favorite`（お気に入りのオンの星）を足した（13 → 15）。
+/// 3.6.0 までの版は、この2つを知らない名前として警告して使わない（取り込みは断らない）
+pub const COLOR_VARS: [&str; 15] = [
     "--c-bg",
     "--c-panel-rgb",
     "--c-overlay-rgb",
@@ -14,12 +16,14 @@ pub const COLOR_VARS: [&str; 13] = [
     "--c-hover",
     "--c-selected",
     "--c-border",
+    "--c-outline",
     "--c-input",
     "--c-danger",
     "--c-ok",
+    "--c-favorite",
 ];
 
-/// 文字の大きさ（既定値 px）。スキンは既定から ±2px まで（行の高さ 64px は変えないので、大きくしすぎるとはみ出す）
+/// 文字の大きさ（既定値 px）。スキンは既定から ±2px まで（行の高さ 60px は変えないので、大きくしすぎるとはみ出す。v3.7.0 で 64 → 60px）
 pub const FONT_SIZE_VARS: [(&str, u32); 6] = [
     ("--fs-title", 17),
     ("--fs-title-list", 16),
@@ -244,6 +248,30 @@ mod tests {
         assert_eq!(common_token("--row-h", &json!(80)), CommonToken::Locked);
         assert_eq!(common_token("--ui-alpha", &json!(1)), CommonToken::Locked);
         assert_eq!(common_token("--whatever", &json!(1)), CommonToken::Unknown);
+    }
+
+    /// v3.7.0：スキンから変えられる色は 15 個。名前は画面のテーマ（dark.css・light.css）の `--c-*` と同じ（足し忘れ・消し忘れが無い）
+    #[test]
+    fn color_vars_match_the_theme_files() {
+        assert_eq!(COLOR_VARS.len(), 15);
+        assert!(COLOR_VARS.contains(&"--c-outline"));
+        assert!(COLOR_VARS.contains(&"--c-favorite"));
+        let names = |css: &str| {
+            let mut v: Vec<String> = css
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix("--c-").map(|r| format!("--c-{}", r.split(':').next().unwrap_or("").trim())))
+                .collect();
+            v.sort();
+            v
+        };
+        let mut want: Vec<String> = COLOR_VARS.iter().map(|s| s.to_string()).collect();
+        want.sort();
+        assert_eq!(names(include_str!("../../../src/theme/dark.css")), want);
+        assert_eq!(names(include_str!("../../../src/theme/light.css")), want);
+        // 新しい2つの値の形も、ほかの色と同じ確かめを通る
+        assert_eq!(color_token("--c-outline", "rgba(255,255,255,.44)").as_deref(), Some("rgba(255, 255, 255, 0.44)"));
+        assert_eq!(color_token("--c-favorite", "#FFD23F").as_deref(), Some("#ffd23f"));
+        assert_eq!(color_token("--c-favorite", "gold"), None);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 // 任意の CSS の文字列は受け取らない。レイアウトの寸法（--row-h など）と背景の設定（--bg-dim など）は変えさせない。
 // ほかに依存しない純粋な関数だけを置く（scripts\skins.test.mts から Node だけで確かめるため）。
 
-/** テーマごとに変えてよい色（src\theme\dark.css・light.css と同じ名前） */
+/** テーマごとに変えてよい色（src\theme\dark.css・light.css と同じ名前）。v3.7.0 で --c-outline・--c-favorite を足した（15 個。Rust の COLOR_VARS と同じ） */
 export const COLOR_VARS = [
   "--c-bg",
   "--c-panel-rgb",
@@ -15,9 +15,11 @@ export const COLOR_VARS = [
   "--c-hover",
   "--c-selected",
   "--c-border",
+  "--c-outline",
   "--c-input",
   "--c-danger",
   "--c-ok",
+  "--c-favorite",
 ] as const;
 
 /** 文字の大きさの既定値（src\theme\tokens.css）。スキンは ±2px まで */

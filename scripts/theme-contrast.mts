@@ -1,6 +1,6 @@
 // テーマの色の、文字と背景の濃さの差（WCAG 2.x のコントラスト比）を計算する（v3.1.2）。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない）：
-//   node scripts/theme-contrast.mts            … Light の表を Markdown で出す（docs\テーマの色の根拠.md の表はこれで作った）
+//   node scripts/theme-contrast.mts            … Light と Dark の表を Markdown で出す（docs\テーマの色の根拠.md の表はこれで作った）
 //   node --test scripts/theme-contrast.test.mts … 基準（本文 4.5:1・大きい文字と線 3:1）を満たすかを確かめる
 //
 // 重ね方は画面と同じ（src\theme\base.css）：背景画像 → 覆い rgba(--c-overlay-rgb, --bg-dim) → パネル rgba(--c-panel-rgb, --ui-alpha) → 文字。
@@ -87,7 +87,9 @@ export type Check = { name: string; fg: RGB; bg: RGB; min: number };
  *   --c-danger（削除のボタン・エラーの文）・--c-ok（できたの文）
  * - 下の色：パネル・選んだ行（--c-selected）・指を乗せた行（--c-hover）・入力欄（--c-input）・メニュー（パネルの色を 0.92〜0.98）
  * - 塗りの上の文字：--c-accent の上の --c-accent-contrast（主なボタン）・--c-primary の上の --c-bg（再生ボタンの絵）
- * - 線（3:1）：--c-border（入力欄・ボタンの枠・区切り・シークバーの残り）・--c-accent（フォーカスの枠・シークバーの済んだところ）
+ * - 線（3:1）：--c-border（区切り・シークバーの残り。Dark では飾りの線で、基準の外）・--c-accent（フォーカスの枠・シークバーの済んだところ）・
+ *   --c-outline（v3.7.0：ボタン・入力欄・行のボタンの輪郭）
+ * - アイコン（3:1）：--c-favorite（v3.7.0：お気に入りのオンの星。オンのボタンの面 --c-selected の上）
  */
 export function checks(t: Record<string, string>, s: Scene): Check[] {
   const bgColor = color(t["--c-bg"]).rgb;
@@ -125,6 +127,14 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "線 --c-border／パネル", fg: on(panel, "--c-border"), bg: panel, min: 3 });
   out.push({ name: "線 --c-border／入力欄の中", fg: on(panel, "--c-border"), bg: input, min: 3 });
   out.push({ name: "線 --c-accent（フォーカス・シークバー）／パネル", fg: text("--c-accent"), bg: panel, min: 3 });
+  // v3.7.0：操作部の輪郭（ボタン・入力欄・行のボタン・設定のタブ）。輪郭は部品の面（--c-input）の上に描かれ、外はパネル
+  out.push({ name: "線 --c-outline（操作部の輪郭）／パネル", fg: on(input, "--c-outline"), bg: panel, min: 3 });
+  out.push({ name: "線 --c-outline（操作部の輪郭）／入力欄の中", fg: on(input, "--c-outline"), bg: input, min: 3 });
+  // v3.7.0：お気に入りのオンの星（アイコン 3:1）。オンのボタンの面（--c-selected）の上。行が選ばれている・指を乗せているときは、その上に重なる
+  const favOn = (row: RGB) => on(row, "--c-selected");
+  out.push({ name: "--c-favorite（星）／オンのボタンの面", fg: text("--c-favorite"), bg: favOn(panel), min: 3 });
+  out.push({ name: "--c-favorite（星）／選んだ行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(selected), min: 3 });
+  out.push({ name: "--c-favorite（星）／指を乗せた行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(hover), min: 3 });
   return out;
 }
 
@@ -143,21 +153,25 @@ export function minUiOpacity(themePath: string, dim: number): number | null {
   return null;
 }
 
-// 直接走らせたときは Markdown の表を出す
+// 直接走らせたときは Markdown の表を出す（Light、続けて Dark。v3.7.0 で Dark も出すようにした）
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const light = new URL("../src/theme/light.css", import.meta.url);
-  const path = fileURLToPath(light);
-  const rows = evaluate(path);
-  console.log("| 場面 | 組み合わせ | 文字・線 | 下の色 | 比 | 基準 |");
-  console.log("|---|---|---|---|---|---|");
-  for (const r of rows) {
-    console.log(`| ${r.scene} | ${r.name} | ${toHex(r.fg)} | ${toHex(r.bg)} | ${r.ratio.toFixed(2)} | ${r.min} |`);
-  }
-  console.log("");
-  console.log("| 背景の暗さ | 基準を満たす UI の不透明度（最小） |");
-  console.log("|---|---|");
-  for (const dim of [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.95]) {
-    const m = minUiOpacity(path, dim);
-    console.log(`| ${Math.round(dim * 100)}% | ${m === null ? "満たせない" : Math.round(m * 100) + "%"} |`);
+  for (const theme of ["light", "dark"]) {
+    const path = fileURLToPath(new URL(`../src/theme/${theme}.css`, import.meta.url));
+    const rows = evaluate(path);
+    console.log(`## ${theme}`);
+    console.log("");
+    console.log("| 場面 | 組み合わせ | 文字・線 | 下の色 | 比 | 基準 |");
+    console.log("|---|---|---|---|---|---|");
+    for (const r of rows) {
+      console.log(`| ${r.scene} | ${r.name} | ${toHex(r.fg)} | ${toHex(r.bg)} | ${r.ratio.toFixed(2)} | ${r.min} |`);
+    }
+    console.log("");
+    console.log("| 背景の暗さ | 基準を満たす UI の不透明度（最小） |");
+    console.log("|---|---|");
+    for (const dim of [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.95]) {
+      const m = minUiOpacity(path, dim);
+      console.log(`| ${Math.round(dim * 100)}% | ${m === null ? "満たせない" : Math.round(m * 100) + "%"} |`);
+    }
+    console.log("");
   }
 }

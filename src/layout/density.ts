@@ -20,13 +20,13 @@ export type CompactListMode = (typeof COMPACT_LIST_MODES)[number]["id"];
 
 /**
  * 「ウィンドウが狭いときだけ」の境目：ウィンドウの幅がこれ未満のときコンパクトにする。
- * useLayoutSize の「3. ジャケットを縮める」（720px 未満で 48 → 36px）と同じ境目。
+ * useLayoutSize の「3. ジャケットを縮める」（720px 未満で 44 → 36px。3.6.0 までは 48 → 36px）と同じ境目。
  * 今までの作りが「ジャケットが大きすぎる」と決めている幅なので、そこから先はジャケットを縮める代わりに消す
  * （新しい境目を足さない。サイドバー 1100・ジャンル 900・アルバム 820 の列が先に消えたあと）
  */
 export const COMPACT_NARROW_BELOW = 720;
 
-/** コンパクト表示の行の高さ（px）。行の中で一番高い部品は、お気に入り・ごみ箱のボタン（.icon-btn.small）の 28px。上下に 4px ずつ残す */
+/** コンパクト表示の行の高さ（px）。行の中で一番高い部品は、お気に入り・ごみ箱のボタン（コンパクト表示では 28px。v3.7.0 から通常の行では 32px の面）。上下に 4px ずつ残す */
 export const COMPACT_ROW_H = 36;
 
 /** 設定の値を読む。知らない値・値が無い（3.3.0 までの設定）は「使わない」 */
@@ -43,7 +43,7 @@ export function compactListOn(ui: DensityUiLike | null | undefined, width: numbe
   return false;
 }
 
-/** 曲一覧の行の高さ：コンパクトなら COMPACT_ROW_H、そうでなければ今までの高さ（useLayoutSize の rowH：64、600px 未満は 48） */
+/** 曲一覧の行の高さ：コンパクトなら COMPACT_ROW_H、そうでなければ通常の高さ（useLayoutSize の rowH：60（v3.7.0。3.6.0 までは 64）、600px 未満は 48） */
 export function trackRowHeight(compact: boolean, normalRowH: number): number {
   return compact ? COMPACT_ROW_H : normalRowH;
 }

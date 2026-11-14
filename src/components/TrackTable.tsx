@@ -10,6 +10,8 @@
 // 通常の表示ではタイトルの下の段を出し入れする（行の高さは変えない）。幅では隠さない。
 // v3.6.0：年間まとめ（src\views\YearlyView.tsx）では、順位の列（左端）と期間中の回数の列（時間の前）を足す（props.ranking）。
 // 並びは Rust が決めた順位の順のまま（props.fixedOrder：見出しで並べ替えない）。
+// v3.7.0（デザインの見直し）：通常の行 60px・ジャケット 44px（useLayoutSize。CSS の --row-h・--row-art と同じ値）。選んだ行の左の線・
+// お気に入りとごみ箱の 32px の面（コンパクトでは 28px）・お気に入りのオンの星の黄色は base.css だけで描く（列・見出し・処理は変えない）。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
@@ -108,9 +110,11 @@ export function TrackTable(props: Props) {
     cols.plays ? "44px" : null,
     cols.duration ? "52px" : null,
     // お気に入りの列：見出しの「お気に入り」（12px の字で5字＝60px）が切れない 68px（v3.3.0 の作者の要望）。
-    // v3.5.0 で一度、見出しを星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーの項目に出す）
+    // v3.5.0 で一度、見出しを星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーの項目に出す）。
+    // v3.7.0 のデザインの見直しでも、見出しは文字のまま 68px（星＋文字の 84px の案は採らない。作者の決定）
     cols.favorite ? "68px" : null,
-    // ごみ箱の列：見出しの「ごみ箱」（12px の字で3字＝36px）が切れない 44px。窓の幅にかかわらず同じ
+    // ごみ箱の列：見出しの「ごみ箱」（12px の字で3字＝36px）が切れない 44px。窓の幅にかかわらず同じ。
+    // v3.7.0：行のボタンを 32px の面にしたが、44px に収まるので幅は変えない（見出しは文字「ごみ箱」のまま。作者の決定）
     cols.trash ? "44px" : null,
   ]
     .filter(Boolean)

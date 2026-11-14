@@ -14,7 +14,7 @@
 
   /* 角丸（基本 8〜12px、重要なカード 12〜16px） */
   --radius: 10px;
-  --radius-card: 14px;
+  --radius-card: 12px; /* v3.7.0：14 → 12px（パネルの角を少し締める） */
   --radius-small: 8px;
 
   /* 影（背景と UI を分ける程度。Glow は使わない） */
@@ -31,9 +31,11 @@
   /* 大きさ（幅で変わるものは base.css のメディアクエリで上書き） */
   --sidebar-w: 236px;
   --sidebar-w-collapsed: 64px;
-  --row-h: 64px;
-  --row-art: 48px;
-  --player-h: 84px;
+  /* 曲一覧の1行とジャケット（v3.7.0：64 → 60px・48 → 44px）。JS の行の高さ（src\components\useLayoutSize.ts）と同じ値にする
+     （仮想スクロールの1行の高さ。scripts\ui-density.test.mts で確かめる）。コンパクト表示の 36px は src\layout\density.ts */
+  --row-h: 60px;
+  --row-art: 44px;
+  --player-h: 80px; /* v3.7.0：84 → 80px */
   --topbar-h: 56px;
   --lyrics-row-h: 48px;     /* 再生バーの下の流れる歌詞の列（v3.0.2） */
   --lyrics-row-anchor: 22px; /* 列の中で今の行の左端をそろえる位置（狭いときは base.css で 14px） */

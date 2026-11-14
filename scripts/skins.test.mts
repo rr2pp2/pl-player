@@ -297,13 +297,42 @@ test("コントラストの計算は scripts/theme-contrast.mts と同じ（Ligh
   for (const f of [light, dark]) {
     const a = evaluateFile(f);
     const b = evaluate(readTheme(f), {});
-    assert.equal(a.length, 69);
+    assert.equal(a.length, 84); // 場面3つ × 28 通り（v3.7.0 で輪郭2・お気に入りの星3を足した）
     assert.deepEqual(
       b.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
       a.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
     );
   }
   assert.equal(ratio([255, 255, 255], [0, 0, 0]).toFixed(2), "21.00");
+});
+
+test("v3.7.0：スキンから変えられる色は 15 個（--c-outline・--c-favorite を足した）。Rust の COLOR_VARS・テーマの CSS の --c-* と同じ名前", () => {
+  assert.equal(COLOR_VARS.length, 15);
+  const rs = readFileSync(fileURLToPath(new URL("../src-tauri/src/skins/tokens.rs", import.meta.url)), "utf8");
+  const m = rs.match(/pub const COLOR_VARS: \[&str; (\d+)\] = \[([^\]]*)\];/);
+  assert.ok(m, "Rust COLOR_VARS");
+  assert.equal(Number(m![1]), COLOR_VARS.length);
+  assert.deepEqual([...m![2].matchAll(/"([^"]+)"/g)].map((x) => x[1]), [...COLOR_VARS]);
+  for (const f of [light, dark]) {
+    assert.deepEqual(Object.keys(readTheme(f)).filter((k) => k.startsWith("--c-")).sort(), [...COLOR_VARS].sort(), f);
+  }
+  // 当てる・確かめる
+  assert.equal(validColorToken("--c-outline", "rgba(255,255,255,.44)"), "rgba(255, 255, 255, 0.44)");
+  assert.equal(validColorToken("--c-favorite", "#FFD23F"), "#ffd23f");
+  assert.equal(validColorToken("--c-favorite", "gold"), null);
+  const r = skinCssVars({ dark: { tokens: { "--c-outline": "#808080", "--c-favorite": "#ffcc00" }, shadow: null }, light: null, fontFamily: [], tokens: {} }, "dark");
+  assert.deepEqual(r, { vars: { "--c-outline": "#808080", "--c-favorite": "#ffcc00" }, rejected: [] });
+  assert.ok(SKIN_VARS.includes("--c-outline") && SKIN_VARS.includes("--c-favorite"));
+});
+
+test("v3.7.0：輪郭とお気に入りの星を読みにくい色にしたスキンは、その組み合わせだけ警告する", () => {
+  const D = readTheme(dark);
+  const L = readTheme(light);
+  const o = contrastWarnings(D, { "--c-outline": "rgba(255, 255, 255, 0.1)" });
+  assert.ok(o.length > 0 && o.every((r) => r.name.includes("--c-outline")), JSON.stringify(o.map((r) => r.name)));
+  const f = contrastWarnings(L, { "--c-favorite": "#ffd23f" }); // Dark の黄色を Light に当てる
+  assert.ok(f.length > 0 && f.every((r) => r.name.includes("--c-favorite")), JSON.stringify(f.map((r) => r.name)));
+  assert.deepEqual(contrastWarnings(D, { "--c-favorite": "#ffd23f" }), []);
 });
 
 test("コントラストの警告：スキンで新しく届かなくなった組み合わせだけ。色を変えないスキンは警告なし", () => {

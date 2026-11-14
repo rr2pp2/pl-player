@@ -60,7 +60,7 @@ export function scenes(dim = DEFAULT_DIM, ui = DEFAULT_UI): Scene[] {
 
 export type Check = { name: string; fg: RGB; bg: RGB; min: number };
 
-/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 23 通り） */
+/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 28 通り。v3.7.0 で輪郭2・お気に入りの星3を足した） */
 export function checks(t: Record<string, string>, s: Scene): Check[] {
   const bgColor = color(t["--c-bg"]).rgb;
   const base = s.image ?? bgColor;
@@ -97,6 +97,14 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "線 --c-border／パネル", fg: on(panel, "--c-border"), bg: panel, min: 3 });
   out.push({ name: "線 --c-border／入力欄の中", fg: on(panel, "--c-border"), bg: input, min: 3 });
   out.push({ name: "線 --c-accent（フォーカス・シークバー）／パネル", fg: text("--c-accent"), bg: panel, min: 3 });
+  // v3.7.0：操作部の輪郭（ボタン・入力欄・行のボタン・設定のタブ）。輪郭は部品の面（--c-input）の上に描かれ、外はパネル
+  out.push({ name: "線 --c-outline（操作部の輪郭）／パネル", fg: on(input, "--c-outline"), bg: panel, min: 3 });
+  out.push({ name: "線 --c-outline（操作部の輪郭）／入力欄の中", fg: on(input, "--c-outline"), bg: input, min: 3 });
+  // v3.7.0：お気に入りのオンの星（アイコン 3:1）。オンのボタンの面（--c-selected）の上。行が選ばれている・指を乗せているときは、その上に重なる
+  const favOn = (row: RGB) => on(row, "--c-selected");
+  out.push({ name: "--c-favorite（星）／オンのボタンの面", fg: text("--c-favorite"), bg: favOn(panel), min: 3 });
+  out.push({ name: "--c-favorite（星）／選んだ行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(selected), min: 3 });
+  out.push({ name: "--c-favorite（星）／指を乗せた行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(hover), min: 3 });
   return out;
 }
 

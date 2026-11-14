@@ -429,6 +429,37 @@ fn only_colors_or_only_character() {
     assert!(r.character.is_none() && r.icons.is_empty() && !r.has_application);
 }
 
+/// v3.7.0：操作部の輪郭（`--c-outline`）とお気に入りの星（`--c-favorite`）は、ほかの色と同じくスキンから変えられる
+/// （知らない名前の警告を出さず、形をそろえて残す）。値の形が違えば、ほかの色と同じく断る
+#[test]
+fn outline_and_favorite_colors_are_skinnable() {
+    let d = dirs("outline-fav");
+    let ok = manifest(
+        "outline-fav",
+        serde_json::json!({"appearance": {"themes": {
+            "dark": {"tokens": {"--c-outline": "rgba(255,255,255,.5)", "--c-favorite": "#FFCC00"}},
+            "light": {"tokens": {"--c-outline": "rgb(0, 0, 0)", "--c-favorite": "#6b4c00"}}
+        }}}),
+    );
+    let mut m: serde_json::Value = serde_json::from_slice(&ok).unwrap();
+    m.as_object_mut().unwrap().remove("preview");
+    let (insp, _staged) = inspect(&d, &[Z::file("skin.json", &serde_json::to_vec(&m).unwrap())]).unwrap();
+    assert!(insp.warnings.iter().all(|w| !w.code.contains("token")), "{:?}", insp.warnings);
+    let a = insp.appearance.expect("appearance");
+    let dark = a.dark.expect("dark").tokens;
+    assert_eq!(dark.get("--c-outline").map(String::as_str), Some("rgba(255, 255, 255, 0.5)"));
+    assert_eq!(dark.get("--c-favorite").map(String::as_str), Some("#ffcc00"));
+    let light = a.light.expect("light").tokens;
+    assert_eq!(light.get("--c-outline").map(String::as_str), Some("#000000"));
+    assert_eq!(light.get("--c-favorite").map(String::as_str), Some("#6b4c00"));
+    let bad = manifest("outline-bad", serde_json::json!({"appearance": {"themes": {"dark": {"tokens": {"--c-favorite": "gold"}}}}}));
+    let mut m: serde_json::Value = serde_json::from_slice(&bad).unwrap();
+    m.as_object_mut().unwrap().remove("preview");
+    // 断る側は別の場所で（上で通したスキンの一時の場所が残っているため。kind は一時の場所が空になったことも確かめる）
+    let d2 = dirs("outline-fav-bad");
+    assert_eq!(kind(&d2, &[Z::file("skin.json", &serde_json::to_vec(&m).unwrap())]), ErrorKind::SkinManifestInvalid);
+}
+
 /// zip の中の名前を断るときの `detail`（壊す担当の検査5回目のあとの直し）。U+202E・タグ文字・制御文字・UTF-8 でないバイト・
 /// とても長い名前を、ふつうの項目・リンク・暗号化の印の付いた項目・外すフォルダ・外にはみ出した形に入れて、
 /// どの `detail` も見える文字と U+0020 だけで、全体は `DETAIL_MAX_CHARS` まで、名前は `NAME_SHOWN_MAX` までであること。

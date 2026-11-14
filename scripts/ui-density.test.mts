@@ -16,6 +16,7 @@ import {
   sidebarIconPx,
   trackRowHeight,
 } from "../src/layout/density.ts";
+import { layoutSizeFor } from "../src/components/useLayoutSize.ts";
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
@@ -50,19 +51,70 @@ test("狭いときの境目は、ジャケットが縮む段（useLayoutSize の
   assert.match(css, new RegExp(`@media \\(max-width: ${COMPACT_NARROW_BELOW - 1}px\\) \\{\\s*\\.hide-narrow`), "base.css の「3. ジャケットを縮める」");
 });
 
-test("行の高さ：コンパクトなら 36px（幅の段にかかわらず）、そうでなければ今までの高さ。行の中のボタンが収まる", () => {
+test("行の高さ：コンパクトなら 36px（幅の段にかかわらず）、そうでなければ通常の高さ。行の中のボタンが収まる", () => {
   assert.equal(COMPACT_ROW_H, 36);
-  for (const normal of [64, 48]) {
+  for (const normal of [60, 48]) {
     assert.equal(trackRowHeight(true, normal), COMPACT_ROW_H);
     assert.equal(trackRowHeight(false, normal), normal);
   }
-  // 行の中で一番高い部品：お気に入り・ごみ箱のボタン（.icon-btn.small）。上下に 4px 以上残す
+  // 行の中で一番高い部品：お気に入り・ごみ箱のボタン（v3.7.0：通常 32px・コンパクト 28px の面）。上下に 4px 以上残す
   const css = read("src/theme/base.css");
-  const small = css.match(/\.icon-btn\.small \{\s*width: (\d+)px;\s*height: (\d+)px;/);
-  assert.ok(small, ".icon-btn.small");
-  assert.ok(COMPACT_ROW_H >= Number(small![2]) + 8, `${COMPACT_ROW_H} >= ${small![2]} + 8`);
-  // 今までの行（48・64px）より低い
+  const normalBtn = css.match(/\.t-fav \.icon-btn,\s*\.t-trash \.icon-btn \{\s*width: (\d+)px;\s*height: (\d+)px;/);
+  assert.ok(normalBtn, "row buttons");
+  const compactBtn = css.match(/\.track-table\.compact \.t-fav \.icon-btn,\s*\.track-table\.compact \.t-trash \.icon-btn \{\s*width: (\d+)px;\s*height: (\d+)px;/);
+  assert.ok(compactBtn, "compact row buttons");
+  assert.equal(Number(normalBtn![2]), 32);
+  assert.ok(COMPACT_ROW_H >= Number(compactBtn![2]) + 8, `${COMPACT_ROW_H} >= ${compactBtn![2]} + 8`);
+  // 通常の行（いちばん低い 600px 未満の 48px でも）に 32px の面が収まる
+  for (const w of [400, 599, 600, 1400]) assert.ok(layoutSizeFor(w).rowH >= Number(normalBtn![2]) + 8, String(w));
+  // 通常の行（48・60px）より低い
   assert.ok(COMPACT_ROW_H < 48);
+});
+
+test("v3.7.0：曲一覧の行の高さ・ジャケットの大きさは、CSS（tokens.css と base.css の幅の段）と JS（useLayoutSize の layoutSizeFor）で同じ", () => {
+  const tokens = read("src/theme/tokens.css");
+  const css = read("src/theme/base.css");
+  const px = (src: string, name: string) => {
+    const m = src.match(new RegExp(`${name}: (\\d+)px;`));
+    assert.ok(m, name);
+    return Number(m![1]);
+  };
+  // 幅の段の中の値（@media (max-width: Npx) の中の :root）
+  const media = (max: number, name: string) => {
+    const at = css.indexOf(`@media (max-width: ${max}px) {`);
+    assert.ok(at >= 0, `@media ${max}`);
+    const block = css.slice(at, css.indexOf("\n}\n", at));
+    return px(block, name);
+  };
+  // 既定（広い窓）：60px・44px（3.6.0 までは 64・48）
+  assert.equal(px(tokens, "--row-h"), 60);
+  assert.equal(px(tokens, "--row-art"), 44);
+  assert.equal(px(tokens, "--player-h"), 80);
+  assert.equal(px(tokens, "--radius-card"), 12);
+  // 1400・1099・900・720px（既定の値の段）
+  for (const w of [1920, 1400, 1099, 900, 820, 720]) {
+    assert.equal(layoutSizeFor(w).rowH, px(tokens, "--row-h"), `rowH ${w}`);
+    assert.equal(layoutSizeFor(w).artSize, px(tokens, "--row-art"), `artSize ${w}`);
+  }
+  // 719px 以下：ジャケット 36px（CSS は 719px の段の --row-art）。行は 600px 以上なら既定のまま
+  for (const w of [719, 600]) {
+    assert.equal(layoutSizeFor(w).artSize, media(719, "--row-art"), `artSize ${w}`);
+    assert.equal(layoutSizeFor(w).rowH, px(tokens, "--row-h"), `rowH ${w}`);
+  }
+  // 599px 以下：行 48px（CSS は 599px の段の --row-h）
+  for (const w of [599, 480]) {
+    assert.equal(layoutSizeFor(w).rowH, media(599, "--row-h"), `rowH ${w}`);
+    assert.equal(layoutSizeFor(w).artSize, media(719, "--row-art"), `artSize ${w}`);
+  }
+  // 曲一覧の行は JS の行の高さを --row-h として受け取り（仮想スクロールの1行と同じ）、ジャケットの列の幅は artSize（CSS の画像は --row-art）
+  const tt = read("src/components/TrackTable.tsx");
+  assert.match(tt, /\["--row-h" as any\]: `\$\{rowH\}px`/);
+  assert.match(tt, /compact \? null : `\$\{size\.artSize\}px`,/);
+  assert.match(css, /\.t-art \{\s*width: var\(--row-art\);\s*height: var\(--row-art\);/);
+  assert.match(css, /\.track-row \{\s*height: var\(--row-h\);/);
+  // スキンからは変えさせない（Rust と画面の LOCKED_VARS）
+  const rs = read("src-tauri/src/skins/tokens.rs");
+  for (const v of ["--row-h", "--row-art", "--player-h"]) assert.ok(rs.includes(`"${v}"`) && read("src/skins/tokens.ts").includes(`"${v}"`), v);
 });
 
 test("値の名前と範囲は Rust（settings\\store.rs）と同じ", () => {
@@ -309,7 +361,8 @@ test("アーティストの出し入れ（v3.5.0。作者の要望）：設定�
 
 test("仮想スクロール（@tanstack/virtual-core を実際に動かす）：行の高さを替えただけでは並びが変わらず、measure で新しい高さに追いつく", () => {
   // TrackTable と同じ使い方：estimateSize は描くたびに今の行の高さを返し、行の高さが変わったら measure() を呼ぶ
-  let rowH = trackRowHeight(false, 64);
+  const normal = layoutSizeFor(1400).rowH; // v3.7.0：60px
+  let rowH = trackRowHeight(false, normal);
   const opts: any = {
     count: 100,
     getScrollElement: () => ({}),
@@ -327,17 +380,17 @@ test("仮想スクロール（@tanstack/virtual-core を実際に動かす）：
   };
   const v = new Virtualizer(opts);
   (v as any)._willUpdate();
-  assert.equal(v.getTotalSize(), 100 * 64);
-  assert.equal(v.getVirtualItems()[1].start, 64);
-  const shown64 = v.getVirtualItems().length;
+  assert.equal(v.getTotalSize(), 100 * normal);
+  assert.equal(v.getVirtualItems()[1].start, normal);
+  const shownNormal = v.getVirtualItems().length;
   // コンパクトへ：estimateSize を替えて（描き直しで setOptions）も、覚えた並びのまま
-  rowH = trackRowHeight(true, 64);
+  rowH = trackRowHeight(true, normal);
   v.setOptions({ ...opts, estimateSize: () => rowH });
-  assert.equal(v.getTotalSize(), 100 * 64, "measure の前は前の高さ（だから TrackTable は measure を呼ぶ）");
+  assert.equal(v.getTotalSize(), 100 * normal, "measure の前は前の高さ（だから TrackTable は measure を呼ぶ）");
   v.measure();
   assert.equal(v.getTotalSize(), 100 * COMPACT_ROW_H);
   assert.deepEqual(v.getVirtualItems().slice(0, 3).map((x) => [x.index, x.start, x.size]), [[0, 0, 36], [1, 36, 36], [2, 72, 36]]);
-  assert.ok(v.getVirtualItems().length > shown64, "同じ高さの窓に、より多くの行を描く");
+  assert.ok(v.getVirtualItems().length > shownNormal, "同じ高さの窓に、より多くの行を描く");
   // 戻す
   rowH = trackRowHeight(false, 48);
   v.setOptions({ ...opts, estimateSize: () => rowH });

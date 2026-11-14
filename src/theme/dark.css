@@ -1,17 +1,23 @@
-/* Dark テーマ（原文2通目 Color の値） */
+/*
+  Dark テーマ（原文2通目 Color の値）。
+  v3.7.0（デザインの見直し）：アクセント・アクセントの上の文字・危険の色を、明るい背景画像の上でも文字の基準（4.5:1）に届く値にした。
+  操作部の輪郭（--c-outline）とお気に入りの星（--c-favorite）を足した。根拠は docs\テーマの色の根拠.md 9章
+*/
 [data-theme="dark"] {
   --c-bg: #08080c;
   --c-panel-rgb: 15, 15, 22; /* Panel: rgba(15,15,22,0.70)。不透明度は --ui-alpha */
   --c-overlay-rgb: 8, 8, 12;
   --c-primary: #ffffff;
   --c-secondary: #b0b0b8;
-  --c-accent: #7c6cff;
-  --c-accent-contrast: #ffffff;
+  --c-accent: #b3aaff;
+  --c-accent-contrast: #08080c;
   --c-hover: rgba(255, 255, 255, 0.07);
   --c-selected: rgba(124, 108, 255, 0.22);
-  --c-border: rgba(255, 255, 255, 0.09);
+  --c-border: rgba(255, 255, 255, 0.09); /* 飾りの区切り線（線の基準の外） */
+  --c-outline: rgba(255, 255, 255, 0.44); /* 操作部（ボタン・入力欄・行のボタン）の輪郭。3:1 */
   --c-input: rgba(255, 255, 255, 0.07);
-  --c-danger: #ff6b7a;
+  --c-danger: #ff8591;
   --c-ok: #5fd39a;
+  --c-favorite: #ffd23f; /* お気に入りのオンの星（作者の決定で黄色）。3:1 */
   color-scheme: dark;
 }

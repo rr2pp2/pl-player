@@ -4,7 +4,7 @@
   文字と背景の濃さの差（WCAG のコントラスト比）を計算して、本文 4.5:1 以上、大きい文字と線 3:1 以上にした。
   計算は背景画像なし・明るい背景画像（白）・暗い背景画像（黒）の3つで、覆い（背景の暗さ 45%）とパネル（UI の不透明度 70%）を重ねた色に対して行う。
   計算に使った値と結果の表、確かめ方は docs\テーマの色の根拠.md（scripts\theme-contrast.mts で出し、scripts\theme-contrast.test.mts で確かめる）。
-  変数の名前は Dark と同じ。
+  変数の名前は Dark と同じ。v3.7.0 で --c-outline と --c-favorite を足した（ほかの色は変えていない）。
 */
 [data-theme="light"] {
   --c-bg: #f4f4f1;
@@ -17,9 +17,11 @@
   --c-hover: rgba(0, 0, 0, 0.045);
   --c-selected: rgba(66, 50, 194, 0.12);
   --c-border: rgba(0, 0, 0, 0.48);
+  --c-outline: rgba(0, 0, 0, 0.48); /* v3.7.0：操作部の輪郭（今までの --c-border と同じ値。見た目は変わらない） */
   --c-input: rgba(0, 0, 0, 0.02);
   --c-danger: #a3132b;
   --c-ok: #0c5f37;
+  --c-favorite: #755400; /* v3.7.0：お気に入りのオンの星（作者の決定で黄色。明るい面の上で 3:1 に届く琥珀色。少し明るい #7a5600 だと docs\テーマの色の根拠.md 6章の「基準を満たす UI の不透明度」が上がったので、上がらない濃さにした） */
   --shadow-panel: 0 4px 18px rgba(0, 0, 0, 0.12);
   --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.18);
   color-scheme: light;

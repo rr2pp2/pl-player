@@ -91,10 +91,13 @@ test("設定画面：ライブラリのタブに置き、押すと確認を出�
   assert.ok(!field.includes(".title}"));
 });
 
-test("進み具合の帯：読み直しと「歌詞を取ってくる」は、広いと2列目・狭い幅（設定の欄が1列になる 719px 以下）では1列目", () => {
+test("進み具合の帯：読み直しと「歌詞を取ってくる」は、広いと2列目・狭い幅（設定の欄が1列になる 760px 以下。v3.7.0 までは 719px 以下）では1列目", () => {
   const css = read("src/theme/base.css");
-  const narrowAt = css.indexOf("@media (max-width: 719px) {");
+  const narrowAt = css.indexOf("@media (max-width: 760px) {");
   assert.ok(narrowAt > 0);
+  // 1列にする決まりは 760px の段だけ（719px の段に残っていない）
+  const old = css.slice(css.indexOf("@media (max-width: 719px) {"), css.indexOf("\n}\n", css.indexOf("@media (max-width: 719px) {")));
+  assert.ok(!/\.field \{/.test(old), "no .field rule left in the 719px block");
   const narrow = css.slice(narrowAt, css.indexOf("\n}\n", narrowAt));
   assert.match(narrow, /\.field \{\s*grid-template-columns: minmax\(0, 1fr\);/, "the field is one column");
   for (const cls of ["legacy-reread-progress", "lyrics-fetch-progress"]) {

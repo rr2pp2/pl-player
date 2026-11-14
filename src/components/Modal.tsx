@@ -1,6 +1,7 @@
 // 小窓（名前の入力・確認・編集画面）。
 import { useEffect, useRef, useState } from "react";
 import { createStore, useStore } from "../stores/store";
+import { confirmInitialFocus } from "./dialogFocus";
 
 export function Modal(props: { title: string; onClose: () => void; children: any; footer?: any; small?: boolean }) {
   useEffect(() => {
@@ -89,6 +90,9 @@ export function DialogHost() {
     dialogState.set(null);
     d.resolve(r);
   };
+  // v3.7.0：危険な確認（danger）は、最初のフォーカスを「キャンセル」に置く（誤って Enter を押しても進まない。決まりは dialogFocus.ts）。
+  // 確定のボタンは危険の色の文字と輪郭（.btn.danger）。押したあとの処理は変えない
+  const focus = confirmInitialFocus(d.danger);
   return (
     <Modal
       small
@@ -96,10 +100,10 @@ export function DialogHost() {
       onClose={() => done(false)}
       footer={
         <>
-          <button className="btn" onClick={() => done(false)}>
+          <button className="btn" onClick={() => done(false)} autoFocus={focus === "cancel"}>
             キャンセル
           </button>
-          <button className={"btn " + (d.danger ? "danger" : "primary")} onClick={() => done(true)} autoFocus>
+          <button className={"btn " + (d.danger ? "danger" : "primary")} onClick={() => done(true)} autoFocus={focus === "ok"}>
             {d.ok}
           </button>
         </>
