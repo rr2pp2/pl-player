@@ -514,7 +514,8 @@ textarea {
   color: var(--c-accent);
 }
 /* 曲一覧のコンパクト表示（v3.4.0）：ジャケットの列は TrackTable が出さない。行の高さは TrackTable が --row-h で渡す（36px）。
-   「タイトル — アーティスト」を1行に並べ、入りきらなければ行の終わりを省略記号で切る。タイトルは本文の大きさ（--fs-body）に下げる */
+   タイトルは1行にし、入りきらなければ省略記号で切る。タイトルは本文の大きさ（--fs-body）に下げる。
+   v3.5.0：アーティストは別の列（.col-artist。見た目はアルバム・ジャンルと同じ .t-cell） */
 .track-table.compact .t-main {
   gap: 0;
 }
@@ -527,10 +528,13 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.t-line-artist {
-  font-size: var(--fs-artist);
-  font-weight: 400;
-  color: var(--c-secondary);
+/* コンパクト表示の見出し：「タイトル」「アーティスト」の2つに分かれるので、いちばん狭い窓（480px）では
+   「アーティスト ↓」（並べ替えの矢印つき）が列の幅を超えることがある。隣の列へはみ出さず、省略記号で切る */
+.track-table.compact .track-head button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- アート ---------- */
@@ -975,10 +979,11 @@ textarea {
   margin-top: max(0px, calc((1lh - 13px) / 2));
   margin-bottom: 0;
 }
-/* キー操作の一覧：幅があれば2列（1列が 380px を切る幅では1列）。項目名の幅は詰める（v3.3.0） */
+/* キー操作の一覧：幅があれば2列（1列が 340px を切る幅では1列）。項目名の幅は詰める（v3.3.0）。
+   設定の節は最大 760px なので、2列（340×2＋間 24＝704px）がその中に収まる最小の幅にする（380px だと 784px 要り、2列にならなかった） */
 .key-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   column-gap: 24px;
 }
 .key-grid > .field {

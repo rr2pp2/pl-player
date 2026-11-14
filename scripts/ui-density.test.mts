@@ -132,9 +132,11 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   assert.match(tt, /compact \? null : `\$\{size\.artSize\}px`,/);
   assert.match(tt, /\{compact \? null : <span \/>\}/);
   assert.match(tt, /\{p\.compact \? null : <Artwork /);
-  // 1行：「タイトル — アーティスト」
-  assert.match(tt, /<span className="t-line-title">\{t\.title\}<\/span>/);
-  assert.match(tt, /<span className="t-line-artist"> — \{t\.artist \|\| "不明なアーティスト"\}<\/span>/);
+  // v3.5.0（作者の要望）：タイトルとアーティストは別の列。タイトルの列は1行、アーティストはアルバム・ジャンルと同じ形の列
+  assert.match(tt, /<span className="t-line">\{t\.title\}<\/span>/);
+  assert.ok(!/t-line-artist| — \{t\.artist/.test(tt), "no more 「タイトル — アーティスト」");
+  // アーティストの列は、コンパクト表示で設定がオンのときだけ（cols.artist。下の「アーティストの出し入れ」）
+  assert.match(tt, /\{p\.cols\.artist \? <div className="t-cell col-artist">\{t\.artist \|\| "不明なアーティスト"\}<\/div> : null\}/);
   // 仮想スクロール：estimateSize は行の高さ（コンパクトを含む）。変わったら measure で作り直す（estimateSize を替えただけでは並びが変わらない）
   assert.match(tt, /estimateSize: \(\) => rowH,/);
   assert.ok(!/estimateSize: \(\) => size\.rowH/.test(tt));
@@ -145,8 +147,13 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   // 再生中の印・お気に入り・ごみ箱の列は、コンパクトでも同じ部品のまま（列の出し方は compact を見ない）
   const eqs = tt.match(/<IconBars className="eq"/g) ?? [];
   assert.equal(eqs.length, 2, "再生中の印は2つの形のどちらにも");
+  // （v3.5.0：アーティストだけは、コンパクトかどうかで列か段かが変わる。それ以外の列はコンパクトにかかわらず同じ）
   const colsBlock = tt.slice(tt.indexOf("const cols = {"), tt.indexOf("};", tt.indexOf("const cols = {")));
-  assert.ok(!/compact/.test(colsBlock), "列の出し方はコンパクトにかかわらず同じ");
+  for (const k of ["album", "genre", "duration", "favorite", "trash"]) {
+    const l = colsBlock.split(/\r?\n/).find((x) => x.trim().startsWith(`${k}:`));
+    assert.ok(l, k);
+    assert.ok(!/compact/.test(l!), `列の出し方はコンパクトにかかわらず同じ：${k}`);
+  }
   // CSS：1行は省略記号で切る
   const css = read("src/theme/base.css");
   const line = css.match(/\.t-line \{([^}]*)\}/);
@@ -154,6 +161,142 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   assert.match(line![1], /text-overflow: ellipsis;/);
   assert.match(line![1], /white-space: nowrap;/);
   assert.match(line![1], /min-width: 0;/);
+});
+
+test("曲一覧（TrackTable）：列の幅・見出しの行・曲の行は、同じ条件の列を同じ順に並べる（コンパクトのアーティストの列・幅の段で消えるアルバムとジャンルを含む）", () => {
+  const tt = read("src/components/TrackTable.tsx");
+  // 列の幅（template）：1項目1行。`X ? null : …` は X でないとき、`X ? … : null` は X のとき、条件の無いものはいつも
+  const tplBlock = tt.slice(tt.indexOf("const template = ["), tt.indexOf("]", tt.indexOf("const template = [")));
+  const tpl = tplBlock
+    .split(/\r?\n/)
+    .slice(1)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("//"))
+    .map((l) => {
+      const m = l.match(/^([\w.]+) \? (null)?/);
+      if (!m) return "always";
+      return m[2] ? `!${m[1]}` : m[1];
+    });
+  // 見出しの行・曲の行：いちばん外側の {…}（コメントは除く）。複数行の式は、同じ字下げの「) : null}」か「)}」で閉じる
+  const items = (block: string, indent: number) => {
+    const lines = block.split(/\r?\n/);
+    const out: string[] = [];
+    const pad = " ".repeat(indent);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.startsWith(pad + "{") || l.startsWith(pad + "{/*")) continue;
+      const m = l.match(/^\s*\{(?:p\.)?([\w.]+) \? (null :)?/);
+      assert.ok(m, `unexpected item: ${l}`);
+      const cond = m![1].replace(/^p\./, "");
+      if (m![2]) {
+        out.push(`!${cond}`);
+        continue;
+      }
+      let end = l;
+      if (/\($/.test(l.trimEnd())) {
+        let j = i + 1;
+        while (j < lines.length && !(lines[j].startsWith(pad + ")") && /\}\s*$/.test(lines[j]))) j++;
+        assert.ok(j < lines.length, `unclosed item: ${l}`);
+        end = lines[j];
+        i = j;
+      }
+      out.push(/: null\}\s*$/.test(end) ? cond : "always");
+    }
+    return out;
+  };
+  const headStart = tt.indexOf('<div className="track-head" role="row">');
+  const head = items(tt.slice(headStart, tt.indexOf('<div className="track-scroll"', headStart)), 8);
+  const rowStart = tt.indexOf("onContextMenu={p.onContextMenu}");
+  const row = items(tt.slice(rowStart, tt.indexOf("export function useTrackIdsMemo", rowStart)), 6).map((c) => c.replace(/^(!?)p\./, "$1"));
+  const expected = ["!compact", "always", "cols.artist", "cols.album", "cols.genre", "cols.duration", "cols.favorite", "cols.trash"];
+  assert.deepEqual(tpl, expected, "template");
+  assert.deepEqual(head, expected, "header");
+  assert.deepEqual(row, expected, "row");
+  // v3.5.0：アーティストの列は「コンパクト表示 かつ 設定がオン」、タイトルの下の段は「通常の表示 かつ 設定がオン」（cols の作り方）
+  assert.match(tt, /const artistOn = cfg\.artist !== false;/);
+  assert.match(tt, /\n\s*artist: compact && artistOn,\r?\n/);
+  assert.match(tt, /\n\s*artistLine: !compact && artistOn,\r?\n/);
+  // 幅の段（900・820px 未満でジャンル・アルバムが消える）×コンパクトの有無×アーティストの出し入れ×列の設定で、
+  // 見出しと行の列の数が列の幅の数と同じ（cols.artist は上の作り方どおり compact と設定から決める）
+  const count = (seq: string[], v: Record<string, boolean>) =>
+    seq.filter((c) => c === "always" || (c.startsWith("!") ? !v[c.slice(1)] : v[c])).length;
+  let combos = 0;
+  for (const compact of [false, true])
+    for (const artistOn of [false, true])
+      for (const album of [false, true])
+        for (const genre of [false, true])
+          for (const rest of [false, true]) {
+            const v = {
+              compact,
+              "cols.artist": compact && artistOn,
+              "cols.album": album,
+              "cols.genre": genre,
+              "cols.duration": rest,
+              "cols.favorite": rest,
+              "cols.trash": !rest,
+            };
+            const label = JSON.stringify({ ...v, artistOn });
+            assert.equal(count(head, v), count(tpl, v), label);
+            assert.equal(count(row, v), count(tpl, v), label);
+            // 列の数：ジャケット（通常のとき）＋タイトル＋アーティスト（コンパクトで出すとき）＋…。アーティストを切ったコンパクトは1つ減る
+            const want = (compact ? 0 : 1) + 1 + (compact && artistOn ? 1 : 0) + (album ? 1 : 0) + (genre ? 1 : 0) + (rest ? 2 : 1);
+            assert.equal(count(tpl, v), want, label);
+            combos++;
+          }
+  assert.equal(combos, 32);
+  // アルバム・ジャンルは幅の段で消える（JS の cols と、CSS の .col-album・.col-genre の両方）。アーティストの列はどの幅でも消さない
+  assert.match(tt, /album: cfg\.album !== false && !size\.hideAlbum,/);
+  assert.match(tt, /genre: cfg\.genre !== false && !size\.hideGenre,/);
+  assert.ok(!/col-artist[^}]*display: none/.test(read("src/theme/base.css")));
+});
+
+test("コンパクト表示の見出し：「タイトル」と「アーティスト」。どちらも並べ替えのボタン（headBtn）で、アーティストの鍵は Rust の並べ替えにある。通常の表示は「タイトル / アーティスト」のまま（アーティストを切ったときは「タイトル」）", () => {
+  const tt = read("src/components/TrackTable.tsx");
+  assert.match(tt, /\{cols\.artistLine \? headBtn\("title", "タイトル \/ アーティスト"\) : headBtn\("title", "タイトル"\)\}/);
+  assert.match(tt, /\{cols\.artist \? headBtn\("artist", "アーティスト", "col-artist"\) : null\}/);
+  // アーティストの列の幅は、アルバムの列と同じ 2fr。タイトルは 3fr
+  assert.match(tt, /\n\s*"minmax\(0, 3fr\)",\r?\n/);
+  assert.match(tt, /cols\.artist \? "minmax\(0, 2fr\)" : null,/);
+  assert.match(tt, /cols\.album \? "minmax\(0, 2fr\)" : null,/);
+  // 並べ替えの鍵 "artist" を Rust（db\tracks.rs の order_clause）が知っている
+  const rs = read("src-tauri/src/db/tracks.rs");
+  const oc = rs.slice(rs.indexOf("fn order_clause"), rs.indexOf("\n}\n", rs.indexOf("fn order_clause")));
+  assert.match(oc, /Some\("artist"\) => format!\("t\.artist COLLATE NOCASE \{dir\}/);
+  // 見出しは狭い窓で隣の列へはみ出さない（コンパクトのときだけ。通常の見出しの決まりは変えない）
+  const css = read("src/theme/base.css");
+  const hb = css.match(/\.track-table\.compact \.track-head button \{([^}]*)\}/);
+  assert.ok(hb);
+  for (const d of ["min-width: 0;", "max-width: 100%;", "overflow: hidden;", "text-overflow: ellipsis;"]) assert.ok(hb![1].includes(d), d);
+});
+
+test("アーティストの出し入れ（v3.5.0。作者の要望）：設定の「曲一覧の列」のアルバムの前。名前と既定（オン）が Rust と画面で同じ。通常の表示ではタイトルの下の段を出し入れする", () => {
+  // 設定の画面：チェックの並びは列の順（アーティスト → アルバム → ジャンル → 時間 → お気に入り）
+  const v = read("src/views/SettingsView.tsx");
+  const colsDef = v.slice(v.indexOf("const COLS = ["), v.indexOf("];", v.indexOf("const COLS = [")));
+  const ids = [...colsDef.matchAll(/\{ id: "(\w+)", label: "([^"]+)" \}/g)].map((x) => [x[1], x[2]]);
+  assert.deepEqual(ids, [["artist", "アーティスト"], ["album", "アルバム"], ["genre", "ジャンル"], ["duration", "時間"], ["favorite", "お気に入り"]]);
+  // チェックは「無いキーはオン」で読む（古い設定）
+  assert.match(v, /checked=\{s\.ui\.columns\[c\.id\] !== false\}/);
+  // 説明：アーティストはコンパクトでは列・通常では段。狭い窓で自動で隠れるのはジャンルとアルバムだけ
+  const field = v.slice(v.indexOf('<span className="flabel">曲一覧の列</span>'), v.indexOf("<CompactField />"));
+  assert.match(field, /アーティストは、コンパクト表示では列を、通常の表示ではタイトルの下の段を出し入れします。/);
+  assert.match(field, /ジャンル → アルバムの順に自動で隠れます（アーティストは隠れません）/);
+  // Rust（settings\store.rs の TRACK_COLUMNS）と同じ名前・同じ並び
+  const rs = read("src-tauri/src/settings/store.rs");
+  const tc = rs.match(/pub const TRACK_COLUMNS: &\[&str\] = &\[([^\]]*)\];/);
+  assert.ok(tc, "TRACK_COLUMNS");
+  assert.deepEqual([...tc![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), ids.map((x) => x[0]));
+  assert.match(rs, /columns: all_shown\(TRACK_COLUMNS\),/);
+  // 画面の既定値もオン（全部）
+  assert.match(read("src/stores/settings.ts"), /columns: \{ artist: true, album: true, genre: true, duration: true, favorite: true \},/);
+  // 通常の表示：アーティストの段は設定がオンのときだけ。行の高さ（rowH）は設定を見ない
+  const tt = read("src/components/TrackTable.tsx");
+  assert.match(tt, /\{p\.cols\.artistLine \? <div className="t-artist">\{t\.artist \|\| "不明なアーティスト"\}<\/div> : null\}/);
+  assert.equal((tt.match(/className="t-artist"/g) ?? []).length, 1, "アーティストの段は1か所だけ");
+  assert.ok(!/artist/i.test(read("src/layout/density.ts")), "行の高さはアーティストの設定で変わらない");
+  // アーティストを切ったときの、タイトルだけの行：行の中で縦の真ん中に来る（grid の align-items: center）
+  const css = read("src/theme/base.css");
+  assert.match(css, /\.track-head,\s*\.track-row \{[^}]*align-items: center;/);
 });
 
 test("仮想スクロール（@tanstack/virtual-core を実際に動かす）：行の高さを替えただけでは並びが変わらず、measure で新しい高さに追いつく", () => {

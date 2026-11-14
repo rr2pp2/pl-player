@@ -270,6 +270,8 @@ mod tests {
         // v3.4.0：コンパクト表示とサイドバーのアイコンの大きさも、書き出し・読み込みに入る
         s.ui.compact_list = "always".into();
         s.ui.sidebar_icon_px = 26;
+        // v3.5.0：曲一覧の列のアーティストも、書き出し・読み込みに入る
+        s.ui.columns.insert("artist".into(), false);
         s.background.path = Some(bg.to_string_lossy().into_owned());
         let zip_path = tmp.join("backup.zip");
         let r = export(&a, &s, &bg_dir, &zip_path).unwrap();
@@ -299,6 +301,9 @@ mod tests {
         assert_eq!(s2.ui.sidebar_icon_px, 26);
         assert_eq!(store::load(&b).ui.compact_list, "always");
         assert_eq!(store::load(&b).ui.sidebar_icon_px, 26);
+        assert_eq!(s2.ui.columns.get("artist"), Some(&false));
+        assert_eq!(store::load(&b).ui.columns.get("artist"), Some(&false));
+        assert_eq!(s2.ui.columns.get("album"), Some(&true));
         let bg2 = Path::new(s2.background.path.as_ref().unwrap());
         assert!(bg2.exists());
         // v3.1.1：取り出した背景は自前の名前（bg-<鍵>.png）
@@ -488,6 +493,38 @@ mod tests {
         let entries = zip::read(&mut fs::File::open(&z).unwrap(), &|_| true).unwrap();
         let text = String::from_utf8(entries.into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
         assert!(text.contains("\"compactList\": \"narrow\"") && text.contains("\"sidebarIconPx\": 30"), "{text}");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.5.0：曲一覧の列のアーティスト。3.4.0 までの zip（columns に artist が無い・columns が無い）はオンで読み込み、
+    /// 切った値はそのまま入る。書き出した zip の settings.json に、画面と同じ名前で入る
+    #[test]
+    fn import_track_columns_artist() {
+        let tmp = tmp_dir("columns");
+        let cases: [(&str, &str, bool, bool); 4] = [
+            ("old", r#"{"theme":"light","ui":{"columns":{"album":false,"genre":true,"duration":true,"favorite":true}}}"#, true, false),
+            ("nocols", r#"{"theme":"light","ui":{"sidebarCollapsed":true}}"#, true, true),
+            ("off", r#"{"theme":"light","ui":{"columns":{"artist":false,"album":true}}}"#, false, true),
+            ("on", r#"{"theme":"light","ui":{"columns":{"artist":true}}}"#, true, true),
+        ];
+        for (name, json, artist, album) in cases {
+            let db = Db::open_memory(&format!("backup_columns_{name}")).unwrap();
+            let z = make_zip(&tmp, &format!("{name}.zip"), &[manifest(), zip::Entry { name: "settings.json".into(), data: json.as_bytes().to_vec() }]);
+            let (s, _, _) = import(&db, &z, &tmp.join("bgs")).unwrap_or_else(|e| panic!("{name}: {}", e.detail));
+            assert_eq!(s.theme, "light", "{name}");
+            assert_eq!(s.ui.columns.get("artist"), Some(&artist), "{name}");
+            assert_eq!(s.ui.columns.get("album"), Some(&album), "{name}");
+            let saved = store::load(&db);
+            assert_eq!(saved.ui.columns.get("artist"), Some(&artist), "{name}: saved");
+        }
+        let a = Db::open_memory("backup_columns_export").unwrap();
+        let mut s = AppSettings::default();
+        s.ui.columns.insert("artist".into(), false);
+        let z = tmp.join("export.zip");
+        export(&a, &s, &tmp.join("no-bg"), &z).unwrap();
+        let entries = zip::read(&mut fs::File::open(&z).unwrap(), &|_| true).unwrap();
+        let text = String::from_utf8(entries.into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
+        assert!(text.contains("\"artist\": false"), "{text}");
         let _ = fs::remove_dir_all(&tmp);
     }
 

@@ -27,7 +27,8 @@ export const settings = createStore<AppSettings>({
   background: { path: null, dim: 0.45, blur: 6, uiOpacity: 0.7, fit: "cover" },
   ui: {
     sidebarCollapsed: false,
-    columns: { album: true, genre: true, duration: true, favorite: true },
+    // 曲一覧の列（無いキーはオン）。v3.5.0：artist を足した（Rust の TRACK_COLUMNS と同じ）
+    columns: { artist: true, album: true, genre: true, duration: true, favorite: true },
     lyricsRow: true,
     // v3.3.0：隠すもの（無いキーは出す）・ごみ箱へ移すボタン（既定はオフ）・設定のタブの並び（空なら既定の順）
     playerButtons: {},

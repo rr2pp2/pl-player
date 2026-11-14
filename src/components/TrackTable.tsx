@@ -3,8 +3,11 @@
 // v3.3.0：設定の「ごみ箱へ移すボタン」がオンのときだけ、行の右端に「ごみ箱へ移す」を出す（既定はオフ）。
 // 出すのはライブラリの曲一覧だけ（props.list。プレイリスト・キューの一覧には、行のボタンも右クリックのメニューも出さない）。
 // 対象は右クリックのメニューと同じ決まり：押した行が選んでいる行の中にあれば選んでいる全部、そうでなければその行だけ。
-// v3.4.0：コンパクト表示（設定の ui.compactList。決まりは src\layout\density.ts）：ジャケットの列を出さず、行を詰め、
-// タイトルとアーティストを1行に並べる。選択・再生中の印・ドラッグ・右クリック・お気に入り・ごみ箱の列は今までどおり。
+// v3.4.0：コンパクト表示（設定の ui.compactList。決まりは src\layout\density.ts）：ジャケットの列を出さず、行を詰める。
+// v3.5.0（作者の要望）：コンパクト表示では、タイトルとアーティストを別の列にする（見出しも「タイトル」「アーティスト」）。
+// 選択・再生中の印・ドラッグ・右クリック・お気に入り・ごみ箱の列は今までどおり。
+// v3.5.0（作者の要望）：設定の「曲一覧の列」の「アーティスト」（ui.columns.artist。無ければオン）。コンパクト表示では列を、
+// 通常の表示ではタイトルの下の段を出し入れする（行の高さは変えない）。幅では隠さない。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
@@ -68,7 +71,12 @@ export function TrackTable(props: Props) {
   // v3.4.0：コンパクト表示か（「狭いときだけ」はウィンドウの幅で決める）と、行の高さ（仮想スクロールの1行の大きさ）
   const compact = compactListOn(ui, size.width);
   const rowH = trackRowHeight(compact, size.rowH);
+  // v3.5.0：アーティストを出すか（設定。古い設定でキーが無ければオン）。アルバム・ジャンルと違い、幅の段では隠さない
+  const artistOn = cfg.artist !== false;
   const cols = {
+    // アーティストの列（コンパクト表示のとき）と、タイトルの下の段（通常の表示のとき）。どちらか一方だけが true になる
+    artist: compact && artistOn,
+    artistLine: !compact && artistOn,
     album: cfg.album !== false && !size.hideAlbum,
     genre: cfg.genre !== false && !size.hideGenre,
     duration: cfg.duration !== false,
@@ -78,11 +86,16 @@ export function TrackTable(props: Props) {
   const template = [
     // ジャケットの列：コンパクト表示では出さない（見出しの行の空き枠も出さない）
     compact ? null : `${size.artSize}px`,
+    // タイトルの列（通常の表示では「タイトル / アーティスト」の2段。アーティストを切ればタイトルだけ）
     "minmax(0, 3fr)",
+    // アーティストの列：コンパクト表示で、設定がオンのときだけ（v3.5.0）。アルバムの列と同じ 2fr（どちらも名前で、長さが近い）。
+    // タイトルは3fr のまま、主に読む列として一番広く取る。アルバム・ジャンルが消える幅（900・820px 未満）では、タイトル：アーティスト＝3：2 で分ける
+    cols.artist ? "minmax(0, 2fr)" : null,
     cols.album ? "minmax(0, 2fr)" : null,
     cols.genre ? "minmax(0, 1.2fr)" : null,
     cols.duration ? "52px" : null,
-    // お気に入りの列：見出しの「お気に入り」（12px の字で5字＝60px）が切れない 68px（v3.3.0 の作者の要望。マークの見た目は次の版のデザインの見直しで）
+    // お気に入りの列：見出しの「お気に入り」（12px の字で5字＝60px）が切れない 68px（v3.3.0 の作者の要望）。
+    // v3.5.0 で一度、見出しを星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーの項目に出す）
     cols.favorite ? "68px" : null,
     // ごみ箱の列：見出しの「ごみ箱」（12px の字で3字＝36px）が切れない 44px。窓の幅にかかわらず同じ
     cols.trash ? "44px" : null,
@@ -227,7 +240,10 @@ export function TrackTable(props: Props) {
     <div className={"track-table" + (compact ? " compact" : "")} style={{ ["--cols" as any]: template, ["--row-h" as any]: `${rowH}px` }}>
       <div className="track-head" role="row">
         {compact ? null : <span />}
-        {headBtn("title", "タイトル / アーティスト")}
+        {/* コンパクト表示では「タイトル」「アーティスト」の2つの見出し（v3.5.0）。アーティストの並べ替えは Rust の order_clause の "artist"（アーティスト→アルバム→ディスク→曲番号）。
+            通常の表示は「タイトル / アーティスト」。アーティストを切ったときは、どちらの表示でも「タイトル」だけ */}
+        {cols.artistLine ? headBtn("title", "タイトル / アーティスト") : headBtn("title", "タイトル")}
+        {cols.artist ? headBtn("artist", "アーティスト", "col-artist") : null}
         {cols.album ? headBtn("album", "アルバム", "col-album") : null}
         {cols.genre ? headBtn("genre", "ジャンル", "col-genre") : null}
         {cols.duration ? (
@@ -256,7 +272,8 @@ interface RowProps {
   index: number;
   start: number;
   track: Track;
-  cols: { album: boolean; genre: boolean; duration: boolean; favorite: boolean; trash: boolean };
+  /** artist：アーティストの列（コンパクト表示）。artistLine：タイトルの下のアーティストの段（通常の表示） */
+  cols: { artist: boolean; artistLine: boolean; album: boolean; genre: boolean; duration: boolean; favorite: boolean; trash: boolean };
   /** v3.4.0：コンパクト表示（ジャケットなし・1行） */
   compact: boolean;
   playing: boolean;
@@ -357,14 +374,11 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
     >
       {p.compact ? null : <Artwork path={t.artPath} className="t-art" />}
       {p.compact ? (
-        // コンパクト表示：「タイトル — アーティスト」を1行に。入りきらなければ行の終わりを省略記号で切る
+        // コンパクト表示：タイトルだけを1行に（アーティストは次の列）。入りきらなければ省略記号で切る
         <div className="t-main">
           <div className="t-title">
             {p.playing ? <IconBars className="eq" title={p.isPlaying ? "再生中" : "一時停止中"} /> : null}
-            <span className="t-line">
-              <span className="t-line-title">{t.title}</span>
-              <span className="t-line-artist"> — {t.artist || "不明なアーティスト"}</span>
-            </span>
+            <span className="t-line">{t.title}</span>
           </div>
         </div>
       ) : (
@@ -373,9 +387,12 @@ function RowBody(props: { p: RowProps; setRef: any; listeners: any; attributes: 
             {p.playing ? <IconBars className="eq" title={p.isPlaying ? "再生中" : "一時停止中"} /> : null}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
           </div>
-          <div className="t-artist">{t.artist || "不明なアーティスト"}</div>
+          {/* アーティストを切ったときは段を出さない（行の高さはそのまま。タイトルは行の縦の真ん中に来る） */}
+          {p.cols.artistLine ? <div className="t-artist">{t.artist || "不明なアーティスト"}</div> : null}
         </div>
       )}
+      {/* アーティストの列（コンパクト表示で、設定がオンのときだけ。v3.5.0）。見た目はアルバム・ジャンルの列と同じ */}
+      {p.cols.artist ? <div className="t-cell col-artist">{t.artist || "不明なアーティスト"}</div> : null}
       {p.cols.album ? <div className="t-cell col-album">{t.album}</div> : null}
       {p.cols.genre ? <div className="t-cell col-genre">{t.genre}</div> : null}
       {p.cols.duration ? <div className="t-dur">{formatTime(t.durationMs)}</div> : null}

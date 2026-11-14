@@ -162,7 +162,7 @@ test("ごみ箱へ移すを出す場所（作者の決定）：ライブラリ�
   assert.ok(!/trash_button/.test(body.slice(0, fnEnd)), "library_trash_tracks does not read ui.trash_button");
 });
 
-test("ごみ箱の列：見出しの行に「ごみ箱」、行のボタンはアイコンだけ（読み上げと吹き出しは残す）。列の幅は窓の幅にかかわらず同じ", () => {
+test("ごみ箱の列：見出しの行に「ごみ箱」、行のボタンはアイコンだけ（読み上げと吹き出しは残す）。列の幅は窓の幅にかかわらず同じ。お気に入りの見出しは文字「お気に入り」", () => {
   const tt = readFileSync(new URL("../src/components/TrackTable.tsx", import.meta.url), "utf8");
   // 見出し：「時間」「ジャンル」と同じ見出しの行に出す
   assert.match(tt, /\{cols\.trash \? <span className="col-trash">ごみ箱<\/span> : null\}/);
@@ -179,7 +179,8 @@ test("ごみ箱の列：見出しの行に「ごみ箱」、行のボタンは�
   assert.match(row, /aria-label=\{p\.trashLabel\}/);
   assert.match(row, /title=\{`\$\{p\.trashLabel\}/);
   assert.ok(!/ごみ箱へ<\/span>/.test(row), "no text label in the row button");
-  // お気に入りの列も同じ見出しの行に「お気に入り」（12px の字で5字＝60px が切れない幅）
+  // お気に入りの列も同じ見出しの行に「お気に入り」（12px の字で5字＝60px が切れない幅）。
+  // v3.5.0 で一度星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーに出す）
   assert.match(tt, /\{cols\.favorite \? <span className="col-fav">お気に入り<\/span> : null\}/);
   const f = tt.match(/cols\.favorite \? "(\d+)px" : null/);
   assert.ok(f && Number(f[1]) >= 60, "favorite column fits its header");

@@ -39,7 +39,7 @@ impl Default for Background {
 #[serde(rename_all = "camelCase", default)]
 pub struct UiSettings {
     pub sidebar_collapsed: bool,
-    /// 曲一覧の列（表示するか）
+    /// 曲一覧の列（表示するか）。既定のキーは `TRACK_COLUMNS`。無いキーは出す（`sanitize` が true で埋める）
     pub columns: BTreeMap<String, bool>,
     /// v3.0.2：再生バーの下の「流れる歌詞の列」を出すか。既定はオン（古い設定・v2 の書き出しに無ければオン）
     pub lyrics_row: bool,
@@ -115,19 +115,19 @@ pub const PLAYER_BUTTONS_HIDEABLE: &[&str] = &["shuffle", "repeat", "volume", "l
 pub const SIDEBAR_ITEMS_HIDEABLE: &[&str] =
     &["all", "artist", "album", "genre", "recent_added", "recent_played", "favorites", "queue", "playlists"];
 
+/// 曲一覧の列のオン・オフ（画面の src\views\SettingsView.tsx の COLS と同じ並び）。
+/// v3.5.0：`artist` を足した（作者の要望）。3.4.0 までの設定・zip には無いので、読むときにオンで埋める
+pub const TRACK_COLUMNS: &[&str] = &["artist", "album", "genre", "duration", "favorite"];
+
 fn all_shown(keys: &[&str]) -> BTreeMap<String, bool> {
     keys.iter().map(|k| (k.to_string(), true)).collect()
 }
 
 impl Default for UiSettings {
     fn default() -> Self {
-        let mut columns = BTreeMap::new();
-        for c in ["album", "genre", "duration", "favorite"] {
-            columns.insert(c.to_string(), true);
-        }
         Self {
             sidebar_collapsed: false,
-            columns,
+            columns: all_shown(TRACK_COLUMNS),
             lyrics_row: true,
             player_buttons: all_shown(PLAYER_BUTTONS_HIDEABLE),
             sidebar_items: all_shown(SIDEBAR_ITEMS_HIDEABLE),
@@ -246,6 +246,10 @@ impl AppSettings {
         // 無いキーは「出す」として扱う（古い設定・v2 の書き出し）
         self.ui.player_buttons.retain(|k, _| PLAYER_BUTTONS_HIDEABLE.contains(&k.as_str()));
         self.ui.sidebar_items.retain(|k, _| SIDEBAR_ITEMS_HIDEABLE.contains(&k.as_str()));
+        // v3.5.0：曲一覧の列。無いキー（3.4.0 までの設定・zip の artist など）はオン。知らないキーは今までどおり残す
+        for c in TRACK_COLUMNS {
+            self.ui.columns.entry(c.to_string()).or_insert(true);
+        }
         // v3.3.0：設定のタブの並び。形の合わない名前・重なりを捨て、数を抑える（どのタブを出すかは画面が決める）
         let mut seen = std::collections::HashSet::new();
         self.ui.settings_tabs.retain(|t| tab_name_ok(t) && seen.insert(t.clone()));
@@ -481,6 +485,41 @@ mod tests {
         assert!(j.contains("\"compactList\":\"off\"") && j.contains("\"sidebarIconPx\":20"), "{j}");
     }
 
+    /// v3.5.0：曲一覧の列に artist を足した。既定はオン。3.4.0 までの設定（artist のキーが無い・columns が無い）もオンで読み、
+    /// 書いてある値（オフを含む）はそのまま。知らないキーは今までどおり残す
+    #[test]
+    fn track_columns_artist() {
+        assert_eq!(TRACK_COLUMNS, &["artist", "album", "genre", "duration", "favorite"]);
+        let d = AppSettings::default();
+        assert_eq!(d.ui.columns.len(), TRACK_COLUMNS.len());
+        assert!(d.ui.columns.values().all(|v| *v));
+        assert_eq!(d.ui.columns.get("artist"), Some(&true));
+        // 3.4.0 までの設定：artist が無い → オン。ほかの値は書いたまま
+        let old: AppSettings =
+            serde_json::from_str(r#"{"ui":{"columns":{"album":false,"genre":true,"duration":true,"favorite":false}}}"#).unwrap();
+        let old = old.sanitize();
+        assert_eq!(old.ui.columns.get("artist"), Some(&true));
+        assert_eq!(old.ui.columns.get("album"), Some(&false));
+        assert_eq!(old.ui.columns.get("favorite"), Some(&false));
+        // 一部しか無い・columns が無い設定は、無いキーを全部オン
+        for json in [r#"{"ui":{"columns":{"album":true}}}"#, r#"{"ui":{"columns":{}}}"#, r#"{"ui":{"sidebarCollapsed":true}}"#, "{}"] {
+            let s: AppSettings = serde_json::from_str(json).unwrap();
+            let s = s.sanitize();
+            for c in TRACK_COLUMNS {
+                assert_eq!(s.ui.columns.get(*c), Some(&true), "{json}: {c}");
+            }
+        }
+        // 切った値は残る（オンで上書きしない）。知らないキーも残す（今までどおり）
+        let off: AppSettings = serde_json::from_str(r#"{"ui":{"columns":{"artist":false,"future":false}}}"#).unwrap();
+        let off = off.sanitize();
+        assert_eq!(off.ui.columns.get("artist"), Some(&false));
+        assert_eq!(off.ui.columns.get("future"), Some(&false));
+        assert_eq!(off.ui.columns.get("album"), Some(&true));
+        // 画面に送る名前
+        let j = serde_json::to_string(&AppSettings::default()).unwrap();
+        assert!(j.contains("\"columns\":{\"album\":true,\"artist\":true,"), "{j}");
+    }
+
     #[test]
     fn roundtrip_in_db() {
         let db = Db::open_memory("settings_rt").unwrap();
@@ -495,14 +534,19 @@ mod tests {
         s.ui.settings_tabs = vec!["keys".into(), "display".into()];
         s.ui.compact_list = "narrow".into();
         s.ui.sidebar_icon_px = 28;
+        s.ui.columns.insert("artist".into(), false);
         save(&db, &s).unwrap();
         assert_eq!(load(&db), s);
+        assert_eq!(load(&db).ui.columns.get("artist"), Some(&false));
         // v3.4.0：DB に範囲の外・知らない値が入っていても、読むときに整える（ほかの値は残す）
         let mut raw = serde_json::to_value(&s).unwrap();
         raw["ui"]["compactList"] = serde_json::json!("tiny");
         raw["ui"]["sidebarIconPx"] = serde_json::json!(99);
+        // v3.5.0：3.4.0 までに保存した設定（columns に artist が無い）は、読むときにオン
+        raw["ui"]["columns"].as_object_mut().unwrap().remove("artist");
         db::settings::set(&db, KEY, &raw).unwrap();
         let back = load(&db);
+        assert_eq!(back.ui.columns.get("artist"), Some(&true));
         assert_eq!(back.ui.compact_list, "off");
         assert_eq!(back.ui.sidebar_icon_px, SIDEBAR_ICON_PX_MAX);
         assert_eq!(back.theme, "light");
