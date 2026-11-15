@@ -19,6 +19,11 @@ test-support = []
 name = "device_playback"
 required-features = ["test-support"]
 
+# 同時再生を作る前の、作者の実機での計測（tests\sync_probe.rs。計測そのものは #[ignore]）
+[[test]]
+name = "sync_probe"
+required-features = ["test-support"]
+
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }
 
@@ -72,6 +77,8 @@ windows = { version = "=0.62.2", features = [
   "Win32_Media_MediaFoundation",
   # v3.1.2：Media Foundation の DLL があるかを、使う前に確かめる（LoadLibraryExW。DLL は build.rs で遅延読み込みにしている）
   "Win32_System_LibraryLoader",
+  # 同時再生の計測（tests\sync_probe.rs）：QueryPerformanceCounter。cpal 0.18.2 がすでに有効にしている機能を明記する（新しいクレートは無い）
+  "Win32_System_Performance",
 ] }
 
 [profile.release]
