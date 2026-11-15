@@ -43,13 +43,16 @@ pub const DURATION_VARS: [&str; 4] = ["--dur-hover", "--dur-panel", "--dur-page"
 pub const DURATION_MIN: u32 = 100;
 pub const DURATION_MAX: u32 = 250;
 
-/// スキンから変えさせない（レイアウトの寸法と、使う人の背景の設定）。書いてあれば警告して使わない
-pub const LOCKED_VARS: [&str; 11] = [
+/// スキンから変えさせない（レイアウトの寸法と、使う人の背景の設定）。書いてあれば警告して使わない。
+/// v3.8.0：再生バーの真ん中の列の幅 `--player-center-w` を足した（画面の src\skins\tokens.ts の LOCKED_VARS と同じ並び。
+/// 3列と1段の切り替えの計算（src\layout\playerLayout.ts）がこの幅を前提にするため）
+pub const LOCKED_VARS: [&str; 12] = [
     "--sidebar-w",
     "--sidebar-w-collapsed",
     "--row-h",
     "--row-art",
     "--player-h",
+    "--player-center-w",
     "--topbar-h",
     "--lyrics-row-h",
     "--lyrics-row-anchor",
@@ -272,6 +275,24 @@ mod tests {
         assert_eq!(color_token("--c-outline", "rgba(255,255,255,.44)").as_deref(), Some("rgba(255, 255, 255, 0.44)"));
         assert_eq!(color_token("--c-favorite", "#FFD23F").as_deref(), Some("#ffd23f"));
         assert_eq!(color_token("--c-favorite", "gold"), None);
+    }
+
+    /// v3.8.0：スキンから変えさせない変数は、画面（src\skins\tokens.ts の LOCKED_VARS）と同じ名前・同じ並び。
+    /// 再生バーの真ん中の列の幅（--player-center-w）を足した。スキンに書いてあれば警告して使わない
+    #[test]
+    fn locked_vars_match_the_screen() {
+        let ts = include_str!("../../../src/skins/tokens.ts");
+        let start = ts.find("export const LOCKED_VARS = [").expect("LOCKED_VARS in tokens.ts");
+        let end = start + ts[start..].find("];").expect("end of LOCKED_VARS");
+        let screen: Vec<&str> = ts[start..end].lines().skip(1).filter_map(|l| l.trim().strip_prefix('"')?.split('"').next()).collect();
+        assert_eq!(screen, LOCKED_VARS.to_vec());
+        assert!(LOCKED_VARS.contains(&"--player-center-w"));
+        assert_eq!(common_token("--player-center-w", &json!("100px")), CommonToken::Locked);
+        // 寸法の変数は、画面のテーマの変数（tokens.css）に既定の値がある
+        let css = include_str!("../../../src/theme/tokens.css");
+        for v in ["--row-h", "--row-art", "--player-h", "--player-center-w", "--topbar-h", "--lyrics-row-h"] {
+            assert!(css.contains(&format!("{v}:")), "{v}");
+        }
     }
 
     #[test]

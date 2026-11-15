@@ -1,13 +1,14 @@
 // 骨組み：背景の層の上に、サイドバー・上の検索・一覧・下の再生バーを置く。
+// v3.8.0：一覧の側（.main）の幅を測って listPaneWidth に入れる（曲一覧と上の帯が使う）。再生バーの形は PlayerBar が自分の幅で決める。
 // 画面内のドラッグ（曲 → プレイリスト／キュー、並び替え）はここでまとめて受ける。
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { api } from "../ipc/commands";
 import { navigate, playlists, route } from "../stores/library";
 import { notify } from "../stores/notices";
 import { lyricsRowOn, settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
-import { useLayoutSize } from "../components/useLayoutSize";
+import { listPaneWidth, useLayoutSize } from "../components/useLayoutSize";
 import { CharacterLayer } from "../components/CharacterLayer";
 import { characterLayout, characterStage } from "../skins/character";
 import { fallbackView } from "./visibility";
@@ -67,6 +68,18 @@ export function AppShell() {
     const to = fallbackView(settings.get().ui, route.get().view);
     if (to) navigate({ view: to as any });
   }, [sidebarItemsKey]);
+  // v3.8.0：曲一覧の側の幅（.main の幅）を測る。曲一覧の列・ジャケット・行の高さ・自動のコンパクト・上の帯の文字は、この幅で決める
+  // （ウィンドウの幅ではなく。配信モード（段2）で曲一覧の横にミキサーを並べたとき、曲一覧だけが狭くなるため）
+  const mainRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const put = () => listPaneWidth.set(el.getBoundingClientRect().width);
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   // 少し動かしてからドラッグ開始（クリック・ダブルクリックと区別する）
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -118,6 +131,7 @@ export function AppShell() {
             }}
           />
           <main
+            ref={mainRef}
             className={"main panel" + (character ? " has-character-rail" : "")}
             style={character ? ({ ["--character-rail-w" as any]: `${character.railPx}px` } as any) : undefined}
           >

@@ -1,6 +1,13 @@
-// 下：再生バー（画面下部に固定）。左：アート／中央：曲名・アーティスト・今の歌詞の1行・進み具合／右：操作と音量・歌詞。
+// 下：再生バー（画面下部に固定）。
 // v3.3.0：シャッフル・リピート・音量・流れる歌詞の列のオン・オフ・歌詞のボタンは、設定で隠せる（visibility.ts）。
 // 再生・一時停止・前・次・シークバーは隠せない。ボタンを隠しても、ショートカット（Ctrl+L など）はそのまま効く。
+// v3.8.0：再生バーの幅に中身が入るかどうかで、3列と1段を切り替える（決めるのは src\layout\playerLayout.ts）。
+//   3列：左＝ジャケット・曲名・アーティスト（・今の歌詞の1行）／中＝操作のボタンとシークバー（再生ボタンは中央に固定）／右＝全体の音量・歌詞のボタン・「···」
+//   1段：上の縁にシークバーの細い線／左＝ジャケット・曲名・今の時間 / 長さ／中＝前・再生・次／右＝「···」（全体の音量・シャッフル・リピート・歌詞のボタン）
+//   入りきらないボタンは「···」へ。設定で隠したボタンは「···」にも出さない。
+//   出力ボタン（段2）は右の列の全体の音量の左に、固定幅で入れる（playerLayout の outputW）。
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../ipc/commands";
 import { playback } from "../stores/playback";
 import { navigate, route } from "../stores/library";
@@ -11,13 +18,14 @@ import { lyricsRowOn, settings, toggleLyricsRow } from "../stores/settings";
 import { useStore } from "../stores/store";
 import { comboLabel } from "../shortcuts/shortcuts";
 import { Artwork } from "../components/Artwork";
-import { SeekBar } from "../components/SeekBar";
+import { SeekBar, SeekTime } from "../components/SeekBar";
 import { VolumeControl } from "../components/VolumeControl";
-import { IconLyrics, IconLyricsRow, IconNext, IconPause, IconPlay, IconPrev, IconRepeat, IconShuffle } from "../components/Icons";
+import { IconLyrics, IconLyricsRow, IconMore, IconNext, IconPause, IconPlay, IconPrev, IconRepeat, IconShuffle } from "../components/Icons";
 import { LyricParts } from "../components/LyricParts";
 import { openMenu } from "../components/ContextMenu";
 import { trackMenu } from "../components/trackActions";
 import { playerButtonShown } from "./visibility";
+import { playerLayout, type MovableButton } from "./playerLayout";
 
 const REPEAT_LABEL = { off: "リピート：切", all: "リピート：全曲", one: "リピート：1曲" } as const;
 
@@ -70,6 +78,93 @@ function PlayerLyricLine(props: { trackId: number }) {
   );
 }
 
+/** 再生バーの幅を測る（ResizeObserver）。最初の描画はウィンドウの幅から見積もる（.app の左右の余白 10px） */
+function useBarWidth(ref: { current: HTMLElement | null }): number {
+  const [w, setW] = useState(() => Math.max(0, window.innerWidth - 20));
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const put = () => setW(el.getBoundingClientRect().width);
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []); // eslint-disable-line
+  return w;
+}
+
+/** 「···」（その他）：押すと上に開く小窓。全体の音量と、入りきらなかったボタンを文字つきで出す */
+function PlayerMore(props: { items: MovableButton[]; render: (b: MovableButton) => any }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ right: number; bottom: number }>({ right: 8, bottom: 8 });
+  const close = (focusBack: boolean) => {
+    setOpen(false);
+    if (focusBack) btn.current?.focus();
+  };
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const r = btn.current.getBoundingClientRect();
+    setPos({ right: Math.max(8, window.innerWidth - r.right), bottom: Math.max(8, window.innerHeight - r.top + 8) });
+    // 開いたら中の最初の操作へ（キーボードで続けて選べるように）
+    pop.current?.querySelector<HTMLElement>("button, input")?.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (pop.current?.contains(t) || btn.current?.contains(t)) return;
+      close(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(true);
+      }
+    };
+    const onLeave = () => close(false);
+    window.addEventListener("mousedown", onDown);
+    // 先に受ける（capture）：歌詞の画面の Esc（閉じる）より前に、この小窓だけを閉じる（LyricsView は defaultPrevented を見て何もしない）
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", onLeave);
+    window.addEventListener("blur", onLeave);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", onLeave);
+      window.removeEventListener("blur", onLeave);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={btn}
+        className={"icon-btn player-more" + (open ? " on" : "")}
+        onClick={() => setOpen((o) => !o)}
+        title="その他"
+        aria-label="その他"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        <IconMore />
+      </button>
+      {open
+        ? createPortal(
+            <div ref={pop} className="player-more-pop" role="dialog" aria-label="その他の操作" style={{ right: pos.right, bottom: pos.bottom }}>
+              {props.items.map((b) => (
+                <div key={b} className="player-more-item">
+                  {props.render(b)}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 export function PlayerBar() {
   const s = useStore(playback);
   const t = s.track;
@@ -81,84 +176,120 @@ export function PlayerBar() {
   // 流れる歌詞の列（v3.0.2）がオンのあいだは、下の小さな歌詞の1行を出さない
   const rowOn = lyricsRowOn(st);
   const shown = (id: string) => playerButtonShown(st.ui, id);
-  return (
-    <footer className="player panel" aria-label="再生バー">
-      <button
-        className="art-btn"
-        style={{ border: "none", background: "none", padding: 0, cursor: t ? "pointer" : "default" }}
-        onClick={() => t && navigate({ view: "album", key: t.albumKey, title: t.album || "不明なアルバム" })}
-        title={t ? "このアルバムを開く" : undefined}
-      >
-        <Artwork path={t?.artPath} className="player-art" />
-      </button>
-      <div className="player-mid" onContextMenu={(e) => t && openMenu(e, trackMenu({ tracks: [t], list: "playerBar" }))}>
-        <div className="player-title" title={t?.title}>
-          {t ? t.title : "曲を選んでください"}
-        </div>
-        <div className="player-artist">{t ? t.artist || "不明なアーティスト" : "ファイルやフォルダをドラッグ＆ドロップで取り込めます"}</div>
-        {t && !rowOn ? <PlayerLyricLine trackId={t.id} /> : null}
-        <SeekBar disabled={!t} />
-      </div>
-      <div className="player-controls">
-        <button className="icon-btn" onClick={() => void api.action("previous")} title="前の曲 (Ctrl+←)" aria-label="前の曲">
-          <IconPrev />
+  const ref = useRef<HTMLElement>(null);
+  const barW = useBarWidth(ref);
+  const L = playerLayout(barW, shown);
+  const one = L.mode === "one";
+
+  // 置き場所が動くボタン。inMenu は「···」の中（文字つきの行）
+  const movable = (b: MovableButton, inMenu: boolean) => {
+    if (b === "volume") return <VolumeControl />;
+    const item = (o: { on: boolean; label: string; title: string; onClick: () => void; icon: any; cls?: string }) =>
+      inMenu ? (
+        <button className="menu-item" onClick={o.onClick} title={o.title} aria-pressed={o.on}>
+          {o.icon}
+          <span style={{ flex: 1 }}>{o.label}</span>
         </button>
+      ) : (
         <button
-          className="icon-btn play-btn"
-          onClick={() => void api.action("toggle")}
-          title={playing ? "一時停止 (Space)" : "再生 (Space)"}
-          aria-label={playing ? "一時停止" : "再生"}
+          className={"icon-btn" + (o.cls ? " " + o.cls : "") + (o.on ? " on" : "")}
+          onClick={o.onClick}
+          title={o.title}
+          aria-label={o.label}
+          aria-pressed={o.on}
         >
-          {playing ? <IconPause /> : <IconPlay />}
+          {o.icon}
         </button>
-        <button className="icon-btn" onClick={() => void api.action("next")} title="次の曲 (Ctrl+→)" aria-label="次の曲">
-          <IconNext />
+      );
+    if (b === "shuffle")
+      return item({
+        on: s.shuffle,
+        label: inMenu ? `シャッフル：${s.shuffle ? "入" : "切"}` : "シャッフル",
+        title: s.shuffle ? "シャッフル：入 (S)" : "シャッフル：切 (S)",
+        onClick: () => void api.setShuffle(!s.shuffle),
+        icon: <IconShuffle on={s.shuffle} />,
+      });
+    if (b === "repeat")
+      return item({
+        on: s.repeat !== "off",
+        label: REPEAT_LABEL[s.repeat],
+        title: `${REPEAT_LABEL[s.repeat]} (R)`,
+        onClick: () => void api.action("cycleRepeat"),
+        icon: <IconRepeat one={s.repeat === "one"} mode={s.repeat} />,
+      });
+    // 流れる歌詞の列のオン・オフ（v3.0.2）。「歌詞」ボタンのすぐ左。オン・オフで位置は変わらない
+    if (b === "lyricsRow")
+      return item({
+        on: rowOn,
+        label: inMenu ? `流れる歌詞の列：${rowOn ? "入" : "切"}` : "流れる歌詞の列",
+        title: `流れる歌詞の列：${rowOn ? "入" : "切"} (${rowKey})`,
+        onClick: () => void toggleLyricsRow(),
+        icon: <IconLyricsRow />,
+      });
+    return item({
+      on: lyricsOpen,
+      label: "歌詞",
+      title: `歌詞 (${lyricsKey})`,
+      onClick: toggleLyricsView,
+      icon: <IconLyrics />,
+      cls: "lyrics-btn",
+    });
+  };
+  // 3列の操作の5つの枠の両端（シャッフル・リピート）。出さないとき・「···」へ移したときも空の枠を残し、再生ボタンを中央に保つ
+  const centerSlot = (b: "shuffle" | "repeat", on: boolean) => (on ? movable(b, false) : <span aria-hidden="true" />);
+
+  return (
+    <footer ref={ref} className={"player panel " + (one ? "one-row" : "three-col")} aria-label="再生バー">
+      {one ? <SeekBar disabled={!t} variant="line" /> : null}
+      <div className="player-left">
+        <button
+          className="art-btn"
+          style={{ border: "none", background: "none", padding: 0, cursor: t ? "pointer" : "default" }}
+          onClick={() => t && navigate({ view: "album", key: t.albumKey, title: t.album || "不明なアルバム" })}
+          title={t ? "このアルバムを開く" : undefined}
+        >
+          <Artwork path={t?.artPath} className="player-art" />
         </button>
-        {shown("shuffle") ? (
-          <button
-            className={"icon-btn" + (s.shuffle ? " on" : "")}
-            onClick={() => void api.setShuffle(!s.shuffle)}
-            title={s.shuffle ? "シャッフル：入 (S)" : "シャッフル：切 (S)"}
-            aria-pressed={s.shuffle}
-            aria-label="シャッフル"
-          >
-            <IconShuffle on={s.shuffle} />
+        <div className="player-mid" onContextMenu={(e) => t && openMenu(e, trackMenu({ tracks: [t], list: "playerBar" }))}>
+          <div className="player-title" title={t?.title}>
+            {t ? t.title : "曲を選んでください"}
+          </div>
+          {/* 1段のときは、アーティスト名と歌詞の1行の代わりに「今の時間 / 長さ」（作者の決定） */}
+          {one ? (
+            t ? <SeekTime /> : null
+          ) : (
+            <div className="player-artist">{t ? t.artist || "不明なアーティスト" : "ファイルやフォルダをドラッグ＆ドロップで取り込めます"}</div>
+          )}
+          {!one && t && !rowOn ? <PlayerLyricLine trackId={t.id} /> : null}
+        </div>
+      </div>
+      <div className="player-center">
+        <div className="player-controls">
+          {one ? null : centerSlot("shuffle", L.centerShuffle)}
+          <button className="icon-btn" onClick={() => void api.action("previous")} title="前の曲 (Ctrl+←)" aria-label="前の曲">
+            <IconPrev />
           </button>
-        ) : null}
-        {shown("repeat") ? (
           <button
-            className={"icon-btn" + (s.repeat !== "off" ? " on" : "")}
-            onClick={() => void api.action("cycleRepeat")}
-            title={`${REPEAT_LABEL[s.repeat]} (R)`}
-            aria-label={REPEAT_LABEL[s.repeat]}
+            className="icon-btn play-btn"
+            onClick={() => void api.action("toggle")}
+            title={playing ? "一時停止 (Space)" : "再生 (Space)"}
+            aria-label={playing ? "一時停止" : "再生"}
           >
-            <IconRepeat one={s.repeat === "one"} mode={s.repeat} />
+            {playing ? <IconPause /> : <IconPlay />}
           </button>
-        ) : null}
-        {shown("volume") ? <VolumeControl /> : null}
-        {/* 流れる歌詞の列のオン・オフ（v3.0.2）。「歌詞」ボタンのすぐ左。オン・オフで位置は変わらない */}
-        {shown("lyricsRow") ? (
-          <button
-            className={"icon-btn" + (rowOn ? " on" : "")}
-            onClick={() => void toggleLyricsRow()}
-            title={`流れる歌詞の列：${rowOn ? "入" : "切"} (${rowKey})`}
-            aria-label="流れる歌詞の列"
-            aria-pressed={rowOn}
-          >
-            <IconLyricsRow />
+          <button className="icon-btn" onClick={() => void api.action("next")} title="次の曲 (Ctrl+→)" aria-label="次の曲">
+            <IconNext />
           </button>
-        ) : null}
-        {shown("lyrics") ? (
-          <button
-            className={"icon-btn lyrics-btn" + (lyricsOpen ? " on" : "")}
-            onClick={toggleLyricsView}
-            title={`歌詞 (${lyricsKey})`}
-            aria-label="歌詞"
-            aria-pressed={lyricsOpen}
-          >
-            <IconLyrics />
-          </button>
-        ) : null}
+          {one ? null : centerSlot("repeat", L.centerRepeat)}
+        </div>
+        {one ? null : <SeekBar disabled={!t} />}
+      </div>
+      <div className="player-right">
+        {/* 段2：出力ボタン（固定幅）は、ここ（全体の音量の左）に入れる。幅は playerLayout の outputW にも渡す */}
+        {L.right.map((b) => (
+          <Fragment key={b}>{movable(b, false)}</Fragment>
+        ))}
+        {L.more.length > 0 ? <PlayerMore items={L.more} render={(b) => movable(b, true)} /> : null}
       </div>
     </footer>
   );

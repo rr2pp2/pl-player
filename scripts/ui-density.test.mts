@@ -7,16 +7,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Virtualizer } from "@tanstack/virtual-core";
 import {
+  COMPACT_AUTO_BELOW,
   COMPACT_LIST_MODES,
-  COMPACT_NARROW_BELOW,
   COMPACT_ROW_H,
+  compactAutoOn,
   compactListMode,
   compactListOn,
+  LIST_BELOW,
+  listLayoutFor,
   SIDEBAR_ICON_PX,
   sidebarIconPx,
   trackRowHeight,
 } from "../src/layout/density.ts";
-import { layoutSizeFor } from "../src/components/useLayoutSize.ts";
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
@@ -25,30 +27,47 @@ test("コンパクト表示：古い設定（値が無い）・知らない値�
     assert.equal(compactListMode(ui as any), "off", JSON.stringify(ui));
     for (const w of [300, 719, 720, 1400]) assert.equal(compactListOn(ui as any, w), false, `${JSON.stringify(ui)} ${w}`);
   }
+  // v3.8.0：「使わない／いつも」の2つ（3.7.0 の「ウィンドウが狭いときだけ」は、チェック「窓が狭いときは自動でコンパクトにする」へ分けた）
   assert.deepEqual(
     COMPACT_LIST_MODES.map((m) => m.label),
-    ["使わない", "いつも", "ウィンドウが狭いときだけ"],
+    ["使わない", "いつも"],
   );
   assert.equal(COMPACT_LIST_MODES[0].id, "off", "既定（使わない）を先頭に出す");
+  for (const ui of [undefined, null, {}, { compactAuto: null }, { compactAuto: "true" }, { compactAuto: 1 }]) assert.equal(compactAutoOn(ui as any), false, JSON.stringify(ui));
 });
 
-test("コンパクト表示：いつも・狭いときだけ（720px 未満）", () => {
-  for (const w of [320, 719, 720, 1100, 2560]) assert.equal(compactListOn({ compactList: "always" }, w), true, String(w));
-  assert.equal(COMPACT_NARROW_BELOW, 720);
-  assert.equal(compactListOn({ compactList: "narrow" }, 719), true);
-  assert.equal(compactListOn({ compactList: "narrow" }, 719.5), true);
-  assert.equal(compactListOn({ compactList: "narrow" }, 720), false);
-  assert.equal(compactListOn({ compactList: "narrow" }, 1400), false);
+test("コンパクト表示（v3.8.0）：いつも・自動（曲一覧の側の幅が 626px 未満）。3.7.0 の \"narrow\" は 使わない＋自動 と読む", () => {
+  for (const w of [320, 625, 626, 1100, 2560]) assert.equal(compactListOn({ compactList: "always" }, w), true, String(w));
+  for (const w of [320, 625, 626, 1100, 2560]) assert.equal(compactListOn({ compactList: "always", compactAuto: true }, w), true, String(w));
+  assert.equal(COMPACT_AUTO_BELOW, 626);
+  for (const ui of [{ compactList: "off", compactAuto: true }, { compactList: "narrow" }, { compactList: "narrow", compactAuto: false }]) {
+    assert.equal(compactListMode(ui), "off", JSON.stringify(ui));
+    assert.equal(compactAutoOn(ui), true, JSON.stringify(ui));
+    assert.equal(compactListOn(ui, 625), true);
+    assert.equal(compactListOn(ui, 625.5), true);
+    assert.equal(compactListOn(ui, 626), false);
+    assert.equal(compactListOn(ui, 1400), false);
+  }
   assert.equal(compactListOn({ compactList: "off" }, 300), false);
+  assert.equal(compactListOn({ compactList: "off", compactAuto: false }, 300), false);
 });
 
-test("狭いときの境目は、ジャケットが縮む段（useLayoutSize の artSize と base.css の 719px）と同じ", () => {
-  const ls = read("src/components/useLayoutSize.ts");
-  const m = ls.match(/artSize: w < (\d+) \?/);
-  assert.ok(m, "artSize の境目");
-  assert.equal(Number(m![1]), COMPACT_NARROW_BELOW);
+test("自動のコンパクトの境目は、ジャケットが縮む段（曲一覧の側の幅 626px 未満）と同じ。どちらも曲一覧の側の幅で決め、窓の幅の @media は残さない", () => {
+  assert.equal(COMPACT_AUTO_BELOW, LIST_BELOW.art);
+  assert.equal(listLayoutFor(LIST_BELOW.art - 0.5).artSize, 36);
+  assert.equal(listLayoutFor(LIST_BELOW.art).artSize, 44);
+  // 上の帯のファイル・フォルダの文字も同じ段で隠す（3.7.0 は窓の幅 720px 未満の .hide-narrow）
+  assert.equal(listLayoutFor(LIST_BELOW.art - 1).topbarNarrow, true);
+  assert.equal(listLayoutFor(LIST_BELOW.art).topbarNarrow, false);
   const css = read("src/theme/base.css");
-  assert.match(css, new RegExp(`@media \\(max-width: ${COMPACT_NARROW_BELOW - 1}px\\) \\{\\s*\\.hide-narrow`), "base.css の「3. ジャケットを縮める」");
+  assert.match(css, /\n\.topbar\.narrow \.hide-narrow \{\s*display: none;/);
+  assert.match(read("src/layout/TopBar.tsx"), /<header className=\{"topbar" \+ \(narrow \? " narrow" : ""\)\}>/);
+  // 曲一覧の列・ジャケット・行の高さ・ファイルの文字を、窓の幅の @media で変えていない
+  for (const m of css.matchAll(/@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}\n/g)) {
+    for (const bad of ["--row-h", "--row-art", "--player-h", ".col-genre", ".col-album", ".hide-narrow", ".track-row", ".player"]) {
+      assert.ok(!m[2].includes(bad), `@media ${m[1]}px: ${bad}`);
+    }
+  }
 });
 
 test("行の高さ：コンパクトなら 36px（幅の段にかかわらず）、そうでなければ通常の高さ。行の中のボタンが収まる", () => {
@@ -66,12 +85,12 @@ test("行の高さ：コンパクトなら 36px（幅の段にかかわらず）
   assert.equal(Number(normalBtn![2]), 32);
   assert.ok(COMPACT_ROW_H >= Number(compactBtn![2]) + 8, `${COMPACT_ROW_H} >= ${compactBtn![2]} + 8`);
   // 通常の行（いちばん低い 600px 未満の 48px でも）に 32px の面が収まる
-  for (const w of [400, 599, 600, 1400]) assert.ok(layoutSizeFor(w).rowH >= Number(normalBtn![2]) + 8, String(w));
+  for (const w of [300, 517, 518, 1400]) assert.ok(listLayoutFor(w).rowH >= Number(normalBtn![2]) + 8, String(w));
   // 通常の行（48・60px）より低い
   assert.ok(COMPACT_ROW_H < 48);
 });
 
-test("v3.7.0：曲一覧の行の高さ・ジャケットの大きさは、CSS（tokens.css と base.css の幅の段）と JS（useLayoutSize の layoutSizeFor）で同じ", () => {
+test("曲一覧の行の高さ・ジャケットの大きさ：既定は CSS（tokens.css）と JS（density.ts の listLayoutFor）で同じ。狭い段の値は JS だけが持ち、曲一覧の要素に入れて渡す", () => {
   const tokens = read("src/theme/tokens.css");
   const css = read("src/theme/base.css");
   const px = (src: string, name: string) => {
@@ -79,39 +98,36 @@ test("v3.7.0：曲一覧の行の高さ・ジャケットの大きさは、CSS�
     assert.ok(m, name);
     return Number(m![1]);
   };
-  // 幅の段の中の値（@media (max-width: Npx) の中の :root）
-  const media = (max: number, name: string) => {
-    const at = css.indexOf(`@media (max-width: ${max}px) {`);
-    assert.ok(at >= 0, `@media ${max}`);
-    const block = css.slice(at, css.indexOf("\n}\n", at));
-    return px(block, name);
-  };
-  // 既定（広い窓）：60px・44px（3.6.0 までは 64・48）
+  // 既定（広い）：60px・44px（3.6.0 までは 64・48）
   assert.equal(px(tokens, "--row-h"), 60);
   assert.equal(px(tokens, "--row-art"), 44);
   assert.equal(px(tokens, "--player-h"), 80);
   assert.equal(px(tokens, "--radius-card"), 12);
-  // 1400・1099・900・720px（既定の値の段）
-  for (const w of [1920, 1400, 1099, 900, 820, 720]) {
-    assert.equal(layoutSizeFor(w).rowH, px(tokens, "--row-h"), `rowH ${w}`);
-    assert.equal(layoutSizeFor(w).artSize, px(tokens, "--row-art"), `artSize ${w}`);
+  for (const w of [1826, 1306, 1005, 806, 726, 626]) {
+    assert.equal(listLayoutFor(w).rowH, px(tokens, "--row-h"), `rowH ${w}`);
+    assert.equal(listLayoutFor(w).artSize, px(tokens, "--row-art"), `artSize ${w}`);
   }
-  // 719px 以下：ジャケット 36px（CSS は 719px の段の --row-art）。行は 600px 以上なら既定のまま
-  for (const w of [719, 600]) {
-    assert.equal(layoutSizeFor(w).artSize, media(719, "--row-art"), `artSize ${w}`);
-    assert.equal(layoutSizeFor(w).rowH, px(tokens, "--row-h"), `rowH ${w}`);
+  // 曲一覧の側が 626px 未満：ジャケット 36px（行は 518px 以上なら既定のまま）。518px 未満：行 48px（v3.7.0 の値）
+  for (const w of [625, 518]) {
+    assert.equal(listLayoutFor(w).artSize, 36, `artSize ${w}`);
+    assert.equal(listLayoutFor(w).rowH, 60, `rowH ${w}`);
+    assert.equal(listLayoutFor(w).tight, false, `tight ${w}`);
   }
-  // 599px 以下：行 48px（CSS は 599px の段の --row-h）
-  for (const w of [599, 480]) {
-    assert.equal(layoutSizeFor(w).rowH, media(599, "--row-h"), `rowH ${w}`);
-    assert.equal(layoutSizeFor(w).artSize, media(719, "--row-art"), `artSize ${w}`);
+  for (const w of [517, 398, 300]) {
+    assert.equal(listLayoutFor(w).rowH, 48, `rowH ${w}`);
+    assert.equal(listLayoutFor(w).artSize, 36, `artSize ${w}`);
+    assert.equal(listLayoutFor(w).tight, true, `tight ${w}`);
   }
-  // 曲一覧の行は JS の行の高さを --row-h として受け取り（仮想スクロールの1行と同じ）、ジャケットの列の幅は artSize（CSS の画像は --row-art）
+  // 曲一覧の行は JS の行の高さを --row-h、ジャケットの大きさを --row-art として受け取る（仮想スクロールの1行と同じ）。ジャケットの列の幅は artSize
   const tt = read("src/components/TrackTable.tsx");
   assert.match(tt, /\["--row-h" as any\]: `\$\{rowH\}px`/);
+  assert.match(tt, /\["--row-art" as any\]: `\$\{size\.artSize\}px`/);
   assert.match(tt, /compact \? null : `\$\{size\.artSize\}px`,/);
+  assert.match(tt, /const size = useListLayout\(\);/);
+  assert.match(tt, /\(size\.tight \? " tight" : ""\)/);
   assert.match(css, /\.t-art \{\s*width: var\(--row-art\);\s*height: var\(--row-art\);/);
   assert.match(css, /\.track-row \{\s*height: var\(--row-h\);/);
+  assert.match(css, /\.track-table\.tight \.track-head,\n\.track-table\.tight \.track-row \{\s*padding: 0 10px;\s*column-gap: 10px;/);
   // スキンからは変えさせない（Rust と画面の LOCKED_VARS）
   const rs = read("src-tauri/src/skins/tokens.rs");
   for (const v of ["--row-h", "--row-art", "--player-h"]) assert.ok(rs.includes(`"${v}"`) && read("src/skins/tokens.ts").includes(`"${v}"`), v);
@@ -130,9 +146,13 @@ test("値の名前と範囲は Rust（settings\\store.rs）と同じ", () => {
   assert.equal(num("SIDEBAR_ICON_PX_MIN"), SIDEBAR_ICON_PX.min);
   assert.equal(num("SIDEBAR_ICON_PX_MAX"), SIDEBAR_ICON_PX.max);
   assert.equal(num("SIDEBAR_ICON_PX_DEFAULT"), SIDEBAR_ICON_PX.default);
+  // v3.8.0：3.7.0 までの「狭いときだけ」の名前（読むときだけ受ける）も Rust と同じ
+  assert.match(rs, /pub const COMPACT_LIST_LEGACY_NARROW: &str = "narrow";/);
   // 画面の既定値（src\stores\settings.ts）も同じ
   const st = read("src/stores/settings.ts");
   assert.match(st, /compactList: "off",/);
+  assert.match(st, /compactAuto: false,/);
+  assert.match(rs, /compact_auto: false,/);
   assert.match(st, new RegExp(`sidebarIconPx: ${SIDEBAR_ICON_PX.default},`));
 });
 
@@ -361,7 +381,7 @@ test("アーティストの出し入れ（v3.5.0。作者の要望）：設定�
 
 test("仮想スクロール（@tanstack/virtual-core を実際に動かす）：行の高さを替えただけでは並びが変わらず、measure で新しい高さに追いつく", () => {
   // TrackTable と同じ使い方：estimateSize は描くたびに今の行の高さを返し、行の高さが変わったら measure() を呼ぶ
-  const normal = layoutSizeFor(1400).rowH; // v3.7.0：60px
+  const normal = listLayoutFor(1400).rowH; // v3.7.0：60px
   let rowH = trackRowHeight(false, normal);
   const opts: any = {
     count: 100,
@@ -418,7 +438,7 @@ test("並べ替え（プレイリスト・キュー）：落とした先は行�
   assert.match(tt, /index: p\.index,/);
 });
 
-test("設定の画面：表示のタブに2つの欄。コンパクト表示は3つから選び、アイコンはスライダー（範囲は density.ts の値）", () => {
+test("設定の画面：表示のタブに2つの欄。コンパクト表示は2つから選び（v3.8.0）、自動のチェックを添える。アイコンはスライダー（範囲は density.ts の値）", () => {
   const v = read("src/views/SettingsView.tsx");
   const display = v.slice(v.indexOf('{tab === "display" ? ('), v.indexOf('{tab === "skin"'));
   assert.ok(display.indexOf("<CompactField />") > display.indexOf("曲一覧の列"), "曲一覧の列のすぐ下");
@@ -428,4 +448,11 @@ test("設定の画面：表示のタブに2つの欄。コンパクト表示は3
   assert.match(v, /max=\{SIDEBAR_ICON_PX\.max\}/);
   assert.match(v, /<span className="flabel">曲一覧のコンパクト表示<\/span>/);
   assert.match(v, /<span className="flabel">サイドバーのアイコンの大きさ<\/span>/);
+  // v3.8.0：チェック「窓が狭いときは自動でコンパクトにする」は compactAuto を書く。どちらを変えても、もう一方は今の値（3.7.0 の "narrow" も読み替えた値）で書く
+  const field = v.slice(v.indexOf("function CompactField()"), v.indexOf("function SidebarIconField()"));
+  assert.match(field, /<span>窓が狭いときは自動でコンパクトにする<\/span>/);
+  assert.match(field, /checked=\{auto\}/);
+  assert.match(field, /compactList: m\.id, compactAuto: compactAutoOn\(x\.ui\)/);
+  assert.match(field, /compactList: compactListMode\(x\.ui\), compactAuto: e\.target\.checked/);
+  assert.ok(!/ウィンドウが狭いときだけ/.test(field.slice(field.indexOf("return ("))), "画面に出す文に古い3つ目の選び方が残っていない");
 });

@@ -36,7 +36,9 @@ export const settings = createStore<AppSettings>({
     trashButton: false,
     settingsTabs: [],
     // v3.4.0：曲一覧のコンパクト表示（既定は使わない）・サイドバーのアイコンの大きさ（既定は 3.3.0 までの 20px）
+    // v3.8.0：窓が狭いときは自動でコンパクトにする（既定はオフ。Rust の UiSettings::default と同じ）
     compactList: "off",
+    compactAuto: false,
     sidebarIconPx: 20,
   },
   shortcuts: { ...DEFAULT_SHORTCUTS },

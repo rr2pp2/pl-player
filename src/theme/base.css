@@ -283,8 +283,34 @@ textarea {
 .topbar-actions {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: 6px;
   flex: none;
+}
+/* v3.8.0：モード切替（通常／コンパクト）。.seg の部品のまま、高さをファイル・フォルダのボタン（32px）にそろえる。
+   ボタンの幅は src\layout\density.ts の TOPBAR と同じ決まり（余白 10px・アイコン 16px・間 6px。アイコンだけなら 36px）。
+   アイコンの枠は 16px に固定（スキンでアイコンを差し替える仕組みは使わないが、形を変えても幅は変わらない） */
+.seg.view-mode {
+  height: 32px;
+  flex: none;
+}
+.seg.view-mode button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.seg.view-mode.icons button {
+  width: 36px;
+  padding: 0;
+}
+.seg.view-mode .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
 .content {
   flex: 1;
@@ -727,15 +753,26 @@ textarea {
 }
 
 /* ---------- 再生バー ---------- */
+/* v3.8.0：形は「中身が入るかどうか」で、3列（.three-col）と1段（.one-row）を切り替える（決めるのは src\layout\playerLayout.ts。
+   PlayerBar が再生バーの幅を測って class を付ける。決まった窓の幅の @media は使わない）。
+   3列：左・中・右。左右は同じ幅（1fr ずつ）なので、真ん中の列（--player-center-w：再生バーの中の幅の 40%、240〜560px）と、
+   その中央の再生ボタンは再生バーの中央に固定され、右の列の中身で動かない。寸法は playerLayout.ts の PLAYER と同じ値 */
 .player {
   grid-row: 2;
   grid-column: 1 / -1;
+  position: relative; /* 1段のときのシークバーの細い線の置き場 */
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--player-center-w) minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   padding: 0 16px;
   min-width: 0;
+}
+.player-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .player-art {
   width: 60px;
@@ -743,10 +780,11 @@ textarea {
   border-radius: var(--radius);
 }
 .player-mid {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .player-title {
   font-size: var(--fs-title);
@@ -762,6 +800,13 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 真ん中の列：上の段に操作のボタン、下の段にシークバーを列の幅いっぱいに */
+.player-center {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .seek {
   display: flex;
   align-items: center;
@@ -770,12 +815,17 @@ textarea {
   color: var(--c-secondary);
   font-variant-numeric: tabular-nums;
 }
-/* 再生の操作（v3.7.0）：主な操作の再生・一時停止を 44px、ほかのボタン（前・次・シャッフル・リピート・ミュート・歌詞）を 36px、間を 4px。
-   並び・出し入れ（設定の「再生バーのボタン」）は変えない */
+/* 再生の操作（v3.7.0）：主な操作の再生・一時停止を 44px、ほかのボタン（前・次・シャッフル・リピート・ミュート・歌詞）を 36px、間を 4px */
 .player-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+}
+/* 3列：シャッフル・前・再生・次・リピートの5つの枠。シャッフル・リピートを隠した・「···」へ移したときも枠は残す（再生ボタンが動かない） */
+.player.three-col .player-controls {
+  display: grid;
+  grid-template-columns: 36px 36px 44px 36px 36px;
 }
 .player-controls .icon-btn {
   width: 36px;
@@ -796,14 +846,102 @@ textarea {
   height: 22px;
   transition: transform var(--dur-hover) var(--ease);
 }
+/* 右の列：（段2：出力ボタン）・全体の音量・歌詞のボタン・「···」。右に寄せる */
+.player-right {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.player-right .icon-btn {
+  width: 36px;
+  height: 36px;
+}
 .volume {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: 8px;
 }
 .volume .range {
+  flex: none;
   width: 96px;
+}
+/* 1段：左（ジャケット・曲名・今の時間 / 長さ）は残りの幅、中（前・再生・次）と右（「···」）は中身の幅。高さ 76px。
+   シークバーは上の縁の細い線（.seek-line）。角の丸みで線を切るため、はみ出しを隠す（「···」の中身は body の直下に出すので切れない） */
+.player.one-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 0 10px;
+  overflow: hidden;
+}
+:root:has(.player.one-row) {
+  --player-h: 76px;
+}
+.player.one-row .player-left {
+  gap: 10px;
+}
+.player.one-row .player-art {
+  width: 48px;
+  height: 48px;
+}
+.player-time {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seek-line.range {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: 0;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+}
+.seek-line.range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 0;
+}
+.seek-line.range::-webkit-slider-thumb {
+  margin-top: -4.5px;
+}
+.seek-line.range:focus-visible {
+  outline-offset: -2px;
+}
+/* 「···」（その他）：押すと上に開く。中は全体の音量と、入りきらなかったボタン（文字つき） */
+.player-more-pop {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(var(--c-panel-rgb), 0.98);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  animation: fade-in 120ms var(--ease);
+}
+.player-more-pop .volume {
+  padding: 2px 4px;
+}
+.player-more-pop .volume .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+.player-more-pop .volume .range {
+  flex: 1;
+  width: auto;
+}
+.player-more-pop .menu-item[aria-pressed="true"] .icon {
+  color: var(--c-accent);
 }
 
 /* 横長の帯（シーク・音量・設定のつまみ） */
@@ -1035,14 +1173,27 @@ textarea {
   background: var(--c-accent);
   transition: width 200ms linear;
 }
+/* 取り込み中の知らせ（v3.8.0）：入りきらないときは、検索欄より先に縮めて省略記号で切る（モード切替を押し出さない）。
+   幅に余裕があれば今までどおり、中身の幅で 140〜240px（帯の 140px が最低幅の代わり。縮めたときは帯ごと切る）。
+   3.7.0 の min-width: 140px のままだと縮まず、モード切替が文字つきになる幅（曲一覧の側 674〜703px）で右端が最大 30px 切れていた（検査1回目の指摘2） */
 .import-status {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: var(--fs-small);
   color: var(--c-secondary);
-  min-width: 140px;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 240px;
+  overflow: hidden;
+}
+.import-status > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-status .progress-line {
+  min-width: 140px;
 }
 
 /* ---------- フォーム（設定・編集） ---------- */
@@ -1260,44 +1411,21 @@ textarea.input {
 
 /* ---------- 幅が狭くなったとき（原文の順番：1 サイドバー → 2 列 → 3 ジャケット → 4 行の高さ） ---------- */
 /* 1. サイドバーの縮小は 1100px 未満で .sidebar-collapsed を付けて行う（AppShell） */
-/* 2. 列を減らす：Genre → Album の順 */
-@media (max-width: 899px) {
-  .col-genre {
-    display: none !important;
-  }
+/* v3.8.0：2〜4（曲一覧の列・ジャケット・行の高さ）と上の帯のファイル・フォルダの文字は、ウィンドウの幅ではなく曲一覧の側の幅で決める。
+   TrackTable が列を出し入れし、--row-h・--row-art を曲一覧の要素に入れ、狭いときは .tight を付ける（境目は src\layout\density.ts の LIST_BELOW）。
+   上の帯は TopBar が .narrow を付ける。再生バーの形は、再生バーの幅で PlayerBar が決める（.player.one-row。src\layout\playerLayout.ts） */
+.topbar.narrow .hide-narrow {
+  display: none;
 }
-@media (max-width: 819px) {
-  .col-album {
-    display: none !important;
-  }
-  .volume .range {
-    width: 64px;
-  }
+.track-table.tight .track-head,
+.track-table.tight .track-row {
+  padding: 0 10px;
+  column-gap: 10px;
 }
-/* 3. ジャケットを縮める */
 @media (max-width: 719px) {
-  .hide-narrow {
-    display: none;
-  }
-  :root {
-    --row-art: 36px;
-    --player-h: 76px;
-  }
-  .player-art {
-    width: 48px;
-    height: 48px;
-  }
-  .player {
-    gap: 10px;
-    padding: 0 10px;
-  }
   /* 流れる歌詞の列：狭いときは今の行をそろえる位置を 14px に（ほかは base.css の末尾） */
   :root {
     --lyrics-row-anchor: 14px;
-  }
-  /* 再生バーの歌詞：狭いときは今の行だけ（今の行が無いあいだの次の行は、省略記号で切って出す） */
-  .player-lyric-next:not(.alone) {
-    display: none;
   }
   .editor-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1318,19 +1446,8 @@ textarea.input {
     grid-column: 1;
   }
 }
-/* 4. 行の高さを縮める */
+/* 4. 外の余白を詰める（窓の幅。行の高さは上の .track-table.tight） */
 @media (max-width: 599px) {
-  :root {
-    --row-h: 48px;
-  }
-  .volume .range {
-    display: none;
-  }
-  .track-head,
-  .track-row {
-    padding: 0 10px;
-    column-gap: 10px;
-  }
   .app {
     gap: 6px;
     padding: 6px;
@@ -2177,6 +2294,10 @@ img.skin-icon {
   line-height: 1.5;
   pointer-events: none;
   white-space: normal;
+}
+/* v3.8.0：下に出す吹き出し（上の帯のモード切替） */
+.tip-bubble.below {
+  transform: none;
 }
 /* 押しても何も起きないボタン（aria-disabled。マウスを乗せる・キーボードで移ると理由の吹き出しが出る） */
 .icon-btn[aria-disabled="true"] {

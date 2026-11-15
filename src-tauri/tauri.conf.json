@@ -19,7 +19,7 @@
         "width": 1200,
         "height": 760,
         "minWidth": 480,
-        "minHeight": 360,
+        "minHeight": 480,
         "resizable": true,
         "dragDropEnabled": true,
         "center": true

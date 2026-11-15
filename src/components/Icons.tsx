@@ -330,3 +330,28 @@ export const IconLyricsRow = (p: P) => (
     </S>
   </Skinned>
 );
+
+// v3.8.0：上の帯のモード切替と、再生バーの「···」。着せ替えでは差し替えない（スキンの ICONS には足さない）。
+// どれもボタンの枠（.seg .view-mode button・.icon-btn）の大きさが決まっているので、形を変えても並びは崩れない
+/** 通常の表示：ジャケットの四角と2段の行 */
+export const IconViewNormal = (p: P) => (
+  <S {...p}>
+    <rect x="3" y="4" width="6" height="6" rx="1.5" />
+    <rect x="3" y="14" width="6" height="6" rx="1.5" />
+    <path d="M12 6h9M12 8.5h6M12 16h9M12 18.5h6" />
+  </S>
+);
+/** コンパクト表示：詰めた行 */
+export const IconViewCompact = (p: P) => (
+  <S {...p}>
+    <path d="M3 5h18M3 9.67h18M3 14.33h18M3 19h18" />
+  </S>
+);
+/** その他（···） */
+export const IconMore = (p: P) => (
+  <S {...p} fill>
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </S>
+);

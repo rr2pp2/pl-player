@@ -5,6 +5,7 @@
 //   アプリ（ウィンドウ・設定のバックアップ・情報）
 // 最後に開いていたタブは、アプリを閉じるまで覚える（settingsTab。保存はしない）。
 // v3.4.0：表示のタブに「曲一覧のコンパクト表示」（曲一覧の列のすぐ下）と「サイドバーのアイコンの大きさ」（サイドバーの項目のすぐ下）。
+// v3.8.0：コンパクト表示を「使わない／いつも」＋チェック「窓が狭いときは自動でコンパクトにする」に作り直した。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
 import { on } from "../ipc/events";
@@ -28,7 +29,7 @@ import { SkinsSection } from "./SettingsSkins";
 import { SettingsTabs } from "./SettingsTabs";
 import { createStore } from "../stores/store";
 import { mergeTabOrder, PLAYER_BUTTONS, playerButtonShown, SIDEBAR_ITEMS, sidebarItemShown } from "../layout/visibility";
-import { COMPACT_LIST_MODES, COMPACT_NARROW_BELOW, compactListMode, SIDEBAR_ICON_PX, sidebarIconPx } from "../layout/density";
+import { COMPACT_AUTO_BELOW, COMPACT_LIST_MODES, compactAutoOn, compactListMode, SIDEBAR_ICON_PX, sidebarIconPx } from "../layout/density";
 
 /** 開いているタブ（アプリを閉じるまで覚える） */
 const settingsTab = createStore<string>("");
@@ -82,28 +83,41 @@ function HideFields() {
   );
 }
 
-/** v3.4.0：曲一覧のコンパクト表示（表示のタブ。「曲一覧の列」のすぐ下） */
+/** v3.4.0：曲一覧のコンパクト表示（表示のタブ。「曲一覧の列」のすぐ下）。
+ *  v3.8.0：「使わない／いつも」と、チェック「窓が狭いときは自動でコンパクトにする」に分けた（上の帯のモード切替と同じ値）。
+ *  3.7.0 までの「ウィンドウが狭いときだけ」は、使わない＋チェックありとして読む（density.ts・Rust の settings\store.rs） */
 function CompactField() {
   const s = useStore(settings);
   const mode = compactListMode(s.ui);
+  const auto = compactAutoOn(s.ui);
   return (
-    <div className="field">
+    <div className="field field-top">
       <span className="flabel">曲一覧のコンパクト表示</span>
-      <span className="seg" role="radiogroup" aria-label="曲一覧のコンパクト表示">
-        {COMPACT_LIST_MODES.map((m) => (
-          <button
-            key={m.id}
-            role="radio"
-            aria-checked={mode === m.id}
-            className={mode === m.id ? "on" : ""}
-            onClick={() => updateSettings((x) => ({ ...x, ui: { ...x.ui, compactList: m.id } }))}
-          >
-            {m.label}
-          </button>
-        ))}
+      <span className="row" style={{ flexDirection: "column", alignItems: "flex-start" }}>
+        <span className="seg" role="radiogroup" aria-label="曲一覧のコンパクト表示">
+          {COMPACT_LIST_MODES.map((m) => (
+            <button
+              key={m.id}
+              role="radio"
+              aria-checked={mode === m.id}
+              className={mode === m.id ? "on" : ""}
+              onClick={() => updateSettings((x) => ({ ...x, ui: { ...x.ui, compactList: m.id, compactAuto: compactAutoOn(x.ui) } }))}
+            >
+              {m.label}
+            </button>
+          ))}
+        </span>
+        <label className="row check-long" style={{ gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(e) => updateSettings((x) => ({ ...x, ui: { ...x.ui, compactList: compactListMode(x.ui), compactAuto: e.target.checked } }))}
+          />
+          <span>窓が狭いときは自動でコンパクトにする</span>
+        </label>
       </span>
       <span className="hint">
-        コンパクト表示では、曲一覧のジャケットを出さず、曲名とアーティストを1行に並べて、行の高さを詰めます（すべての曲・アーティストやアルバムを開いたところ・プレイリスト・キュー）。「ウィンドウが狭いときだけ」は、ウィンドウの幅が {COMPACT_NARROW_BELOW}px 未満（ジャケットが小さくなる幅）のときに切り替わります。再生バーのジャケットはそのままです。
+        コンパクト表示では、曲一覧のジャケットを出さず、曲名とアーティストを1行に並べて、行の高さを詰めます（すべての曲・アーティストやアルバムを開いたところ・プレイリスト・キュー）。上の帯の右端の「通常／コンパクト」でも切り替えられます（同じ設定です）。チェックを入れると、「使わない」でも、曲一覧の幅が {COMPACT_AUTO_BELOW}px 未満（ウィンドウの幅でおよそ 720px 未満。ジャケットが小さくなる幅）のときはコンパクトになり、広げると戻ります。再生バーのジャケットはそのままです。
       </span>
     </div>
   );
@@ -413,7 +427,7 @@ export function SettingsView() {
                 ))}
               </span>
               <span className="hint">
-                アーティストは、コンパクト表示では列を、通常の表示ではタイトルの下の段を出し入れします。ウィンドウが狭いときは、ジャンル → アルバムの順に自動で隠れます（アーティストは隠れません）。
+                アーティストは、コンパクト表示では列を、通常の表示ではタイトルの下の段を出し入れします。曲一覧の幅が狭いときは、ジャンル → アルバムの順に自動で隠れます（アーティストは隠れません）。
               </span>
             </div>
             <CompactField />

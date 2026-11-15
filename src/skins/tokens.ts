@@ -35,13 +35,15 @@ export const FONT_SIZE_RANGE = 2;
 export const RADIUS_VARS = ["--radius", "--radius-card", "--radius-small"];
 export const DURATION_VARS = ["--dur-hover", "--dur-panel", "--dur-page", "--dur-bg"];
 
-/** スキンから変えさせない（当てるときにも外す） */
+/** スキンから変えさせない（当てるときにも外す）。Rust（src-tauri\src\skins\tokens.rs）の LOCKED_VARS と同じ並び。
+ *  v3.8.0：再生バーの真ん中の列の幅 --player-center-w を足した（3列と1段の切り替えの計算 src\layout\playerLayout.ts が前提にする） */
 export const LOCKED_VARS = [
   "--sidebar-w",
   "--sidebar-w-collapsed",
   "--row-h",
   "--row-art",
   "--player-h",
+  "--player-center-w",
   "--topbar-h",
   "--lyrics-row-h",
   "--lyrics-row-anchor",

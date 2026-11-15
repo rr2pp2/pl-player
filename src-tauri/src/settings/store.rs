@@ -55,9 +55,16 @@ pub struct UiSettings {
     /// 知らない名前を捨て・抜けたタブを足して合わせる。ここでは形だけ整える（名前の形・重なり・数）
     pub settings_tabs: Vec<String>,
     /// v3.4.0：曲一覧のコンパクト表示（`COMPACT_LIST_MODES` のどれか）。既定は "off"（今までの見た目）。
-    /// 知らない値・文字でない値は "off" にする（この値だけを既定に戻し、設定全体は既定に戻さない）
+    /// 知らない値・文字でない値は "off" にする（この値だけを既定に戻し、設定全体は既定に戻さない）。
+    /// v3.8.0：「使わない／いつも」の2つにした。3.7.0 までの "narrow"（ウィンドウが狭いときだけ）は、読むときに
+    /// "off" ＋ `compact_auto` オンへ読み替える（`sanitize`。古い設定・古い zip のどちらも）
     #[serde(deserialize_with = "de_compact_list")]
     pub compact_list: String,
+    /// v3.8.0：窓が狭いときは自動でコンパクトにする（設定画面のチェック）。既定はオフ。
+    /// 3.7.0 までの設定には無い（"narrow" ならオン、それ以外はオフ＝今までと同じ見た目）。真偽でない値はオフ（この値だけ）。
+    /// 境目は画面が持つ（曲一覧の側の幅。src\layout\density.ts の COMPACT_AUTO_BELOW）
+    #[serde(deserialize_with = "de_lenient_bool")]
+    pub compact_auto: bool,
     /// v3.4.0：サイドバーの項目のアイコンの大きさ（px）。`SIDEBAR_ICON_PX_MIN`〜`MAX` の整数。既定は 3.3.0 までの 20。
     /// 範囲の外は端へ丸め、小数は四捨五入する。数でない値は既定（この値だけ）
     #[serde(deserialize_with = "de_sidebar_icon_px")]
@@ -65,8 +72,12 @@ pub struct UiSettings {
 }
 
 /// v3.4.0：曲一覧のコンパクト表示の値（画面の src/layout/density.ts と同じ並び）。
-/// off：使わない（既定）　always：いつも　narrow：ウィンドウが狭いときだけ（境目は画面が持つ。ジャケットが縮む 720px 未満）
-pub const COMPACT_LIST_MODES: &[&str] = &["off", "always", "narrow"];
+/// off：使わない（既定）　always：いつも。
+/// v3.8.0：3つ目の narrow（ウィンドウが狭いときだけ）は無くし、"off" ＋ `compact_auto` に分けた（`COMPACT_LIST_LEGACY_NARROW`）
+pub const COMPACT_LIST_MODES: &[&str] = &["off", "always"];
+
+/// 3.4.0〜3.7.0 の「ウィンドウが狭いときだけ」。読むときだけ受け、`sanitize` が "off" ＋ `compact_auto` オンにする（保存はしない）
+pub const COMPACT_LIST_LEGACY_NARROW: &str = "narrow";
 
 /// v3.4.0：サイドバーのアイコンの大きさ（px）。既定は 3.3.0 までの大きさ（base.css の `.nav-item .icon` の 20px）。
 /// 下は、ボタンの中の小さいアイコン（`.icon-btn.small .icon`）の 16px より少し小さい 14px まで（それより小さいと形が読めない）。
@@ -77,6 +88,11 @@ pub const SIDEBAR_ICON_PX_DEFAULT: u32 = 20;
 
 fn compact_list_ok(s: &str) -> String {
     if COMPACT_LIST_MODES.contains(&s) { s.to_string() } else { "off".to_string() }
+}
+
+/// 読むとき：今の値と、3.7.0 までの "narrow"（`sanitize` で読み替える）を受ける。ほかは "off"
+fn compact_list_read(s: &str) -> String {
+    if s == COMPACT_LIST_LEGACY_NARROW { s.to_string() } else { compact_list_ok(s) }
 }
 
 fn clamp_icon_px(v: f64) -> u32 {
@@ -90,7 +106,13 @@ fn clamp_icon_px(v: f64) -> u32 {
 /// どんな JSON の値でも受け、知らない値は "off" にする（形の違う1つの値で、設定全体を既定に戻さないため）
 fn de_compact_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
-    Ok(compact_list_ok(v.as_str().unwrap_or("")))
+    Ok(compact_list_read(v.as_str().unwrap_or("")))
+}
+
+/// どんな JSON の値でも受け、真偽でなければ false にする（形の違う1つの値で、設定全体を既定に戻さないため）
+fn de_lenient_bool<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_bool().unwrap_or(false))
 }
 
 /// どんな JSON の値でも受け、数なら丸め、数でなければ既定にする
@@ -135,6 +157,7 @@ impl Default for UiSettings {
             trash_button: false,
             settings_tabs: Vec::new(),
             compact_list: "off".into(),
+            compact_auto: false,
             sidebar_icon_px: SIDEBAR_ICON_PX_DEFAULT,
         }
     }
@@ -255,7 +278,12 @@ impl AppSettings {
         let mut seen = std::collections::HashSet::new();
         self.ui.settings_tabs.retain(|t| tab_name_ok(t) && seen.insert(t.clone()));
         self.ui.settings_tabs.truncate(SETTINGS_TABS_MAX);
-        // v3.4.0：コンパクト表示とサイドバーのアイコンの大きさ（画面から来た値・zip の値も、読むときと同じに整える）
+        // v3.4.0：コンパクト表示とサイドバーのアイコンの大きさ（画面から来た値・zip の値も、読むときと同じに整える）。
+        // v3.8.0：3.7.0 までの「ウィンドウが狭いときだけ」は「使わない」＋「窓が狭いときは自動でコンパクトにする」
+        if self.ui.compact_list == COMPACT_LIST_LEGACY_NARROW {
+            self.ui.compact_list = "off".into();
+            self.ui.compact_auto = true;
+        }
         self.ui.compact_list = compact_list_ok(&self.ui.compact_list);
         self.ui.sidebar_icon_px = clamp_icon_px(self.ui.sidebar_icon_px as f64);
         // v3.2.0：着せ替え
@@ -465,12 +493,13 @@ mod tests {
         assert_eq!(old.ui.sidebar_icon_px, 20);
         assert!(old.ui.sidebar_collapsed && old.ui.trash_button);
         // 選べる値はそのまま
+        assert_eq!(COMPACT_LIST_MODES, &["off", "always"]);
         for m in COMPACT_LIST_MODES {
             let s: AppSettings = serde_json::from_str(&format!(r#"{{"ui":{{"compactList":"{m}"}}}}"#)).unwrap();
             assert_eq!(s.sanitize().ui.compact_list, *m);
         }
         // 知らない値・大文字違い・文字でない値は "off"。設定全体は既定に戻さない（theme が残る）
-        for bad in [r#""big""#, r#""Always""#, r#""""#, "5", "true", "null", "{}", "[\"always\"]"] {
+        for bad in [r#""big""#, r#""Always""#, r#""Narrow""#, r#""""#, "5", "true", "null", "{}", "[\"always\"]"] {
             let s: AppSettings = serde_json::from_str(&format!(r#"{{"theme":"light","ui":{{"compactList":{bad},"lyricsRow":false}}}}"#))
                 .unwrap_or_else(|e| panic!("{bad}: {e}"));
             let s = s.sanitize();
@@ -502,6 +531,56 @@ mod tests {
         // 画面に送る名前（camelCase）
         let j = serde_json::to_string(&AppSettings::default()).unwrap();
         assert!(j.contains("\"compactList\":\"off\"") && j.contains("\"sidebarIconPx\":20"), "{j}");
+        assert!(j.contains("\"compactAuto\":false"), "{j}");
+    }
+
+    /// v3.8.0：コンパクト表示を「使わない／いつも」＋「窓が狭いときは自動でコンパクトにする」に分けた。
+    /// 3.7.0 の3つの値から上げたとき、見た目が今と同じになる読み替え：
+    /// "narrow"（狭いときだけ）→ 使わない＋チェックあり、"off"（使わない）→ 使わない＋チェックなし、"always"（いつも）→ いつも。
+    /// 読み替えた値を保存し直しても "narrow" は戻らない。チェックの値の形が違えば、その値だけをオフにする
+    #[test]
+    fn compact_auto_migrates_from_3_7_0() {
+        let d = AppSettings::default();
+        assert!(!d.ui.compact_auto);
+        for (old, mode, auto) in [("narrow", "off", true), ("off", "off", false), ("always", "always", false)] {
+            let s: AppSettings =
+                serde_json::from_str(&format!(r#"{{"theme":"light","ui":{{"compactList":"{old}","sidebarIconPx":24}}}}"#)).unwrap();
+            let s = s.sanitize();
+            assert_eq!((s.ui.compact_list.as_str(), s.ui.compact_auto), (mode, auto), "{old}");
+            assert_eq!(s.theme, "light", "{old}");
+            assert_eq!(s.ui.sidebar_icon_px, 24, "{old}");
+            // もう一度読んでも同じ（"narrow" は保存されない）
+            let again: AppSettings = serde_json::from_value(serde_json::to_value(&s).unwrap()).unwrap();
+            assert_eq!(again.sanitize(), s, "{old}");
+            assert!(!serde_json::to_string(&s).unwrap().contains("narrow"), "{old}");
+        }
+        // 3.3.0 までの設定（compactList が無い）：使わない＋チェックなし
+        let older: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarCollapsed":true}}"#).unwrap();
+        let older = older.sanitize();
+        assert_eq!((older.ui.compact_list.as_str(), older.ui.compact_auto), ("off", false));
+        // 新しい形はそのまま（いつも＋チェックありも残す。チェックは「使わない」に戻したときに効く）
+        for (mode, auto) in [("off", true), ("off", false), ("always", true), ("always", false)] {
+            let s: AppSettings =
+                serde_json::from_str(&format!(r#"{{"ui":{{"compactList":"{mode}","compactAuto":{auto}}}}}"#)).unwrap();
+            let s = s.sanitize();
+            assert_eq!((s.ui.compact_list.as_str(), s.ui.compact_auto), (mode, auto), "{mode} {auto}");
+        }
+        // "narrow" はチェックの値にかかわらずオン（3.7.0 の設定にチェックは無い。手で書いた食い違いも、狭いときだけの意味で読む）
+        let s: AppSettings = serde_json::from_str(r#"{"ui":{"compactList":"narrow","compactAuto":false}}"#).unwrap();
+        assert!(s.sanitize().ui.compact_auto);
+        // 形の違うチェックの値は、その値だけオフ（設定全体は既定に戻さない）
+        for bad in ["1", r#""true""#, "null", "[]", "{}"] {
+            let s: AppSettings = serde_json::from_str(&format!(r#"{{"theme":"light","ui":{{"compactList":"always","compactAuto":{bad}}}}}"#))
+                .unwrap_or_else(|e| panic!("{bad}: {e}"));
+            let s = s.sanitize();
+            assert!(!s.ui.compact_auto, "{bad}");
+            assert_eq!((s.theme.as_str(), s.ui.compact_list.as_str()), ("light", "always"), "{bad}");
+        }
+        // 画面から来た値（コードで入れた "narrow"）も同じに読み替える
+        let mut m = AppSettings::default();
+        m.ui.compact_list = "narrow".into();
+        let m = m.sanitize();
+        assert_eq!((m.ui.compact_list.as_str(), m.ui.compact_auto), ("off", true));
     }
 
     /// v3.5.0：曲一覧の列に artist を足した。既定はオン。3.4.0 までの設定（artist のキーが無い・columns が無い）もオンで読み、
@@ -551,10 +630,17 @@ mod tests {
         s.ui.sidebar_items.insert("playlists".into(), false);
         s.ui.trash_button = true;
         s.ui.settings_tabs = vec!["keys".into(), "display".into()];
-        s.ui.compact_list = "narrow".into();
+        s.ui.compact_list = "off".into();
+        s.ui.compact_auto = true;
         s.ui.sidebar_icon_px = 28;
         s.ui.columns.insert("artist".into(), false);
         save(&db, &s).unwrap();
+        assert_eq!(load(&db), s);
+        // v3.8.0：3.7.0 が DB に保存した "narrow"（compactAuto は無い）は、読むときに 使わない＋チェックあり
+        let mut v37 = serde_json::to_value(&s).unwrap();
+        v37["ui"]["compactList"] = serde_json::json!("narrow");
+        v37["ui"].as_object_mut().unwrap().remove("compactAuto");
+        db::settings::set(&db, KEY, &v37).unwrap();
         assert_eq!(load(&db), s);
         assert_eq!(load(&db).ui.columns.get("artist"), Some(&false));
         // v3.4.0：DB に範囲の外・知らない値が入っていても、読むときに整える（ほかの値は残す）

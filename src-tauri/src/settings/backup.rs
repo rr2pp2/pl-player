@@ -460,39 +460,47 @@ mod tests {
     }
 
     /// v3.4.0：設定の zip の settings.json に、コンパクト表示・サイドバーのアイコンの大きさが無い（3.3.0 までの zip）なら既定。
-    /// 知らない値・範囲の外の値・形の違う値は、その値だけを整えて読み込む（zip を断らない。ほかの設定は入る）
+    /// 知らない値・範囲の外の値・形の違う値は、その値だけを整えて読み込む（zip を断らない。ほかの設定は入る）。
+    /// v3.8.0：3.7.0 までの zip の "narrow"（狭いときだけ）は、使わない＋「窓が狭いときは自動でコンパクトにする」オンで入る
     #[test]
     fn import_compact_list_and_sidebar_icon() {
         let tmp = tmp_dir("density");
-        let cases: [(&str, &str, &str, u32); 6] = [
-            ("old", r#"{"theme":"light","ui":{"sidebarCollapsed":true}}"#, "off", 20),
-            ("ok", r#"{"theme":"light","ui":{"compactList":"narrow","sidebarIconPx":16}}"#, "narrow", 16),
-            ("unknown", r#"{"theme":"light","ui":{"compactList":"micro","sidebarIconPx":64}}"#, "off", 32),
-            ("small", r#"{"theme":"light","ui":{"compactList":"always","sidebarIconPx":2}}"#, "always", 14),
-            ("types", r#"{"theme":"light","ui":{"compactList":1,"sidebarIconPx":"28"}}"#, "off", 20),
-            ("nulls", r#"{"theme":"light","ui":{"compactList":null,"sidebarIconPx":null}}"#, "off", 20),
+        let cases: [(&str, &str, &str, bool, u32); 9] = [
+            ("old", r#"{"theme":"light","ui":{"sidebarCollapsed":true}}"#, "off", false, 20),
+            ("narrow", r#"{"theme":"light","ui":{"compactList":"narrow","sidebarIconPx":16}}"#, "off", true, 16),
+            ("off", r#"{"theme":"light","ui":{"compactList":"off","sidebarIconPx":16}}"#, "off", false, 16),
+            ("new", r#"{"theme":"light","ui":{"compactList":"off","compactAuto":true}}"#, "off", true, 20),
+            ("unknown", r#"{"theme":"light","ui":{"compactList":"micro","sidebarIconPx":64}}"#, "off", false, 32),
+            ("small", r#"{"theme":"light","ui":{"compactList":"always","sidebarIconPx":2}}"#, "always", false, 14),
+            ("types", r#"{"theme":"light","ui":{"compactList":1,"sidebarIconPx":"28"}}"#, "off", false, 20),
+            ("nulls", r#"{"theme":"light","ui":{"compactList":null,"sidebarIconPx":null,"compactAuto":null}}"#, "off", false, 20),
+            ("auto-type", r#"{"theme":"light","ui":{"compactList":"always","compactAuto":"yes"}}"#, "always", false, 20),
         ];
-        for (name, json, mode, px) in cases {
+        for (name, json, mode, auto, px) in cases {
             let db = Db::open_memory(&format!("backup_density_{name}")).unwrap();
             let z = make_zip(&tmp, &format!("{name}.zip"), &[manifest(), zip::Entry { name: "settings.json".into(), data: json.as_bytes().to_vec() }]);
             let (s, _, _) = import(&db, &z, &tmp.join("bgs")).unwrap_or_else(|e| panic!("{name}: {}", e.detail));
             assert_eq!(s.theme, "light", "{name}");
             assert_eq!(s.ui.compact_list, mode, "{name}");
+            assert_eq!(s.ui.compact_auto, auto, "{name}");
             assert_eq!(s.ui.sidebar_icon_px, px, "{name}");
             let saved = store::load(&db);
             assert_eq!(saved.ui.compact_list, mode, "{name}: saved");
+            assert_eq!(saved.ui.compact_auto, auto, "{name}: saved");
             assert_eq!(saved.ui.sidebar_icon_px, px, "{name}: saved");
         }
         // 書き出した zip の settings.json に、画面と同じ名前で入る
         let a = Db::open_memory("backup_density_export").unwrap();
         let mut s = AppSettings::default();
-        s.ui.compact_list = "narrow".into();
+        s.ui.compact_list = "off".into();
+        s.ui.compact_auto = true;
         s.ui.sidebar_icon_px = 30;
         let z = tmp.join("export.zip");
         export(&a, &s, &tmp.join("no-bg"), &z).unwrap();
         let entries = zip::read(&mut fs::File::open(&z).unwrap(), &|_| true).unwrap();
         let text = String::from_utf8(entries.into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
-        assert!(text.contains("\"compactList\": \"narrow\"") && text.contains("\"sidebarIconPx\": 30"), "{text}");
+        assert!(text.contains("\"compactList\": \"off\"") && text.contains("\"sidebarIconPx\": 30"), "{text}");
+        assert!(text.contains("\"compactAuto\": true"), "{text}");
         let _ = fs::remove_dir_all(&tmp);
     }
 

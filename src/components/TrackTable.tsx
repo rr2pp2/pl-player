@@ -1,5 +1,5 @@
 // 曲一覧。見えている行だけを描く（大量の曲でも重くならないように）。
-// 列は幅に合わせて出し入れする（Genre → Album の順で隠す）。
+// 列は幅に合わせて出し入れする（Genre → Album の順で隠す）。v3.8.0：幅は曲一覧の側の幅（ウィンドウの幅ではなく）。
 // v3.3.0：設定の「ごみ箱へ移すボタン」がオンのときだけ、行の右端に「ごみ箱へ移す」を出す（既定はオフ）。
 // 出すのはライブラリの曲一覧だけ（props.list。プレイリスト・キューの一覧には、行のボタンも右クリックのメニューも出さない）。
 // 対象は右クリックのメニューと同じ決まり：押した行が選んでいる行の中にあれば選んでいる全部、そうでなければその行だけ。
@@ -30,7 +30,7 @@ import { IconBars, IconStar, IconTrash } from "./Icons";
 import { trackMenu, trashBusy, trashTracksFlow } from "./trackActions";
 import { trashButtonShown, trashTargets, type TrackListKind } from "../layout/visibility";
 import { compactListOn, trackRowHeight } from "../layout/density";
-import { useLayoutSize } from "./useLayoutSize";
+import { useListLayout } from "./useLayoutSize";
 
 export interface DragData {
   kind: "tracks";
@@ -60,7 +60,8 @@ interface Props {
 }
 
 export function TrackTable(props: Props) {
-  const size = useLayoutSize();
+  // v3.8.0：列・ジャケット・行の高さ・自動のコンパクトは、曲一覧の側の幅で決める（ウィンドウの幅ではなく。src\layout\density.ts の LIST_BELOW）
+  const size = useListLayout();
   const ui = useStore(settings).ui;
   const cfg = ui.columns;
   const busy = useStore(trashBusy);
@@ -76,7 +77,7 @@ export function TrackTable(props: Props) {
     anchor.current = null;
   }, [props.tracks]);
 
-  // v3.4.0：コンパクト表示か（「狭いときだけ」はウィンドウの幅で決める）と、行の高さ（仮想スクロールの1行の大きさ）
+  // v3.4.0：コンパクト表示か（v3.8.0：自動のコンパクトは曲一覧の側の幅で決める）と、行の高さ（仮想スクロールの1行の大きさ）
   const compact = compactListOn(ui, size.width);
   const rowH = trackRowHeight(compact, size.rowH);
   // v3.5.0：アーティストを出すか（設定。古い設定でキーが無ければオン）。アルバム・ジャンルと違い、幅の段では隠さない
@@ -258,7 +259,10 @@ export function TrackTable(props: Props) {
   });
 
   return (
-    <div className={"track-table" + (compact ? " compact" : "")} style={{ ["--cols" as any]: template, ["--row-h" as any]: `${rowH}px` }}>
+    <div
+      className={"track-table" + (compact ? " compact" : "") + (size.tight ? " tight" : "")}
+      style={{ ["--cols" as any]: template, ["--row-h" as any]: `${rowH}px`, ["--row-art" as any]: `${size.artSize}px` }}
+    >
       <div className="track-head" role="row">
         {cols.rank ? <span className="col-rank">順位</span> : null}
         {compact ? null : <span />}

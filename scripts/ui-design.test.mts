@@ -131,10 +131,11 @@ test("再生バー：再生・一時停止 44px、ほかのボタン 36px、間 
   assert.match(rule(".range::-webkit-slider-runnable-track"), /linear-gradient\(to right, var\(--c-accent\) var\(--pct\), var\(--c-border\) var\(--pct\)\)/);
   assert.match(css, /\.range:hover::-webkit-slider-thumb,\n\.range:focus-visible::-webkit-slider-thumb \{\s*opacity: 1;/);
   assert.match(rule(".range:focus-visible"), /outline: 2px solid var\(--c-accent\);/);
-  // 再生バーの高さ 80px（狭い窓の 76px は変えない）
+  // 再生バーの高さ 80px（狭いときの 76px は変えない。v3.8.0：狭い窓の @media ではなく、1段の形（.player.one-row）のとき）
   assert.match(read("src/theme/tokens.css"), /--player-h: 80px;/);
-  const narrow = css.slice(css.indexOf("@media (max-width: 719px) {"), css.indexOf("\n}\n", css.indexOf("@media (max-width: 719px) {")));
-  assert.match(narrow, /--player-h: 76px;/);
+  assert.match(rule(":root:has(.player.one-row)"), /--player-h: 76px;/);
+  // v3.8.0：右の列（全体の音量・歌詞のボタン・「···」）のボタンも 36px
+  assert.match(rule(".player-right .icon-btn"), /width: 36px;\s*height: 36px;/);
 });
 
 test("設定：欄は 760px 以下で1列。チェックを並べた欄は項目名を1行目にそろえる。タブは選んだものに下の線と面、フォーカスの枠", () => {

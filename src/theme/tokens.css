@@ -31,11 +31,15 @@
   /* 大きさ（幅で変わるものは base.css のメディアクエリで上書き） */
   --sidebar-w: 236px;
   --sidebar-w-collapsed: 64px;
-  /* 曲一覧の1行とジャケット（v3.7.0：64 → 60px・48 → 44px）。JS の行の高さ（src\components\useLayoutSize.ts）と同じ値にする
-     （仮想スクロールの1行の高さ。scripts\ui-density.test.mts で確かめる）。コンパクト表示の 36px は src\layout\density.ts */
+  /* 曲一覧の1行とジャケット（v3.7.0：64 → 60px・48 → 44px）。JS の行の高さ（src\layout\density.ts の listLayoutFor）と同じ値にする
+     （仮想スクロールの1行の高さ。scripts\ui-density.test.mts で確かめる）。コンパクト表示の 36px も src\layout\density.ts。
+     v3.8.0：狭い段の値（48px・36px）は、曲一覧の側の幅で TrackTable が曲一覧の要素に入れる（窓の幅の @media では変えない） */
   --row-h: 60px;
   --row-art: 44px;
-  --player-h: 80px; /* v3.7.0：84 → 80px */
+  --player-h: 80px; /* v3.7.0：84 → 80px。v3.8.0：1段のときは 76px（base.css の .player.one-row） */
+  /* v3.8.0：3列のときの再生バーの真ん中の列。再生バーの中の幅（grid の内側）の 40%、240〜560px。
+     src\layout\playerLayout.ts の PLAYER（centerRatio・centerMin・centerMax）と同じ値（3列にするかの計算に使う。scripts\ui-layout.test.mts で確かめる） */
+  --player-center-w: clamp(240px, 40%, 560px);
   --topbar-h: 56px;
   --lyrics-row-h: 48px;     /* 再生バーの下の流れる歌詞の列（v3.0.2） */
   --lyrics-row-anchor: 22px; /* 列の中で今の行の左端をそろえる位置（狭いときは base.css で 14px） */

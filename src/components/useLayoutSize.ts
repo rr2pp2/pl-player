@@ -1,28 +1,20 @@
 import { useEffect, useState } from "react";
-
-/** 幅による4段階の縮み方（原文の順番）。CSS（base.css）と同じ境目を使う */
-export interface LayoutSize {
-  width: number;
-  sidebarAuto: boolean; // 1. 1100px 未満：サイドバーをアイコンだけに
-  hideGenre: boolean; // 2. 900px 未満：Genre を隠す
-  hideAlbum: boolean; //    820px 未満：Album も隠す
-  artSize: number; // 3. 720px 未満：ジャケット 44 → 36
-  rowH: number; // 4. 600px 未満：行の高さ 60 → 48
-}
+import { createStore, useStore } from "../stores/store";
+import { listLayoutFor, type ListLayout } from "../layout/density";
 
 /**
- * 幅ごとの大きさ。artSize は CSS の --row-art、rowH は --row-h（どちらも src\theme\tokens.css と base.css の幅の段）と同じ値にする。
- * rowH は仮想スクロールの1行の高さにもなる（TrackTable が --row-h に入れて渡す）。v3.7.0（デザインの見直し）：64 → 60px・48 → 44px。
- * 合っていることは scripts\ui-density.test.mts で確かめる
+ * ウィンドウの幅で決めるもの。v3.8.0 から、ここに残るのはサイドバーの自動のたたみだけ（仕様 3.2「サイドバー：今の決まりのまま」）。
+ * 曲一覧の列・ジャケット・行の高さ・自動のコンパクトは、曲一覧の側の幅で決める（下の useListLayout。境目は src\layout\density.ts の LIST_BELOW）
  */
+export interface LayoutSize {
+  width: number;
+  sidebarAuto: boolean; // 1100px 未満：サイドバーをアイコンだけに
+}
+
 export function layoutSizeFor(w: number): LayoutSize {
   return {
     width: w,
     sidebarAuto: w < 1100,
-    hideGenre: w < 900,
-    hideAlbum: w < 820,
-    artSize: w < 720 ? 36 : 44,
-    rowH: w < 600 ? 48 : 60,
   };
 }
 
@@ -41,4 +33,15 @@ export function useLayoutSize(): LayoutSize {
     };
   }, []);
   return s;
+}
+
+/**
+ * v3.8.0：曲一覧の側の幅（px）。AppShell が .main（上の帯・曲一覧・立ち絵の枠）の幅を ResizeObserver で測って入れる。
+ * 測る前（最初の描画）は、ウィンドウの幅からサイドバーをたたんだときの式（density.ts の LIST_BELOW の説明）で見積もる
+ */
+export const listPaneWidth = createStore<number>(typeof window !== "undefined" ? Math.max(0, window.innerWidth - 94) : 1000);
+
+/** 曲一覧の大きさ（列・ジャケット・行の高さ）。曲一覧の側の幅で決める */
+export function useListLayout(): ListLayout {
+  return listLayoutFor(useStore(listPaneWidth));
 }
