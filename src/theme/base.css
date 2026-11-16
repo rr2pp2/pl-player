@@ -503,6 +503,15 @@ textarea {
 .track-head button.sorted {
   color: var(--c-primary);
 }
+/* v3.8.0：タイトルの見出しは吹き出し（Tip）で包む（src\layout\sortHead.ts）。包む前と同じく、列の幅いっぱいを押せる面にし、
+   狭い列では包みごと縮める（ボタンが表の枠に直に入っていたときと同じ見え方・押せる範囲） */
+.track-head .tip-anchor {
+  display: flex; /* 中のボタンをインラインの箱にしない（コンパクトの overflow:hidden で下端が文字の基準線に乗り、隣の見出しより上へずれるため） */
+  min-width: 0;
+}
+.track-head .tip-anchor > button {
+  width: 100%;
+}
 .track-scroll {
   flex: 1;
   min-height: 0;

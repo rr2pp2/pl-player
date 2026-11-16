@@ -19,6 +19,7 @@ import {
   sidebarIconPx,
   trackRowHeight,
 } from "../src/layout/density.ts";
+import { SORT_STAND_IN, SORT_STAND_IN_HEADS, sortHead, sortStandInHint } from "../src/layout/sortHead.ts";
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
@@ -347,6 +348,62 @@ test("コンパクト表示の見出し：「タイトル」と「アーティ�
   const hb = css.match(/\.track-table\.compact \.track-head button \{([^}]*)\}/);
   assert.ok(hb);
   for (const d of ["min-width: 0;", "max-width: 100%;", "overflow: hidden;", "text-overflow: ellipsis;"]) assert.ok(hb![1].includes(d), d);
+});
+
+test("並べ替えの矢印（v3.8.0）：アーティストで並べ替えたまま、アーティストの見出しが無いときは、並びを変えずにタイトルの見出しへ矢印と説明を出す。年間まとめは出さない", () => {
+  // 並べていない・壊れた状態：どこにも出さない
+  for (const s of [undefined, null, { by: null, desc: false }, { by: "", desc: true }, { by: 3, desc: false }]) {
+    for (const artistColumn of [false, true]) {
+      assert.deepEqual(sortHead(s as any, { artistColumn }), { at: null, desc: false, hint: null }, JSON.stringify({ s, artistColumn }));
+    }
+  }
+  // アーティストの見出しがある（コンパクト表示で列を出している）：今までどおりアーティストの見出しに。説明は無い
+  assert.deepEqual(sortHead({ by: "artist", desc: false }, { artistColumn: true }), { at: "artist", desc: false, hint: null });
+  assert.deepEqual(sortHead({ by: "artist", desc: true }, { artistColumn: true }), { at: "artist", desc: true, hint: null });
+  // アーティストの見出しが無い（通常の表示に戻った・コンパクトで列を切った）：タイトルの見出しに、同じ向きの矢印と説明
+  const up = sortHead({ by: "artist", desc: false }, { artistColumn: false });
+  const down = sortHead({ by: "artist", desc: true }, { artistColumn: false });
+  assert.deepEqual(up, { at: "title", desc: false, hint: sortStandInHint(false) });
+  assert.deepEqual(down, { at: "title", desc: true, hint: sortStandInHint(true) });
+  for (const h of [up.hint!, down.hint!]) {
+    assert.match(h, /^アーティストで並べ替え中/);
+    assert.match(h, /押すとタイトルで並べ替えます。$/);
+  }
+  assert.ok(!up.hint!.includes("逆順"));
+  assert.ok(down.hint!.includes("（逆順）"));
+  // ほかの鍵は、アーティストの見出しの有無にかかわらずその見出しに（説明は無い）。並べ替えの状態そのものは変えない
+  for (const by of ["title", "album", "genre", "duration"]) {
+    for (const artistColumn of [false, true]) {
+      for (const desc of [false, true]) {
+        const st = { by, desc };
+        assert.deepEqual(sortHead(st, { artistColumn }), { at: by, desc, hint: null }, JSON.stringify({ by, artistColumn, desc }));
+        assert.deepEqual(st, { by, desc });
+      }
+    }
+  }
+  // 年間まとめ（fixedOrder）：どの鍵・どの形でも出さない
+  for (const by of ["artist", "title", "album"]) {
+    for (const artistColumn of [false, true]) {
+      assert.deepEqual(sortHead({ by, desc: true }, { fixedOrder: true, artistColumn }), { at: null, desc: false, hint: null }, by);
+    }
+  }
+  // 代わりに出す見出しはタイトルだけ
+  assert.deepEqual({ ...SORT_STAND_IN }, { artist: "title" });
+  assert.deepEqual([...SORT_STAND_IN_HEADS], ["title"]);
+
+  // 画面（TrackTable）：sortHead の結果で矢印と色（sorted）を出し、アーティストの見出しがあるかは cols.artist（コンパクト かつ 設定がオン）で渡す
+  const tt = read("src/components/TrackTable.tsx");
+  assert.match(tt, /const mark = sortHead\(sortState, \{ fixedOrder: !!props\.fixedOrder, artistColumn: cols\.artist \}\);/);
+  assert.match(tt, /const on = mark\.at === key;/);
+  assert.match(tt, /className=\{cls \+ \(on \? " sorted" : ""\)\}/);
+  assert.match(tt, /\{on \? \(mark\.desc \? " ↓" : " ↑"\) : ""\}/);
+  assert.ok(!/sortedBy/.test(tt), "the old sortedBy is gone");
+  // 押したときの動きは今までどおり（押した見出しの鍵で並べ替える。代わりの見出しを押せばタイトルの並べ替え）
+  assert.match(tt, /sort\.set\(\(s\) => \(s\.by === key \? \(s\.desc \? \{ by: null, desc: false \} : \{ by: key, desc: true \}\) : \{ by: key, desc: false \}\)\)/);
+  // 説明は自前の吹き出し（Tip。読み上げは aria-describedby で同じ文）。包むのは代わりの見出しだけで、文の有無で包み方を変えない
+  assert.match(tt, /return SORT_STAND_IN_HEADS\.includes\(key\) \? <Tip text=\{on \? mark\.hint : null\} place="below">\{btn\}<\/Tip> : btn;/);
+  // 見出しの並びは今までどおり（タイトルの見出しはいつも headBtn("title", …)）
+  assert.match(tt, /\{cols\.artistLine \? headBtn\("title", "タイトル \/ アーティスト"\) : headBtn\("title", "タイトル"\)\}/);
 });
 
 test("アーティストの出し入れ（v3.5.0。作者の要望）：設定の「曲一覧の列」のアルバムの前。名前と既定（オン）が Rust と画面で同じ。通常の表示ではタイトルの下の段を出し入れする", () => {

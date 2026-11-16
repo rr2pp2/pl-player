@@ -86,7 +86,8 @@ test("画面：曲一覧と同じ TrackTable（ライブラリの一覧として
   assert.match(rs, /pub const TOP_N: i64 = 100;/);
   // TrackTable：並びが決まっている一覧では見出しを押せず、矢印も出さない
   const tt = read("src/components/TrackTable.tsx");
-  assert.match(tt, /const sortedBy = props\.fixedOrder \? null : sortState\.by;/);
+  // v3.8.0：矢印を出す見出しは sortHead（src\layout\sortHead.ts）が決め、fixedOrder なら出さない（決まりは ui-density.test.mts で確かめる）
+  assert.match(tt, /const mark = sortHead\(sortState, \{ fixedOrder: !!props\.fixedOrder, artistColumn: cols\.artist \}\);/);
   assert.match(tt, /disabled=\{props\.sortable \|\| props\.fixedOrder\}/);
   assert.match(tt, /\{cols\.rank \? <span className="col-rank">順位<\/span> : null\}/);
   assert.match(tt, /\{cols\.plays \? <span className="col-plays">回数<\/span> : null\}/);

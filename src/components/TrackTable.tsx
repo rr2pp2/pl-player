@@ -12,6 +12,7 @@
 // 並びは Rust が決めた順位の順のまま（props.fixedOrder：見出しで並べ替えない）。
 // v3.7.0（デザインの見直し）：通常の行 60px・ジャケット 44px（useLayoutSize。CSS の --row-h・--row-art と同じ値）。選んだ行の左の線・
 // お気に入りとごみ箱の 32px の面（コンパクトでは 28px）・お気に入りのオンの星の黄色は base.css だけで描く（列・見出し・処理は変えない）。
+// v3.8.0：アーティストで並べ替えたまま、アーティストの見出しが無いときは、タイトルの見出しに矢印と説明を出す（src\layout\sortHead.ts）。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDraggable } from "@dnd-kit/core";
@@ -31,6 +32,8 @@ import { trackMenu, trashBusy, trashTracksFlow } from "./trackActions";
 import { trashButtonShown, trashTargets, type TrackListKind } from "../layout/visibility";
 import { compactListOn, trackRowHeight } from "../layout/density";
 import { useListLayout } from "./useLayoutSize";
+import { Tip } from "./Tip";
+import { sortHead, SORT_STAND_IN_HEADS } from "../layout/sortHead";
 
 export interface DragData {
   kind: "tracks";
@@ -211,20 +214,28 @@ export function TrackTable(props: Props) {
     }
   };
 
-  // v3.6.0：並びが決まっている一覧（年間まとめ）では、押せず、矢印も出さない（並べ替えの設定は一覧ごとに navigate で戻る）
-  const sortedBy = props.fixedOrder ? null : sortState.by;
-  const headBtn = (key: string, label: string, cls = "") => (
-    <button
-      className={cls + (sortedBy === key ? " sorted" : "")}
-      disabled={props.sortable || props.fixedOrder}
-      onClick={() =>
-        sort.set((s) => (s.by === key ? (s.desc ? { by: null, desc: false } : { by: key, desc: true }) : { by: key, desc: false }))
-      }
-    >
-      {label}
-      {sortedBy === key ? (sortState.desc ? " ↓" : " ↑") : ""}
-    </button>
-  );
+  // v3.6.0：並びが決まっている一覧（年間まとめ）では、押せず、矢印も出さない（並べ替えの設定は一覧ごとに navigate で戻る）。
+  // v3.8.0：アーティストで並べ替えたまま、アーティストの見出しが無いとき（通常の表示・コンパクトでアーティストの列を切ったとき）は、
+  // 並びはそのままで、タイトルの見出しに矢印を出し、吹き出しと読み上げで「アーティストで並べ替え中」と伝える（src\layout\sortHead.ts）
+  const mark = sortHead(sortState, { fixedOrder: !!props.fixedOrder, artistColumn: cols.artist });
+  const headBtn = (key: string, label: string, cls = "") => {
+    const on = mark.at === key;
+    const btn = (
+      <button
+        className={cls + (on ? " sorted" : "")}
+        disabled={props.sortable || props.fixedOrder}
+        onClick={() =>
+          sort.set((s) => (s.by === key ? (s.desc ? { by: null, desc: false } : { by: key, desc: true }) : { by: key, desc: false }))
+        }
+      >
+        {label}
+        {on ? (mark.desc ? " ↓" : " ↑") : ""}
+      </button>
+    );
+    // 代わりに矢印を出すことがある見出し（タイトル）だけ、いつも吹き出しで包む（文の有無で包み方を変えると、ボタンが作り直されてフォーカスが外れる。Tip.tsx）
+    // 吹き出しは見出しの下に、左端をそろえて出す（ボタンが列の幅いっぱいなので、右に出すと文字から遠く隣の見出しに重なる）
+    return SORT_STAND_IN_HEADS.includes(key) ? <Tip text={on ? mark.hint : null} place="below">{btn}</Tip> : btn;
+  };
 
   if (props.tracks.length === 0) {
     return <div className="empty">{props.empty ?? "曲がありません"}</div>;
