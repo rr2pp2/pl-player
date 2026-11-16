@@ -2,12 +2,13 @@
 //! 本体の音の処理（`src\audio\`）は使わず・変えず、cpal・rubato・windows（QPC）だけで直接デバイスを開く。
 //! 仕様の「作る前に技術で決めること」13.1 の「作者の実機で測るもの」1〜6 に当てる。
 //!
-//! # 3つの計測（どれも `#[ignore]`。実際のデバイスから音が出るので、手で走らせる）
+//! # 4つの計測（どれも `#[ignore]`。実際のデバイスから音が出るので、手で走らせる）
 //!
 //! | 計測 | 測るもの（13.1） | 鳴る音 | 既定の長さ |
 //! |---|---|---|---|
 //! | `drift_probe` | 1 時計の速さ・位置の揺れ・のこぎり形／2 L の値／6 頭打ちの回数 | 無音 | 3600 秒 |
-//! | `click_probe` | 3 録音でずれを測る／5 途中参加の差 | 短いクリック（1台目 1kHz・2台目 3kHz・3台目 5kHz） | 2秒おきに10回 |
+//! | `click_probe` | 3 録音でずれを測る／5 途中参加の差（録音は作者が別に、マイクや OBS で） | 短いクリック（1台目 1kHz・2台目 3kHz・3台目 5kHz。-12 dBFS） | 2秒おきに10回 |
+//! | `loopback_click_probe` | 3・5 を PC の中で：鳴らしている出力をループバックで（と、指定した録音デバイスも）録り、ずれを自動で出す。**機器の中・USB の先の遅れは測れない**（下の「何を測っていて、何を測っていないか」） | `click_probe` と同じクリック（-30 dBFS） | 2秒おきに10回 |
 //! | `slip_probe` | 4 `rubato::Slip` の試聴 | 1kHz の正弦波（-20 dBFS） | 60 秒 |
 //!
 //! # 走らせ方（`src-tauri` のフォルダで）
@@ -31,14 +32,24 @@
 //!
 //! Git Bash：`PL_PROBE_DEVICES='スピーカー|ヘッドホン' cargo test --features test-support --test sync_probe -- --ignored --exact drift_probe --nocapture`
 //!
+//! `loopback_click_probe`（マイクも OBS も使わない）。`PL_PROBE_DEVICES` を付けずに走らせると、再生デバイスと録音デバイスの一覧を出して止まる（音は出ない）。
+//! 仮想ケーブルは、再生デバイス側（入口）と録音デバイス側（出口）で名前が別なので、一覧で確かめる：
+//!
+//! ```text
+//! $env:PL_PROBE_DEVICES = "ヘッドホン|仮想ケーブルの入口"
+//! $env:PL_PROBE_CAPTURE = "仮想ケーブルの出口"   # 付けなければループバックだけ
+//! cargo test --features test-support --test sync_probe -- --ignored --exact loopback_click_probe --nocapture
+//! ```
+//!
 //! 同じ計測を2つ同時に走らせない（同じデバイスを取り合う）。
 //!
 //! 途中で止めるときは Ctrl+C。止めたときに残るもの：
 //! - 全部：`callbacks.csv`（1秒ごとに書き出し）
 //! - drift_probe：最初の要約は1分後、そのあと `PL_PROBE_SUMMARY_EVERY_SEC` ごとに `drift_summary.txt` と残りの CSV を書き直す。
 //!   止めても直前の要約は残る。**1分より前に止めると要約は無く、`callbacks.csv` だけ**（止めたあとに計算し直す手段は無いので、測り直す）
-//! - click_probe・slip_probe：始める前に設定とデバイスだけの「途中の要約」を書く。全体の要約（回数・音切れなど）は最後まで流したときだけ。
-//!   狙った時刻は `click_targets.csv`（随時）、滑らせた所は `slip_chunks.csv`（約1秒ごと）に残る
+//! - click_probe・loopback_click_probe・slip_probe：始める前に設定とデバイスだけの「途中の要約」を書く。全体の要約（回数・音切れ・ずれの平均など）は最後まで流したときだけ。
+//!   狙った時刻は `click_targets.csv`（随時）、滑らせた所は `slip_chunks.csv`（約1秒ごと）に残る。
+//!   loopback_click_probe は、録ったパケットが `capture_packets.csv`（1秒ごと）、見つけたクリックが `loopback_clicks.csv`（調べるたびに書き直し）に残る
 //!
 //! 数の指定が数でない・範囲の外（NaN・無限・負・大きすぎる値）なら、デバイスを開く前に止まる。
 //! 長さ・時刻の上限は 7日（604800 秒）。音の大きさ（`PL_PROBE_CLICK_DB`・`PL_PROBE_SINE_DB`）は -80〜-6 dBFS で、
@@ -46,31 +57,37 @@
 //!
 //! # 環境変数
 //!
+//! 「使う計測」の lb は `loopback_click_probe`。
+//!
 //! | 名前 | 使う計測 | 既定 | 意味 |
 //! |---|---|---|---|
-//! | `PL_PROBE_DEVICES` | 全部 | （無し＝一覧を出して失敗） | 鳴らすデバイス。`\|`（縦棒1本。表の中なので \ を付けて書いている）で区切って並べる（並べた順が デバイス1・2・3。1が基準）。1つずつ「`default`（Windows の既定）」「`#番号`（一覧の番号）」「ID」「名前」「名前の一部（1つに決まるとき）」のどれか。同じデバイスを2回は書けない |
+//! | `PL_PROBE_DEVICES` | 全部 | （無し＝一覧を出して失敗） | 鳴らすデバイス（lb は 1〜3 個、click は 2〜3 個）。`\|`（縦棒1本。表の中なので \ を付けて書いている）で区切って並べる（並べた順が デバイス1・2・3。1が基準）。1つずつ「`default`（Windows の既定）」「`#番号`（一覧の番号）」「ID」「名前」「名前の一部（1つに決まるとき）」のどれか。同じデバイスを2回は書けない |
 //! | `PL_PROBE_OUT` | 全部 | `%USERPROFILE%\Documents\pl-player-probe` | 記録を置く親のフォルダ。この下に `<日時>`（ローカル時刻 `YYYYMMDD-HHMMSS`。同じ秒にあれば `-2` を付ける）のフォルダを作る。**リポジトリの外に置く**（要約にデバイスの名前と ID が入る。公開リポジトリに混ざらないよう、リポジトリの中を指すと止まる） |
-//! | `PL_PROBE_SECS` | drift・slip・click | drift 3600／slip 60／click（無し） | 流す長さ（秒）。click では「全体の長さ」で、`PL_PROBE_CLICK_AT_SEC` が無いとき、0 秒・半分・最後の3か所で10回ずつ鳴らす（3600 なら 0・30分・60分） |
+//! | `PL_PROBE_SECS` | drift・slip・click・lb | drift 3600／slip 60／click・lb（無し） | 流す長さ（秒）。click・lb では「全体の長さ」で、`PL_PROBE_CLICK_AT_SEC` が無いとき、0 秒・半分・最後の3か所で10回ずつ鳴らす（3600 なら 0・30分・60分） |
 //! | `PL_PROBE_SKIP_MS` | 全部 | 200 | 開いてからこの間のコールバックは、当てはめに使わない（13.1 の「開いて約200ms は捨てる」） |
 //! | `PL_PROBE_SUMMARY_EVERY_SEC` | drift | 600 | 途中の要約を書き直す間隔（10〜86400。最初の1回は1分後） |
-//! | `PL_PROBE_CLICK_INTERVAL_MS` | click | 2000 | クリックの間隔 |
-//! | `PL_PROBE_CLICK_COUNT` | click | 10 | 1か所で鳴らす回数（途中参加なら 20 にすると 13.1 の「20回」） |
-//! | `PL_PROBE_CLICK_AT_SEC` | click | （無し＝`0`） | 10回ずつ鳴らし始める時刻（秒）を `,` で区切って。例 `0,1800,3600` |
-//! | `PL_PROBE_CLICK_MS` | click | 5 | クリック1回の長さ（前後 0.5ms を弱める） |
-//! | `PL_PROBE_CLICK_DB` | click | -12 | クリックの大きさ（dBFS。-80〜-6） |
-//! | `PL_PROBE_CLICK_LEAD_MS` | click | 3000 | 開いてから最初のクリックまでの間 |
-//! | `PL_PROBE_SUBTRACT_L` | click | 1 | 1＝`playback` から L を引いて狙う／0＝引かない（13.1 の 3。暫定は「引く」） |
-//! | `PL_PROBE_AIM` | click | `fit` | `fit`＝直近 `PL_PROBE_FIT_WINDOW_MS` の直線の当てはめで狙う／`raw`＝その回の `playback` 1点で狙う |
-//! | `PL_PROBE_FIT_WINDOW_MS` | click | 3000 | 当てはめに使う直近の長さ |
-//! | `PL_PROBE_JOIN` | click | 0 | 1＝途中参加：2台目だけ、毎回クリックの前に開き直す（ほかは開いたまま） |
-//! | `PL_PROBE_JOIN_OPEN_BEFORE_MS` | click | 600 | 途中参加で、クリックの何 ms 前に2台目を開き直すか |
-//! | `PL_PROBE_GATE_MS` | click | 80 | 途中参加の「開始時刻＝今＋約80ms」。開いて `PL_PROBE_SKIP_MS` ＋ これより前のクリックは狙わない |
+//! | `PL_PROBE_CLICK_INTERVAL_MS` | click・lb | 2000 | クリックの間隔（lb は `PL_PROBE_CAPTURE_WINDOW_MS` の2倍＋クリックの長さ＋10ms 以上） |
+//! | `PL_PROBE_CLICK_COUNT` | click・lb | 10 | 1か所で鳴らす回数（途中参加なら 20 にすると 13.1 の「20回」） |
+//! | `PL_PROBE_CLICK_AT_SEC` | click・lb | （無し＝`0`） | 10回ずつ鳴らし始める時刻（秒）を `,` で区切って。例 `0,1800,3600` |
+//! | `PL_PROBE_CLICK_MS` | click・lb | 5 | クリック1回の長さ（前後 0.5ms を弱める） |
+//! | `PL_PROBE_CLICK_DB` | click・lb | click -12／lb -30 | クリックの大きさ（dBFS。-80〜-6）。lb は耳で聞かないので小さめ。ほかの音（曲など）が大きくて「小さい」で取れないときは上げる |
+//! | `PL_PROBE_CLICK_LEAD_MS` | click・lb | 3000 | 開いてから最初のクリックまでの間 |
+//! | `PL_PROBE_SUBTRACT_L` | click・lb | 1 | 1＝`playback` から L を引いて狙う／0＝引かない（13.1 の 3。暫定は「引く」） |
+//! | `PL_PROBE_AIM` | click・lb | `fit` | `fit`＝直近 `PL_PROBE_FIT_WINDOW_MS` の直線の当てはめで狙う／`raw`＝その回の `playback` 1点で狙う |
+//! | `PL_PROBE_FIT_WINDOW_MS` | click・lb | 3000 | 当てはめに使う直近の長さ |
+//! | `PL_PROBE_JOIN` | click・lb | 0 | 1＝途中参加：2台目だけ、毎回クリックの前に開き直す（ほかは開いたまま。lb のループバックは2台目も開いたまま録る） |
+//! | `PL_PROBE_JOIN_OPEN_BEFORE_MS` | click・lb | 600 | 途中参加で、クリックの何 ms 前に2台目を開き直すか |
+//! | `PL_PROBE_GATE_MS` | click・lb | 80 | 途中参加の「開始時刻＝今＋約80ms」。開いて `PL_PROBE_SKIP_MS` ＋ これより前のクリックは狙わない |
+//! | `PL_PROBE_CAPTURE` | lb | （無し＝ループバックだけ） | 鳴らしている出力のループバックに加えて録る録音デバイス（4個まで。並べた順が cap1・cap2…）。指定の仕方は `PL_PROBE_DEVICES` と同じ（`default` は Windows の既定の録音デバイス、`#番号` は録音デバイスの一覧の番号）。OBS が実際に受け取る側（仮想ケーブルの出口など）を録るため |
+//! | `PL_PROBE_CAPTURE_WINDOW_MS` | lb | 200 | 狙った時刻の前後どこまでを探すか（20〜500）。録音デバイスの遅れがこれを超えると「音が無い」になるので広げる |
 //! | `PL_PROBE_SLIP_RATIO` | slip | 1.0001 | `Slip` の倍率（固定。0.99〜1.01） |
 //! | `PL_PROBE_SLIP_ALTERNATE_SEC` | slip | 0 | 0＝ずっと `Slip` を通す／正の数＝その秒数ごとに「通す」「通さない」を交互に（最初は通す） |
 //! | `PL_PROBE_SINE_HZ` | slip | 1000 | 正弦波の高さ |
 //! | `PL_PROBE_SINE_DB` | slip | -20 | 正弦波の大きさ（dBFS。-80〜-6） |
 //!
-//! デバイスは今のアプリと同じ開き方（共有モード・既定の形式・既定のバッファ）で開く。外へは通信しない。
+//! デバイスは今のアプリと同じ開き方（共有モード・既定の形式・既定のバッファ）で開く。lb の録る側も共有モード・既定の形式（ミックスの形式）・既定のバッファ。
+//! ループバックは、cpal 0.18.2 が出力デバイスに入力の流れを開くと `AUDCLNT_STREAMFLAGS_LOOPBACK` を付けることを使う（`src\host\wasapi\device.rs` の
+//! `build_input_stream_raw_inner`。Windows 10 1703 以降は、ループバックでも知らせ（イベント）で動く）。新しいクレートは無い。外へは通信しない。
 //!
 //! # できるファイル（`<親>\<日時>\`。CSV は ASCII だけ。デバイスの名前は要約の txt に書く）
 //!
@@ -117,6 +134,36 @@
 //! 同じ回の 1kHz と 3kHz の立ち上がりの差を読む。それが実際のずれ（`aim_err_us` の差はふつう無視できる大きさ）。
 //! 開始・30分・60分で差が変わらないか。L がデバイスで違うなら `PL_PROBE_SUBTRACT_L=1` と `0` の両方で録る。
 //!
+//! ## loopback_click_probe
+//!
+//! 鳴らし方は click_probe と同じ（`callbacks.csv`・`click_targets.csv` も同じものができる）。そのうえで、録る流れを開く：
+//! `lb1`〜`lb3`＝鳴らしている各デバイスのループバック（その高さだけ探す）、`cap1`〜＝`PL_PROBE_CAPTURE` の録音デバイス（全部の高さを探す）。
+//!
+//! 何を測っていて、何を測っていないか：
+//! - **ループバックの時刻は、Windows の音のエンジンがその出力デバイスへ渡した音に付けた QPC 時刻**（cpal の入力の `capture`。
+//!   WASAPI の `GetBuffer` が返す、パケットの最初のフレームの時刻）。**USB・HDMI・Bluetooth の先と、機器の中の遅れは入らない**（耳に届く時刻ではない。作者の了解済み）
+//! - **録音デバイスの時刻は、その入力に入ってきた時刻。**仮想ケーブルなら、入口（再生デバイス側）から出口（録音デバイス側）へ渡る遅れと、入力の遅れも入る（OBS が受け取る側に近い）
+//! - 立ち上がりは、クリックの最初の標本の時刻。2ms のハン窓でその高さの大きさを出し、半分の大きさを横切る左右の中点から、クリックの形で逆算する。
+//!   作った波形での確かめ：雑音だけなら約 10µs 以内、ほかのデバイスのクリックが 1.25ms 以内に重なると最大約 0.06ms 偏る
+//! - 取れなかった回は数えるだけで、差の平均には入れない（狙った時刻の前後 `PL_PROBE_CAPTURE_WINDOW_MS` の窓だけを見る。
+//!   その高さの音が無い・雑音（窓の中の中央値）より 20dB 大きくない・窓の端で切れている・長さが違う・隣の高さ（＋1kHz）も一緒に上がる・同じ高さの山がほかにもある、は断る）
+//!
+//! - `loopback_summary.txt`：設定・鳴らしたデバイス（L など）・録った流れ（形式・パケットの数・途切れ・時刻の飛び・取りこぼし）・
+//!   流れと高さごとに「狙いとの差」「基準との差」「lb1 との差」の平均・揺れ（標準偏差）・最小・最大、取れなかった回数（理由ごと）、回ごとの表。**まずこれを見る**
+//! - `loopback_clicks.csv`：流れ・高さ・回ごとに1行。列は
+//!   `stream,dev,open,click,status,target_ns,target_rel_ms,onset_ns,onset_minus_target_us,minus_base_us,minus_lb1_us,aimed_minus_target_us,peak_dbfs,snr_db,width_ms`
+//!   - `stream`：`lb1`〜（ループバック）・`cap1`〜（録音デバイス）。名前は要約の txt
+//!   - `dev`：探した高さのデバイス番号（1＝1kHz・2＝3kHz・3＝5kHz）。`open`：途中参加の2台目は開き直しの回（click＋1）
+//!   - `status`：`ok`／`not_played`（その回は鳴らしていない。click_targets.csv の status が ok でない）／`not_captured`（前後が録れていない）／
+//!     `gap`（前後で録音が途切れた）／`no_signal`／`weak`／`truncated`／`wrong_shape`／`not_tone`／`ambiguous`
+//!   - `onset_minus_target_us`：狙いとの差。`minus_base_us`：基準との差（lb は lb1 の 1kHz、cap はその中の 1kHz）。`minus_lb1_us`：cap だけ、lb1 の 1kHz との差。どれも＋は遅い
+//!   - `aimed_minus_target_us`：選んだフレームの丸め（click_targets.csv の aim_err_us と同じ）
+//! - `capture_packets.csv`：録ったパケットごとに `stream,pos,stored_before,frames,capture_ns,callback_ns,qpc_entry_ns,jump_us,break`。
+//!   `jump_us` は前のパケットから見込んだ時刻との差、`break` が 1 の所で途切れた（取りこぼしか、1ms を超える時刻の飛び）
+//!
+//! 見るところ：基準との差の平均と揺れ（10ms 以内か。開始・30分・60分で変わらないか）。途中参加なら2台目の基準との差（開き直しごと）。
+//! 録音デバイスを付けたなら、その中の基準との差（OBS が受け取る音の上でのずれ）と lb1 との差（OBS が受け取るまでの遅れ）。
+//!
 //! ## slip_probe
 //!
 //! - `slip_chunks.csv`：作った塊（1024 フレームを入力）ごとに `chunk,t_s,mode,in_frames,out_frames,slipped`。
@@ -127,7 +174,8 @@
 //!
 //! # 音を出さずに確かめる部分
 //!
-//! 計算（直線の当てはめ・ppm・揺れ・頭打ちの判定・クリックの波形・狙う時刻・デバイスの選び方・フォルダの名前）は純粋な関数に分け、
+//! 計算（直線の当てはめ・ppm・揺れ・頭打ちの判定・クリックの波形・狙う時刻・デバイスの選び方・フォルダの名前、
+//! lb の「録った音からクリックの立ち上がりを探す」「高さで見分ける」「パケットのつながり」「差の集計」）は純粋な関数に分け、
 //! このファイルの末尾の、`#[ignore]` の付かないテストで確かめる（`cargo test --features test-support --test sync_probe`。`#[ignore]` は走らない）。
 
 use std::collections::{BTreeMap, VecDeque};
@@ -138,7 +186,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use cpal::traits::{DeviceTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
 use pl_player_lib::audio::devices::{self, DeviceInfo};
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
@@ -430,10 +478,15 @@ fn slip_on_at(out_frame: u64, rate: u32, alternate_sec: f64) -> bool {
 
 /// `PL_PROBE_DEVICES` からデバイスを選ぶ。返すのは `list` の添字（並べた順）
 fn select_devices(list: &[DeviceInfo], spec: &str) -> Result<Vec<usize>, String> {
+    select_from(list, spec, "再生", "PL_PROBE_DEVICES")
+}
+
+/// デバイスの一覧から選ぶ（`kind` は「再生」「録音」、`env` は空のときに知らせる環境変数の名前）
+fn select_from(list: &[DeviceInfo], spec: &str, kind: &str, env: &str) -> Result<Vec<usize>, String> {
     let mut out: Vec<usize> = vec![];
     for entry in spec.split('|').map(str::trim).filter(|e| !e.is_empty()) {
         let idx = if entry.eq_ignore_ascii_case("default") {
-            list.iter().position(|d| d.is_default).ok_or("Windows の既定の再生デバイスが無い".to_string())?
+            list.iter().position(|d| d.is_default).ok_or(format!("Windows の既定の{kind}デバイスが無い"))?
         } else if let Some(n) = entry.strip_prefix('#') {
             let i: usize = n.trim().parse().map_err(|_| format!("「{entry}」：# のあとが番号ではない"))?;
             if i >= list.len() {
@@ -463,18 +516,22 @@ fn select_devices(list: &[DeviceInfo], spec: &str) -> Result<Vec<usize>, String>
         out.push(idx);
     }
     if out.is_empty() {
-        return Err("PL_PROBE_DEVICES が空".into());
+        return Err(format!("{env} が空"));
     }
     Ok(out)
 }
 
 fn device_list_text(list: &[DeviceInfo]) -> String {
+    device_list_text_of(list, "再生")
+}
+
+fn device_list_text_of(list: &[DeviceInfo], kind: &str) -> String {
     let mut s = String::new();
     for (i, d) in list.iter().enumerate() {
         s.push_str(&format!("  #{i}  {}{}\n      id = {}\n", d.name, if d.is_default { "  [既定]" } else { "" }, d.id));
     }
     if list.is_empty() {
-        s.push_str("  （再生デバイスが見つからない）\n");
+        s.push_str(&format!("  （{kind}デバイスが見つからない）\n"));
     }
     s
 }
@@ -650,6 +707,502 @@ fn residual_rows(records: &[CbRecord], line: &Line, skip_ns: u64) -> Vec<(u64, f
         .collect()
 }
 
+// ----------------------------------------------------------------------
+// 録った音からクリックの立ち上がりを探す（loopback_click_probe）
+// ----------------------------------------------------------------------
+
+/// クリックの前後を弱める長さ（ms）。`click_burst` に渡す値
+const CLICK_FADE_MS: f64 = 0.5;
+
+/// 高さを見分ける窓の長さ（ms。ハン窓）。2ms のハン窓は、狙った高さから 1kHz 以上離れた「ずっと鳴っている音」を消す
+/// （クリックの 1kHz・3kHz・5kHz どうしと、確かめに使う 2kHz・4kHz・6kHz はどれも 1kHz の整数倍だけ離れている）。
+/// 48kHz なら 96 標本ちょうど。44.1kHz は 88 標本で、わずかに漏れる（テストで確かめている）。
+/// 決め方（2026-11-16、作った波形で）：ほかのデバイスのクリックが 1.25ms 以内に重なったときの偏りの最大が、
+/// 1ms の素の窓では約 0.15ms、2ms のハン窓では約 0.06ms、3ms のハン窓では約 0.055ms。2ms で足りる
+const TONE_WINDOW_MS: f64 = 2.0;
+
+/// 見つけたとみなす大きさの下限（振幅。-80 dBFS）
+const ONSET_MIN_PEAK: f32 = 1e-4;
+/// 窓の中の中央値（雑音の目安）に対して、これだけ大きくないと「小さい」で断る（dB）
+const ONSET_MIN_SNR_DB: f64 = 20.0;
+/// 同じ高さで、見つけたものの半分以上の山がほかにもあれば「紛らわしい」で断る
+const ONSET_MAX_RIVAL: f32 = 0.5;
+/// クリックの所で「隣の高さ（＋1kHz）」がふだんより上がった分が、きれいなクリックより山のこの割合以上大きければ「クリックの音ではない」で断る
+const ONSET_MAX_OFF_EXTRA: f32 = 0.3;
+
+fn tone_window_len(rate: u32) -> usize {
+    ((rate as f64 * TONE_WINDOW_MS / 1000.0).round() as usize).max(4)
+}
+
+/// 高さ `freq_hz` の成分の大きさ（振幅）を、`m` 標本のハン窓をずらしながら出す。戻り値の i 番目は標本 i〜i+m−1 の窓（中心は i＋(m−1)/2）。
+///
+/// ハン窓 h(k) = 0.5 − 0.5·cos(2π(k+0.5)/m) を掛けた和は、3つの高さ（ω と ω±2π/m）の素の和の組み合わせになる。
+/// 素の和は累積和で出せるので、窓をずらしても長さに比例する手間で済み、誤差もたまらない（f64）
+fn tone_envelope(x: &[f32], rate: u32, freq_hz: f64, m: usize) -> Vec<f32> {
+    if m == 0 || x.len() < m {
+        return vec![];
+    }
+    let w = 2.0 * std::f64::consts::PI * freq_hz / rate as f64;
+    let big = 2.0 * std::f64::consts::PI / m as f64;
+    // pre[j][n] = Σ_{k<n} x[k]·e^{−i·ws[j]·k}（実部・虚部）
+    let ws = [w, w - big, w + big];
+    let pre: Vec<Vec<(f64, f64)>> = ws
+        .iter()
+        .map(|&wj| {
+            let mut v = Vec::with_capacity(x.len() + 1);
+            let (mut re, mut im) = (0f64, 0f64);
+            v.push((re, im));
+            for (k, &xv) in x.iter().enumerate() {
+                let ph = wj * k as f64;
+                re += xv as f64 * ph.cos();
+                im -= xv as f64 * ph.sin();
+                v.push((re, im));
+            }
+            v
+        })
+        .collect();
+    let norm = m as f64 / 2.0; // Σh
+    (0..=x.len() - m)
+        .map(|i| {
+            let sum = |j: usize| (pre[j][i + m].0 - pre[j][i].0, pre[j][i + m].1 - pre[j][i].1);
+            let (a, b, c) = (sum(0), sum(1), sum(2));
+            // Σ x·e^{−iωn}·h(n−i) = 0.5·A − 0.25·(e^{−iθ}·B + e^{iθ}·C)、θ = 2π/m·(i − 0.5)
+            let th = big * (i as f64 - 0.5);
+            let (ct, st) = (th.cos(), th.sin());
+            let eb = (ct * b.0 + st * b.1, ct * b.1 - st * b.0);
+            let ec = (ct * c.0 - st * c.1, ct * c.1 + st * c.0);
+            let re = 0.5 * a.0 - 0.25 * (eb.0 + ec.0);
+            let im = 0.5 * a.1 - 0.25 * (eb.1 + ec.1);
+            (2.0 * (re * re + im * im).sqrt() / norm) as f32
+        })
+        .collect()
+}
+
+fn median_f32(v: &[f32]) -> f32 {
+    if v.is_empty() {
+        return 0.0;
+    }
+    let mut w = v.to_vec();
+    w.sort_unstable_by(|a, b| a.total_cmp(b));
+    w[w.len() / 2]
+}
+
+/// 山 `p` を含み、`half` 以上が続く範囲 [a, b]（大きさの並びの添字）
+fn above_run(env: &[f32], p: usize, half: f32) -> (usize, usize) {
+    let (mut a, mut b) = (p, p);
+    while a > 0 && env[a - 1] >= half {
+        a -= 1;
+    }
+    while b + 1 < env.len() && env[b + 1] >= half {
+        b += 1;
+    }
+    (a, b)
+}
+
+/// 半分の大きさを横切る位置（小数。大きさの並びの添字）。左は a−1 → a、右は b → b+1 の間を直線で補う
+fn half_crossings(env: &[f32], a: usize, b: usize, half: f32) -> (f64, f64) {
+    let xl = {
+        let (lo, hi) = (env[a - 1] as f64, env[a] as f64);
+        (a - 1) as f64 + if hi > lo { (half as f64 - lo) / (hi - lo) } else { 0.5 }
+    };
+    let xr = {
+        let (hi, lo) = (env[b] as f64, env[b + 1] as f64);
+        b as f64 + if hi > lo { (hi - half as f64) / (hi - lo) } else { 0.5 }
+    };
+    (xl, xr)
+}
+
+/// きれいなクリック（雑音の無いもの）の形。立ち上がりの決め方と「形が違う」の検査の物差し
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ClickShape {
+    /// 半分の大きさを超えている長さ（標本）
+    width: f64,
+    /// クリックの最初の標本から、半分を超えている範囲の中心まで（標本）
+    mid_offset: f64,
+    /// 中心での「隣の高さ」の大きさ ÷ 山
+    off_ratio: f32,
+}
+
+fn click_shape(rate: u32, freq_hz: f64, burst_ms: f64, m: usize) -> Option<ClickShape> {
+    let pad = m + 8;
+    let burst = click_burst(freq_hz, rate, burst_ms, CLICK_FADE_MS, 1.0);
+    let mut x = vec![0f32; pad];
+    x.extend_from_slice(&burst);
+    x.resize(x.len() + pad, 0.0);
+    let env = tone_envelope(&x, rate, freq_hz, m);
+    let (p, peak) = env.iter().copied().enumerate().max_by(|a, b| a.1.total_cmp(&b.1))?;
+    let half = peak / 2.0;
+    let (a, b) = above_run(&env, p, half);
+    if a == 0 || b + 1 >= env.len() {
+        return None;
+    }
+    let (xl, xr) = half_crossings(&env, a, b, half);
+    let mid_env = (xl + xr) / 2.0;
+    let off = tone_envelope(&x, rate, freq_hz + 1000.0, m).get(mid_env.round() as usize).copied().unwrap_or(0.0);
+    Some(ClickShape {
+        width: xr - xl,
+        mid_offset: mid_env + (m as f64 - 1.0) / 2.0 - pad as f64,
+        off_ratio: off / peak,
+    })
+}
+
+/// 見つけたクリック
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Onset {
+    /// クリックの最初の標本の位置（渡した並びの中の標本番号。小数）
+    pos: f64,
+    /// 大きさ（振幅。1.0 がフルスケール）
+    peak: f32,
+    /// 窓の中のその高さの大きさの中央値（雑音の目安）との比（dB）
+    snr_db: f64,
+    /// 半分の大きさを超えていた長さ（ms）
+    width_ms: f64,
+}
+
+/// クリックが取れなかった理由
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum HitMiss {
+    /// 狙った時刻の前後が録れていない（流れが来ていない・始まる前・終わった後）
+    NotCaptured,
+    /// 前後の途中で録音が途切れた（取りこぼし・時刻の飛び）
+    Gap,
+    /// その高さの音が無い
+    NoSignal,
+    /// 雑音に対して小さい
+    Weak,
+    /// 窓の端で切れている
+    Truncated,
+    /// 長さがクリックと違う
+    WrongShape,
+    /// ほかの高さも同じくらい鳴っている（クリックの音ではない）
+    NotTone,
+    /// 同じ高さの山が2つ以上ある
+    Ambiguous,
+}
+
+impl HitMiss {
+    const ALL: [HitMiss; 8] = [
+        HitMiss::NotCaptured,
+        HitMiss::Gap,
+        HitMiss::NoSignal,
+        HitMiss::Weak,
+        HitMiss::Truncated,
+        HitMiss::WrongShape,
+        HitMiss::NotTone,
+        HitMiss::Ambiguous,
+    ];
+    fn code(self) -> &'static str {
+        match self {
+            HitMiss::NotCaptured => "not_captured",
+            HitMiss::Gap => "gap",
+            HitMiss::NoSignal => "no_signal",
+            HitMiss::Weak => "weak",
+            HitMiss::Truncated => "truncated",
+            HitMiss::WrongShape => "wrong_shape",
+            HitMiss::NotTone => "not_tone",
+            HitMiss::Ambiguous => "ambiguous",
+        }
+    }
+    fn text(self) -> &'static str {
+        match self {
+            HitMiss::NotCaptured => "録れていない",
+            HitMiss::Gap => "途切れ",
+            HitMiss::NoSignal => "音が無い",
+            HitMiss::Weak => "小さい",
+            HitMiss::Truncated => "窓の端で切れた",
+            HitMiss::WrongShape => "長さが違う",
+            HitMiss::NotTone => "クリックの音ではない",
+            HitMiss::Ambiguous => "紛らわしい",
+        }
+    }
+}
+
+/// 録った音 `x`（モノラル。狙った時刻の前後だけ）から、高さ `freq_hz`・長さ `burst_ms` のクリックの立ち上がりを探す。
+///
+/// 1. 2ms のハン窓でその高さの大きさを出す（ほかの高さは消える）
+/// 2. いちばん大きい山の、半分の大きさを横切る左右の位置を出し、その中心からクリックの最初の標本を逆算する
+///    （クリックは前後対称なので、中心は雑音に強い。物差しは `click_shape`）
+/// 3. 断る：音が無い・雑音に対して小さい・窓の端で切れている・長さが違う・隣の高さも一緒に上がる（物音）・同じ高さの山がほかにもある
+fn find_click_onset(x: &[f32], rate: u32, freq_hz: f64, burst_ms: f64) -> Result<Onset, HitMiss> {
+    let m = tone_window_len(rate);
+    let shape = click_shape(rate, freq_hz, burst_ms, m).ok_or(HitMiss::NoSignal)?;
+    let env = tone_envelope(x, rate, freq_hz, m);
+    if env.len() < 3 {
+        return Err(HitMiss::NotCaptured);
+    }
+    let (p, peak) = env.iter().copied().enumerate().max_by(|a, b| a.1.total_cmp(&b.1)).ok_or(HitMiss::NoSignal)?;
+    if !(peak >= ONSET_MIN_PEAK) {
+        return Err(HitMiss::NoSignal);
+    }
+    let noise = median_f32(&env);
+    let snr_db = 20.0 * (peak as f64 / (noise as f64).max(1e-12)).log10();
+    if snr_db < ONSET_MIN_SNR_DB {
+        return Err(HitMiss::Weak);
+    }
+    let half = peak / 2.0;
+    let (a, b) = above_run(&env, p, half);
+    if a == 0 || b + 1 >= env.len() {
+        return Err(HitMiss::Truncated);
+    }
+    let (xl, xr) = half_crossings(&env, a, b, half);
+    let width = xr - xl;
+    let tol = (0.5e-3 * rate as f64).max(0.25 * shape.width);
+    if (width - shape.width).abs() > tol {
+        return Err(HitMiss::WrongShape);
+    }
+    let mid_env = (xl + xr) / 2.0;
+    // 隣の高さ（＋1kHz）が、クリックの所で窓の中のふだん（中央値）よりどれだけ上がったか。
+    // 上がり方で見るので、ずっと鳴っているほかの音（曲など）では断らず、一瞬だけ全部の高さが鳴る音（物音・プチッという音）だけを断る
+    let off_env = tone_envelope(x, rate, freq_hz + 1000.0, m);
+    let off_rise = off_env.get(mid_env.round() as usize).copied().unwrap_or(0.0) - median_f32(&off_env);
+    if off_rise / peak > shape.off_ratio + ONSET_MAX_OFF_EXTRA {
+        return Err(HitMiss::NotTone);
+    }
+    let burst_len = (burst_ms / 1000.0 * rate as f64).round() as usize;
+    let guard = m + burst_len;
+    let (lo, hi) = (a.saturating_sub(guard), (b + guard).min(env.len() - 1));
+    let rival = env.iter().enumerate().filter(|(i, _)| *i < lo || *i > hi).map(|(_, v)| *v).fold(0f32, f32::max);
+    if rival >= ONSET_MAX_RIVAL * peak {
+        return Err(HitMiss::Ambiguous);
+    }
+    Ok(Onset {
+        pos: mid_env + (m as f64 - 1.0) / 2.0 - shape.mid_offset,
+        peak,
+        snr_db,
+        width_ms: width * 1000.0 / rate as f64,
+    })
+}
+
+/// 録った流れの1パケット（コールバック1回）
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct CapPacket {
+    /// この流れのフレームの通し番号。取りこぼしたパケットのぶんも進める（つながりの検査に使う）
+    pos: u64,
+    /// このパケットより前に、実際に手元へ渡したフレームの数（取りこぼしたぶんは数えない）
+    stored_before: u64,
+    frames: u32,
+    /// cpal の入力の `capture`（WASAPI の GetBuffer が返す QPC。パケットの最初のフレームの時刻）
+    capture_ns: u64,
+    /// cpal の入力の `callback`
+    callback_ns: u64,
+    /// コールバックに入ったときに自分で読んだ QPC
+    qpc_ns: u64,
+}
+
+/// パケットの時刻のつながりを許す幅。これより飛んだら、そこで途切れたとみなす
+const CAPTURE_GAP_TOL_NS: u64 = 1_000_000;
+
+fn packet_end_ns(p: &CapPacket, rate: u32) -> f64 {
+    p.capture_ns as f64 + p.frames as f64 * 1e9 / rate as f64
+}
+
+/// 次のパケットの時刻 − 前のパケットから見込んだ時刻（ns）
+fn packet_jump_ns(prev: &CapPacket, next: &CapPacket, rate: u32) -> f64 {
+    next.capture_ns as f64 - packet_end_ns(prev, rate)
+}
+
+/// 次のパケットが前のパケットにつながっているか（取りこぼしが無く、時刻の飛びが幅の中）
+fn packets_connect(prev: &CapPacket, next: &CapPacket, rate: u32, tol_ns: u64) -> bool {
+    next.pos == prev.pos + prev.frames as u64 && packet_jump_ns(prev, next, rate).abs() <= tol_ns as f64
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum WindowMiss {
+    /// まだ録れていない（あとで来る）
+    NotYet,
+    NotCaptured,
+    Gap,
+}
+
+/// 時刻 from〜to を覆うフレームの範囲。戻り値は（最初の通し番号, 数, 最初のフレームの stored_before での番号）。packets は時刻順
+fn window_positions(packets: &[CapPacket], rate: u32, from_ns: u64, to_ns: u64, tol_ns: u64) -> Result<(u64, usize, u64), WindowMiss> {
+    let last = packets.last().ok_or(WindowMiss::NotYet)?;
+    if packet_end_ns(last, rate) < to_ns as f64 {
+        return Err(WindowMiss::NotYet);
+    }
+    let i0 = packets.iter().position(|p| packet_end_ns(p, rate) > from_ns as f64).ok_or(WindowMiss::NotYet)?;
+    let first = &packets[i0];
+    if first.capture_ns > from_ns + tol_ns {
+        return Err(WindowMiss::NotCaptured);
+    }
+    let mut i = i0;
+    while packet_end_ns(&packets[i], rate) < to_ns as f64 {
+        let next = packets.get(i + 1).ok_or(WindowMiss::NotYet)?;
+        if !packets_connect(&packets[i], next, rate, tol_ns) {
+            return Err(WindowMiss::Gap);
+        }
+        i += 1;
+    }
+    // 時刻の差 → フレーム数は整数で（切り捨て・切り上げが浮動小数の丸めでずれないように）
+    let frames_floor = |dt_ns: u64| (dt_ns as u128 * rate as u128 / 1_000_000_000) as u64;
+    let frames_ceil = |dt_ns: u64| (dt_ns as u128 * rate as u128).div_ceil(1_000_000_000) as u64;
+    let skip = frames_floor(from_ns.saturating_sub(first.capture_ns));
+    let start = first.pos + skip.min(first.frames as u64);
+    let lastp = &packets[i];
+    let upto = frames_ceil(to_ns.saturating_sub(lastp.capture_ns)).min(lastp.frames as u64);
+    let end = lastp.pos + upto;
+    Ok((start, end.saturating_sub(start) as usize, first.stored_before + (start - first.pos)))
+}
+
+/// フレームの通し番号（小数）→ QPC の ns。そのフレームを含むパケットの時刻から数える
+fn pos_to_ns(packets: &[CapPacket], pos: f64, rate: u32) -> Option<f64> {
+    let p = packets.iter().rev().find(|p| p.pos as f64 <= pos)?;
+    if pos >= (p.pos + p.frames as u64) as f64 {
+        return None;
+    }
+    Some(p.capture_ns as f64 + (pos - p.pos as f64) * 1e9 / rate as f64)
+}
+
+/// 録った流れの、手元に残している所（狙った時刻の前後を切り出すため）。古い所は捨てて、長く流しても増えない
+struct CaptureTrack {
+    rate: u32,
+    /// モノラルにした標本（stored_before の番号 `trimmed` から）
+    samples: VecDeque<f32>,
+    trimmed: u64,
+    packets: VecDeque<CapPacket>,
+    last: Option<CapPacket>,
+    // 要約用
+    n_packets: u64,
+    breaks: u64,
+    jump_n: u64,
+    jump_sq_sum: f64,
+    jump_max_abs: f64,
+}
+
+/// パケットが前とつながったか
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PacketLink {
+    First,
+    Connected(f64),
+    Broken(f64),
+}
+
+impl CaptureTrack {
+    fn new(rate: u32) -> Self {
+        Self {
+            rate,
+            samples: VecDeque::new(),
+            trimmed: 0,
+            packets: VecDeque::new(),
+            last: None,
+            n_packets: 0,
+            breaks: 0,
+            jump_n: 0,
+            jump_sq_sum: 0.0,
+            jump_max_abs: 0.0,
+        }
+    }
+    fn add_packet(&mut self, p: CapPacket) -> PacketLink {
+        let link = match self.last {
+            None => PacketLink::First,
+            Some(prev) => {
+                let j = packet_jump_ns(&prev, &p, self.rate);
+                if packets_connect(&prev, &p, self.rate, CAPTURE_GAP_TOL_NS) {
+                    self.jump_n += 1;
+                    self.jump_sq_sum += j * j;
+                    self.jump_max_abs = self.jump_max_abs.max(j.abs());
+                    PacketLink::Connected(j)
+                } else {
+                    self.breaks += 1;
+                    PacketLink::Broken(j)
+                }
+            }
+        };
+        self.last = Some(p);
+        self.n_packets += 1;
+        self.packets.push_back(p);
+        link
+    }
+    fn add_samples(&mut self, s: &[f32]) {
+        self.samples.extend(s.iter().copied());
+    }
+    /// 時刻 from〜to の標本と、最初の標本の通し番号
+    fn window(&mut self, from_ns: u64, to_ns: u64) -> Result<(Vec<f32>, u64), WindowMiss> {
+        let (start, n, stored) = window_positions(self.packets.make_contiguous(), self.rate, from_ns, to_ns, CAPTURE_GAP_TOL_NS)?;
+        let i0 = stored.checked_sub(self.trimmed).ok_or(WindowMiss::NotCaptured)? as usize;
+        if i0 + n > self.samples.len() {
+            return Err(WindowMiss::NotYet);
+        }
+        Ok((self.samples.range(i0..i0 + n).copied().collect(), start))
+    }
+    fn pos_to_ns(&mut self, pos: f64) -> Option<f64> {
+        pos_to_ns(self.packets.make_contiguous(), pos, self.rate)
+    }
+    /// `keep_from_ns` より前に終わるパケットと、その標本を捨てる（最後のパケットは残す）
+    fn trim_before(&mut self, keep_from_ns: u64) {
+        while self.packets.len() > 1 && packet_end_ns(&self.packets[0], self.rate) < keep_from_ns as f64 {
+            self.packets.pop_front();
+        }
+        if let Some(front) = self.packets.front() {
+            let drop_n = (front.stored_before.saturating_sub(self.trimmed) as usize).min(self.samples.len());
+            self.samples.drain(..drop_n);
+            self.trimmed += drop_n as u64;
+        }
+    }
+    fn jump_rms_ns(&self) -> f64 {
+        if self.jump_n == 0 {
+            0.0
+        } else {
+            (self.jump_sq_sum / self.jump_n as f64).sqrt()
+        }
+    }
+}
+
+/// コールバックの中で、録った音をモノラルにして輪へ渡す役。輪に空きが無ければ、そのパケットを丸ごと捨てて数える
+struct CaptureFeed {
+    samples: rtrb::Producer<f32>,
+    packets: rtrb::Producer<CapPacket>,
+    pos: u64,
+    stored: u64,
+    dropped: Arc<AtomicU64>,
+}
+
+impl CaptureFeed {
+    fn push(&mut self, frames: usize, mono: impl Iterator<Item = f32>, capture_ns: u64, callback_ns: u64, qpc_ns: u64) {
+        if frames == 0 {
+            return;
+        }
+        if self.samples.slots() >= frames && self.packets.slots() >= 1 {
+            let rec = CapPacket { pos: self.pos, stored_before: self.stored, frames: frames as u32, capture_ns, callback_ns, qpc_ns };
+            for v in mono.take(frames) {
+                let _ = self.samples.push(v);
+            }
+            // 標本を先に書き、パケットの記録はあと（取り出す側はパケット → 標本の順に読むので、読んだパケットの標本は必ずそろう）
+            let _ = self.packets.push(rec);
+            self.stored += frames as u64;
+        } else {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+        self.pos += frames as u64;
+    }
+}
+
+/// 差の並びの平均・揺れ（標準偏差）・最小・最大
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DiffStats {
+    n: usize,
+    mean: f64,
+    std: f64,
+    min: f64,
+    max: f64,
+}
+
+fn diff_stats(v: &[f64]) -> Option<DiffStats> {
+    if v.is_empty() {
+        return None;
+    }
+    let n = v.len() as f64;
+    let mean = v.iter().sum::<f64>() / n;
+    let var = v.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n;
+    Some(DiffStats {
+        n: v.len(),
+        mean,
+        std: var.sqrt(),
+        min: v.iter().copied().fold(f64::INFINITY, f64::min),
+        max: v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+    })
+}
+
 // ======================================================================
 // ここから下は実際のデバイスを使う部分
 // ======================================================================
@@ -757,14 +1310,15 @@ struct Picked {
     info: DeviceInfo,
 }
 
-/// `PL_PROBE_DEVICES` からデバイスを選ぶ。無い・合わないときは一覧を出して失敗する（音は出さない）
-fn pick_devices(min: usize, max: usize, probe: &str) -> Vec<Picked> {
+/// `PL_PROBE_DEVICES` からデバイスを選ぶ。無い・合わないときは一覧を出して失敗する（音は出さない）。
+/// `extra` は一覧のあとに足す文（loopback_click_probe の録音デバイスの一覧）
+fn pick_devices(min: usize, max: usize, probe: &str, extra: &str) -> Vec<Picked> {
     let list = devices::list_output_devices();
     let usage = format!(
         "\n再生デバイスの一覧：\n{}\n指定の仕方：PL_PROBE_DEVICES に、鳴らすデバイスを | で区切って並べる（{min}〜{max} 個。先頭が基準）。\n\
          1つずつ default（Windows の既定）／#番号／ID／名前／名前の一部 のどれか。\n\
          例（PowerShell）：$env:PL_PROBE_DEVICES = \"#0|#2\"\n\
-         例（Git Bash）：PL_PROBE_DEVICES='#0|#2' cargo test --features test-support --test sync_probe -- --ignored --exact {probe} --nocapture\n",
+         例（Git Bash）：PL_PROBE_DEVICES='#0|#2' cargo test --features test-support --test sync_probe -- --ignored --exact {probe} --nocapture\n{extra}",
         device_list_text(&list)
     );
     let Some(spec) = env_str("PL_PROBE_DEVICES") else {
@@ -778,6 +1332,31 @@ fn pick_devices(min: usize, max: usize, probe: &str) -> Vec<Picked> {
         .enumerate()
         .map(|(n, i)| Picked { dev_no: n as u8 + 1, info: list[i].clone() })
         .collect()
+}
+
+/// 録音デバイス（入力）の一覧。名前を読むだけで、開かない
+fn list_input_devices() -> Vec<DeviceInfo> {
+    let host = devices::host();
+    let default_id = host.default_input_device().as_ref().and_then(devices::device_id);
+    let mut out = vec![];
+    if let Ok(devs) = host.input_devices() {
+        for d in devs {
+            let Some(id) = devices::device_id(&d) else { continue };
+            out.push(DeviceInfo { is_default: Some(&id) == default_id.as_ref(), name: devices::device_name(&d), id });
+        }
+    }
+    out
+}
+
+/// ID で録音デバイスを探す
+fn find_input(id: &str) -> Option<cpal::Device> {
+    let host = devices::host();
+    if let Ok(parsed) = id.parse::<cpal::DeviceId>() {
+        if let Some(d) = host.device_by_id(&parsed) {
+            return Some(d);
+        }
+    }
+    host.input_devices().ok()?.find(|d| devices::device_id(d).as_deref() == Some(id))
 }
 
 /// 記録のフォルダを作る。リポジトリの中は断る（要約にデバイスの名前と ID が入り、公開物に混ざりうるため）。
@@ -1202,7 +1781,7 @@ fn write_drift_outputs(dir: &Path, runs: &[DevRun], sink: &CbSink, skip_ns: u64,
 #[test]
 #[ignore]
 fn drift_probe() {
-    let picked = pick_devices(1, 16, "drift_probe");
+    let picked = pick_devices(1, 16, "drift_probe", "");
     let secs = env_f64_in("PL_PROBE_SECS", 3600.0, 1.0, MAX_PROBE_SECS);
     let skip_ns = (env_f64_in("PL_PROBE_SKIP_MS", 200.0, 0.0, 10_000.0) * 1e6) as u64;
     let summary_every = env_f64_in("PL_PROBE_SUMMARY_EVERY_SEC", 600.0, 10.0, 86_400.0);
@@ -1528,7 +2107,7 @@ fn open_click_stream(
         dev: p.dev_no,
         open_no,
         rate: fmt.rate,
-        burst: click_burst(click_freq_for(p.dev_no), fmt.rate, cp.burst_ms, 0.5, cp.amp),
+        burst: click_burst(click_freq_for(p.dev_no), fmt.rate, cp.burst_ms, CLICK_FADE_MS, cp.amp),
         targets: targets.clone(),
         only,
         next: 0,
@@ -1551,7 +2130,63 @@ fn open_click_stream(
 #[test]
 #[ignore]
 fn click_probe() {
-    let picked = pick_devices(2, 3, "click_probe");
+    run_click_probe(ClickMode::Record);
+}
+
+/// 13.1 の 3・5 を PC の中で：click_probe と同じ狙い方で鳴らし、鳴らしている出力をループバックで（と、指定した録音デバイスも）録って、
+/// クリックの立ち上がりの QPC 時刻から、ずれを自動で出す。機器の中・USB の先の遅れは測れない（ファイルの頭）
+#[test]
+#[ignore]
+fn loopback_click_probe() {
+    run_click_probe(ClickMode::Loopback);
+}
+
+/// click_probe（録音は作者が別に）か、loopback_click_probe（PC の中で録る）か
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ClickMode {
+    Record,
+    Loopback,
+}
+
+/// クリックの大きさの既定（dBFS）。ループバックは耳で聞かないので小さめ
+const CLICK_DB_RECORD: f64 = -12.0;
+const CLICK_DB_LOOPBACK: f64 = -30.0;
+
+impl ClickMode {
+    fn probe(self) -> &'static str {
+        match self {
+            ClickMode::Record => "click_probe",
+            ClickMode::Loopback => "loopback_click_probe",
+        }
+    }
+    fn default_db(self) -> f64 {
+        match self {
+            ClickMode::Record => CLICK_DB_RECORD,
+            ClickMode::Loopback => CLICK_DB_LOOPBACK,
+        }
+    }
+    fn summary_file(self) -> &'static str {
+        match self {
+            ClickMode::Record => "click_summary.txt",
+            ClickMode::Loopback => "loopback_summary.txt",
+        }
+    }
+}
+
+fn run_click_probe(mode: ClickMode) {
+    let probe = mode.probe();
+    let loopback = mode == ClickMode::Loopback;
+    // 録音デバイスの一覧（ループバックのときだけ）。名前を読むだけで、まだ何も開かない
+    let inputs = if loopback { list_input_devices() } else { vec![] };
+    let input_usage = if loopback {
+        format!(
+            "\n録音デバイスの一覧（PL_PROBE_CAPTURE で、鳴らしている出力のループバックに加えて録るものを | で区切って選ぶ。付けなければループバックだけ）：\n{}",
+            device_list_text_of(&inputs, "録音")
+        )
+    } else {
+        String::new()
+    };
+    let picked = if loopback { pick_devices(1, 3, probe, &input_usage) } else { pick_devices(2, 3, probe, "") };
     let interval_ms = env_f64_in("PL_PROBE_CLICK_INTERVAL_MS", 2000.0, 50.0, 3_600_000.0);
     let count = env_f64_in("PL_PROBE_CLICK_COUNT", 10.0, 1.0, 100_000.0) as usize;
     let total = env_str("PL_PROBE_SECS").map(|s| s.parse::<f64>().unwrap_or_else(|_| panic!("PL_PROBE_SECS=「{s}」が数ではない")));
@@ -1567,7 +2202,7 @@ fn click_probe() {
     };
     let cp = ClickParams {
         burst_ms: env_f64_in("PL_PROBE_CLICK_MS", 5.0, 1.0, 100.0),
-        amp: level_amp("PL_PROBE_CLICK_DB", env_f64_in("PL_PROBE_CLICK_DB", -12.0, f64::MIN, f64::MAX)).unwrap_or_else(|e| panic!("{e}")),
+        amp: level_amp("PL_PROBE_CLICK_DB", env_f64_in("PL_PROBE_CLICK_DB", mode.default_db(), f64::MIN, f64::MAX)).unwrap_or_else(|e| panic!("{e}")),
         aim,
         subtract_l: env_bool("PL_PROBE_SUBTRACT_L", true),
         skip_ns: (env_f64_in("PL_PROBE_SKIP_MS", 200.0, 0.0, 10_000.0) * 1e6) as u64,
@@ -1578,6 +2213,24 @@ fn click_probe() {
     }
     if join && interval_ms < open_before_ms + 400.0 {
         panic!("途中参加では PL_PROBE_CLICK_INTERVAL_MS を PL_PROBE_JOIN_OPEN_BEFORE_MS＋400ms 以上に");
+    }
+    if join && picked.len() < 2 {
+        panic!("途中参加（PL_PROBE_JOIN=1）はデバイスを2つ以上（2台目を開き直す）");
+    }
+    // ループバック：録音デバイスの指定と、狙った時刻の前後どこまでを見るか。どちらもデバイスを開く前に確かめる
+    let capture_picked: Vec<Picked> = match (loopback, env_str("PL_PROBE_CAPTURE")) {
+        (false, _) | (true, None) => vec![],
+        (true, Some(spec)) => {
+            let idx = select_from(&inputs, &spec, "録音", "PL_PROBE_CAPTURE").unwrap_or_else(|e| panic!("{e}{input_usage}"));
+            if idx.len() > MAX_CAPTURE_DEVICES {
+                panic!("PL_PROBE_CAPTURE は {MAX_CAPTURE_DEVICES} 個まで（指定は {} 個）{input_usage}", idx.len());
+            }
+            idx.into_iter().enumerate().map(|(n, i)| Picked { dev_no: n as u8 + 1, info: inputs[i].clone() }).collect()
+        }
+    };
+    let look_ms = if loopback { env_f64_in("PL_PROBE_CAPTURE_WINDOW_MS", 200.0, 20.0, 500.0) } else { 0.0 };
+    if loopback && interval_ms < 2.0 * look_ms + cp.burst_ms + 10.0 {
+        panic!("PL_PROBE_CLICK_INTERVAL_MS は PL_PROBE_CAPTURE_WINDOW_MS の2倍＋クリックの長さ＋10ms 以上に（前後の回が窓に入らないように）");
     }
     let dir = make_run_dir();
     let started = local_stamp();
@@ -1599,6 +2252,28 @@ fn click_probe() {
         println!("デバイス {}：{}（{} Hz・{} ch・{:?}・{} Hz のクリック）", p.dev_no, p.info.name, opened.fmt.rate, opened.fmt.channels, opened.fmt.format, click_freq_for(p.dev_no));
         runs.push(DevRun { picked: p, opened, health });
     }
+    // ループバック：鳴らす各デバイス（途中参加の2台目も、開いたまま録る）と、指定した録音デバイスを録り始める
+    let mut capt: Option<Capturing> = if loopback {
+        let mut c = Capturing::new(&dir, targets.clone(), (look_ms * 1e6) as u64, cp.burst_ms);
+        let mut all: Vec<&Picked> = runs.iter().map(|d| &d.picked).collect();
+        if let Some(p2) = join_dev.as_ref() {
+            all.push(p2);
+        }
+        all.sort_by_key(|p| p.dev_no);
+        let dev_nos: Vec<u8> = all.iter().map(|p| p.dev_no).collect();
+        for p in all {
+            c.open(CapSource::Loopback(p.dev_no), &p.info, vec![p.dev_no]).unwrap_or_else(|e| panic!("{} のループバック：{e}", p.info.name));
+        }
+        for p in &capture_picked {
+            c.open(CapSource::Input(p.dev_no), &p.info, dev_nos.clone()).unwrap_or_else(|e| panic!("録音デバイス {}：{e}", p.info.name));
+        }
+        for s in &c.streams {
+            println!("{}：{}（{} Hz・{} ch・{:?}）", s.label, s.title, s.fmt.rate, s.fmt.channels, s.fmt.format);
+        }
+        Some(c)
+    } else {
+        None
+    };
     let last = *targets.last().unwrap();
     println!(
         "クリック {} 回。最初は {:.1} 秒後、最後は {:.1} 秒後。{}",
@@ -1610,7 +2285,11 @@ fn click_probe() {
 
     // 要約の頭（設定）。始める前に一度書いておく（途中で止めても、設定とデバイスは残る）
     let mut head = String::new();
-    head.push_str("同時再生の計測：click_probe（同じ QPC 時刻を狙ったクリック）\n");
+    if loopback {
+        head.push_str("同時再生の計測：loopback_click_probe（同じ QPC 時刻を狙ったクリックを、PC の中で録ってずれを出す）\n");
+    } else {
+        head.push_str("同時再生の計測：click_probe（同じ QPC 時刻を狙ったクリック）\n");
+    }
     head.push_str(&format!("開始：{started}（ローカル時刻）\n"));
     head.push_str(&format!(
         "クリック：{} 回（{} 回ずつ・{interval_ms:.0} ms おき・鳴らし始め {:?} 秒）・長さ {:.1} ms・大きさ {:.1} dBFS\n",
@@ -1628,15 +2307,29 @@ fn click_probe() {
         cp.skip_ns / 1_000_000,
         if join { format!("・途中参加（2台目をクリックの {open_before_ms:.0} ms 前に開き直し、開いて {} ms＋{gate_ms:.0} ms より前の回は狙わない）", cp.skip_ns / 1_000_000) } else { String::new() }
     ));
+    if loopback {
+        head.push_str(&format!("録り方：狙った時刻の前後 {look_ms:.0} ms の中で、デバイスごとの高さ（1台目 1kHz・2台目 3kHz・3台目 5kHz）を探す\n"));
+        head.push_str(LOOPBACK_SCOPE_TEXT);
+        head.push('\n');
+    }
     {
         let mut e = head.clone();
         for d in &runs {
             e.push_str(&device_header(d));
             e.push('\n');
         }
+        if let Some(c) = capt.as_ref() {
+            for s in &c.streams {
+                e.push_str(&s.header());
+            }
+            e.push('\n');
+        }
         e.push_str("※途中の要約（流している途中か、途中で止めた）。終わると全体の要約で書き直す。\n");
         e.push_str("　狙った時刻とその結果は click_targets.csv（随時書き出し）、コールバックの記録は callbacks.csv（1秒ごと）に残っている。\n");
-        let _ = fs::write(dir.join("click_summary.txt"), &e);
+        if loopback {
+            e.push_str("　録った流れのパケットは capture_packets.csv、見つけたクリックは loopback_clicks.csv（どちらも1秒ごと）に残っている。\n");
+        }
+        let _ = fs::write(dir.join(mode.summary_file()), &e);
     }
 
     // 途中参加の開き直しの記録
@@ -1647,6 +2340,9 @@ fn click_probe() {
             wait_until(t.saturating_sub((open_before_ms * 1e6) as u64), || {
                 sink.drain();
                 csink.drain();
+                if let Some(c) = capt.as_mut() {
+                    c.tick(&csink.events, false);
+                }
             });
             drop(current.take());
             let open_no = i as u32 + 1;
@@ -1664,6 +2360,9 @@ fn click_probe() {
         wait_until(last + 1_000_000_000, || {
             sink.drain();
             csink.drain();
+            if let Some(c) = capt.as_mut() {
+                c.tick(&csink.events, false);
+            }
         });
         drop(current.take());
     } else {
@@ -1671,6 +2370,9 @@ fn click_probe() {
         wait_until(last + 1_000_000_000, || {
             sink.drain();
             csink.drain();
+            if let Some(c) = capt.as_mut() {
+                c.tick(&csink.events, false);
+            }
             if qpc_now_ns() >= next_flush {
                 sink.flush();
                 next_flush = qpc_now_ns() + 1_000_000_000;
@@ -1683,6 +2385,11 @@ fn click_probe() {
     sink.drain();
     csink.drain();
     sink.flush();
+    // 録るのは鳴らし終えてから止める（最後の回の窓は last＋窓。上で last＋1秒まで待っている）
+    if let Some(c) = capt.as_mut() {
+        c.stop();
+        c.tick(&csink.events, true);
+    }
 
     // 要約
     let mut s = head.clone();
@@ -1714,10 +2421,17 @@ fn click_probe() {
         click_status_line(&mut s, &csink.events, p2.dev_no);
         s.push('\n');
     }
-    s.push_str("測り方：録音（Audacity など）で、同じ回の 1kHz と 3kHz（と 5kHz）の立ち上がりの差を読む。それが実際のずれ。\n");
-    s.push_str("click_targets.csv の aim_err_us（選んだフレームの丸め）の差を引けば、狙い方そのもののずれになる（ふつうは無視できる）。\n");
-    s.push_str("開始・30分・60分で差が変わらないか。L がデバイスで違うなら PL_PROBE_SUBTRACT_L=1 と 0 の両方で録る。\n");
-    let _ = fs::write(dir.join("click_summary.txt"), &s);
+    if let Some(c) = capt.as_mut() {
+        s.push_str(&c.report(&csink.events, join));
+        s.push_str("見方：まず「基準との差」の平均と揺れ（10ms 以内か・開始・30分・60分で変わらないか）。取れなかった回は loopback_clicks.csv の status。\n");
+        s.push_str("aimed_minus_target_us（選んだフレームの丸め）を引けば、狙い方そのもののずれになる（ふつうは無視できる）。\n");
+        s.push_str("録ったパケットの時刻は capture_packets.csv（jump_us がパケットどうしの時刻の飛び）。\n");
+    } else {
+        s.push_str("測り方：録音（Audacity など）で、同じ回の 1kHz と 3kHz（と 5kHz）の立ち上がりの差を読む。それが実際のずれ。\n");
+        s.push_str("click_targets.csv の aim_err_us（選んだフレームの丸め）の差を引けば、狙い方そのもののずれになる（ふつうは無視できる）。\n");
+        s.push_str("開始・30分・60分で差が変わらないか。L がデバイスで違うなら PL_PROBE_SUBTRACT_L=1 と 0 の両方で録る。\n");
+    }
+    let _ = fs::write(dir.join(mode.summary_file()), &s);
     println!("{s}");
     println!("記録：{}", dir.display());
 }
@@ -1731,6 +2445,511 @@ fn click_status_line(s: &mut String, events: &[ClickEvent], dev: u8) {
         n(ClickStatus::Late),
         n(ClickStatus::TooSoon)
     ));
+}
+
+// ----------------------------------------------------------------------
+// loopback_click_probe：PC の中で録る（ループバック・録音デバイス）
+// ----------------------------------------------------------------------
+
+/// 一緒に録る録音デバイスの上限
+const MAX_CAPTURE_DEVICES: usize = 4;
+
+/// 要約に書く「何を測っていて、何を測っていないか」（ファイルの頭の説明と同じ中身）
+const LOOPBACK_SCOPE_TEXT: &str = "何を測っていて、何を測っていないか：\n\
+  - ループバック（lb1〜lb3）の時刻は、Windows の音のエンジンがその出力デバイスへ渡した音に付けた QPC 時刻（WASAPI の GetBuffer が返す、パケットの最初のフレームの時刻）。\n\
+    USB・HDMI・Bluetooth の先と、機器の中の遅れは入らない（耳に届く時刻ではない）\n\
+  - 録音デバイス（cap1〜）の時刻は、その入力に入ってきた時刻。仮想ケーブルなら、入口（再生デバイス側）から出口（録音デバイス側）へ渡る遅れと、入力の遅れも入る（OBS が受け取る側に近い）\n\
+  - 狙いとの差＝録った立ち上がり − 狙った QPC 時刻。基準との差＝同じ回の1台目（ループバックは lb1 の 1kHz、録音デバイスはその中の 1kHz）との差。lb1 との差＝録音デバイスの中のクリック − lb1 の 1kHz。どれも＋は遅い\n\
+  - 立ち上がりは、クリックの最初の標本の時刻（2ms のハン窓でその高さの大きさを出し、半分の大きさを横切る左右の中点から、クリックの形で逆算）。\n\
+    作った波形での確かめ：雑音だけなら約 10µs 以内、ほかのデバイスのクリックが 1.25ms 以内に重なると最大約 0.06ms 偏る\n";
+
+/// 録る流れの出どころ。数字はループバックならデバイス番号（PL_PROBE_DEVICES の順）、録音デバイスなら PL_PROBE_CAPTURE の順
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum CapSource {
+    Loopback(u8),
+    Input(u8),
+}
+
+impl CapSource {
+    fn label(self) -> String {
+        match self {
+            CapSource::Loopback(n) => format!("lb{n}"),
+            CapSource::Input(n) => format!("cap{n}"),
+        }
+    }
+}
+
+/// 1つの流れ・1つの高さ・1回のクリックの結果。Ok は（立ち上がりの QPC 時刻 ns, 見つけたもの）
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Hit {
+    stream: usize,
+    dev: u8,
+    click: usize,
+    res: Result<(f64, Onset), HitMiss>,
+}
+
+/// loopback_clicks.csv の1行（要約の材料）
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ClickRow {
+    stream: usize,
+    dev: u8,
+    open_no: u32,
+    click: usize,
+    target_ns: u64,
+    /// そのデバイスでその回を鳴らした（click_targets.csv の status が ok）
+    played: bool,
+    res: Result<(f64, Onset), HitMiss>,
+    aimed_minus_target_ns: Option<f64>,
+    minus_base_ns: Option<f64>,
+    minus_lb1_ns: Option<f64>,
+}
+
+impl ClickRow {
+    /// 鳴らして、見つかったときの立ち上がり
+    fn onset(&self) -> Option<f64> {
+        if self.played {
+            self.res.ok().map(|(ns, _)| ns)
+        } else {
+            None
+        }
+    }
+    fn minus_target_ns(&self) -> Option<f64> {
+        self.onset().map(|ns| ns - self.target_ns as f64)
+    }
+    fn status(&self) -> &'static str {
+        match (self.played, self.res) {
+            (false, _) => "not_played",
+            (true, Ok(_)) => "ok",
+            (true, Err(m)) => m.code(),
+        }
+    }
+}
+
+/// 結果を行にする：鳴らしたか・基準との差・lb1 との差を足す（純粋。テストで確かめる）
+fn click_rows(hits: &[Hit], sources: &[CapSource], targets: &[u64], events: &[ClickEvent]) -> Vec<ClickRow> {
+    let by_key: BTreeMap<(usize, u8, usize), &Hit> = hits.iter().map(|h| ((h.stream, h.dev, h.click), h)).collect();
+    let ok_event = |dev: u8, click: usize| events.iter().find(|e| e.dev == dev && e.click as usize == click && e.status == ClickStatus::Ok);
+    let any_event = |dev: u8, click: usize| events.iter().find(|e| e.dev == dev && e.click as usize == click);
+    // 1台目を鳴らして、見つかったときの立ち上がり
+    let base_onset = |stream: Option<usize>, click: usize| -> Option<f64> {
+        let h = by_key.get(&(stream?, 1, click))?;
+        ok_event(1, click)?;
+        h.res.ok().map(|(ns, _)| ns)
+    };
+    let lb1 = sources.iter().position(|s| *s == CapSource::Loopback(1));
+    let mut rows: Vec<ClickRow> = by_key
+        .values()
+        .map(|h| {
+            let ev = ok_event(h.dev, h.click);
+            let target_ns = targets.get(h.click).copied().unwrap_or(0);
+            let mut row = ClickRow {
+                stream: h.stream,
+                dev: h.dev,
+                open_no: ev.or_else(|| any_event(h.dev, h.click)).map(|e| e.open_no).unwrap_or(1),
+                click: h.click,
+                target_ns,
+                played: ev.is_some(),
+                res: h.res,
+                aimed_minus_target_ns: ev.map(|e| (e.aimed_ns - e.target_ns as i64) as f64),
+                minus_base_ns: None,
+                minus_lb1_ns: None,
+            };
+            if let Some(on) = row.onset() {
+                let source = sources.get(h.stream).copied();
+                if h.dev != 1 {
+                    let base_stream = match source {
+                        Some(CapSource::Loopback(_)) => lb1,
+                        _ => Some(h.stream),
+                    };
+                    row.minus_base_ns = base_onset(base_stream, h.click).map(|b| on - b);
+                }
+                if matches!(source, Some(CapSource::Input(_))) {
+                    row.minus_lb1_ns = base_onset(lb1, h.click).map(|b| on - b);
+                }
+            }
+            row
+        })
+        .collect();
+    rows.sort_by_key(|r| (r.stream, r.dev, r.click));
+    rows
+}
+
+/// 1つの流れ・1つの高さの集計
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SectionStats {
+    vs_target: Vec<f64>,
+    vs_base: Vec<f64>,
+    vs_lb1: Vec<f64>,
+    misses: BTreeMap<HitMiss, usize>,
+    not_played: usize,
+    /// 鳴らしていないのに見つかった（見分けの誤りの目安。0 のはず）
+    found_unplayed: usize,
+}
+
+fn section_stats<'a>(rows: impl Iterator<Item = &'a ClickRow>) -> SectionStats {
+    let mut st = SectionStats::default();
+    for r in rows {
+        if !r.played {
+            st.not_played += 1;
+            if r.res.is_ok() {
+                st.found_unplayed += 1;
+            }
+            continue;
+        }
+        match r.res {
+            Ok(_) => {
+                st.vs_target.extend(r.minus_target_ns());
+                st.vs_base.extend(r.minus_base_ns);
+                st.vs_lb1.extend(r.minus_lb1_ns);
+            }
+            Err(m) => *st.misses.entry(m).or_default() += 1,
+        }
+    }
+    st
+}
+
+fn stats_line(name: &str, v: &[f64]) -> String {
+    match diff_stats(v) {
+        None => format!("  {name}：-\n"),
+        Some(d) => format!(
+            "  {name}：{} 回・平均 {:+.3} ms・揺れ（標準偏差）{:.3} ms・最小 {:+.3} ms・最大 {:+.3} ms\n",
+            d.n,
+            d.mean / 1e6,
+            d.std / 1e6,
+            d.min / 1e6,
+            d.max / 1e6
+        ),
+    }
+}
+
+fn opt_ms(v: Option<f64>) -> String {
+    v.map(|x| format!("{:+.3}", x / 1e6)).unwrap_or_else(|| "-".into())
+}
+
+fn opt_us(v: Option<f64>) -> String {
+    v.map(|x| format!("{:.1}", x / 1e3)).unwrap_or_default()
+}
+
+/// 録っている流れ1つ（コールバックの外の側）
+struct CapStream {
+    source: CapSource,
+    label: String,
+    title: String,
+    id: String,
+    fmt: StreamFormat,
+    stream: Option<cpal::Stream>,
+    health: Arc<Health>,
+    dropped: Arc<AtomicU64>,
+    samples: rtrb::Consumer<f32>,
+    packets: rtrb::Consumer<CapPacket>,
+    track: CaptureTrack,
+    next_click: usize,
+    /// 探す高さ（デバイス番号）
+    devs: Vec<u8>,
+    open_ns: u64,
+    now_diff_ns: i64,
+}
+
+impl CapStream {
+    fn header(&self) -> String {
+        let freqs: Vec<String> = self.devs.iter().map(|&d| format!("{} Hz（デバイス {d}）", click_freq_for(d))).collect();
+        format!(
+            "== {}：{}\n  id：{}\n  形式：{} Hz・{} ch・{:?}・探す高さ {}\n  開くのにかかった時間：{}・自前の QPC − stream.now()：{}\n  \
+             パケット：{} 個・途切れ {} 回・時刻の飛び（つながった所）RMS {:.1} µs・最大 {:.1} µs・取りこぼし {} 個・エラー：{}\n",
+            self.label,
+            self.title,
+            self.id,
+            self.fmt.rate,
+            self.fmt.channels,
+            self.fmt.format,
+            freqs.join("・"),
+            ms(self.open_ns as f64),
+            ms(self.now_diff_ns as f64),
+            self.track.n_packets,
+            self.track.breaks,
+            self.track.jump_rms_ns() / 1e3,
+            self.track.jump_max_abs / 1e3,
+            self.dropped.load(Ordering::Relaxed),
+            errors_text(&self.health),
+        )
+    }
+}
+
+/// ループバックと録音デバイスをまとめて持ち、狙った時刻の前後が録れたものから調べる
+struct Capturing {
+    dir: PathBuf,
+    streams: Vec<CapStream>,
+    hits: Vec<Hit>,
+    packets_csv: BufWriter<File>,
+    targets: Arc<Vec<u64>>,
+    look_ns: u64,
+    burst_ms: f64,
+    next_flush_ns: u64,
+}
+
+impl Capturing {
+    fn new(dir: &Path, targets: Arc<Vec<u64>>, look_ns: u64, burst_ms: f64) -> Self {
+        let mut csv = BufWriter::new(File::create(dir.join("capture_packets.csv")).expect("capture_packets.csv"));
+        writeln!(csv, "stream,pos,stored_before,frames,capture_ns,callback_ns,qpc_entry_ns,jump_us,break").unwrap();
+        Self { dir: dir.to_path_buf(), streams: vec![], hits: vec![], packets_csv: csv, targets, look_ns, burst_ms, next_flush_ns: 0 }
+    }
+
+    /// 録り始める。ループバックは出力デバイスに入力の流れを開く（cpal が AUDCLNT_STREAMFLAGS_LOOPBACK を付ける）
+    fn open(&mut self, source: CapSource, info: &DeviceInfo, devs: Vec<u8>) -> Result<(), String> {
+        let open_start = qpc_now_ns();
+        let (device, cfg, title) = match source {
+            CapSource::Loopback(n) => {
+                let d = devices::find_output(Some(&info.id)).ok_or("開けない")?;
+                let c = d.default_output_config().map_err(|e| format!("default_output_config: {e}"))?;
+                (d, c, format!("デバイス {n} のループバック（{}）", info.name))
+            }
+            CapSource::Input(n) => {
+                let d = find_input(&info.id).ok_or("開けない")?;
+                let c = d.default_input_config().map_err(|e| format!("default_input_config: {e}"))?;
+                (d, c, format!("録音デバイス {n}（{}）", info.name))
+            }
+        };
+        let fmt = StreamFormat { rate: cfg.sample_rate(), channels: cfg.channels() as usize, format: cfg.sample_format() };
+        let (sp, sc) = rtrb::RingBuffer::<f32>::new((fmt.rate as usize * 4).max(1 << 16));
+        let (pp, pc) = rtrb::RingBuffer::<CapPacket>::new(4096);
+        let dropped = Arc::new(AtomicU64::new(0));
+        let health = Arc::new(Health::default());
+        let feed = CaptureFeed { samples: sp, packets: pp, pos: 0, stored: 0, dropped: dropped.clone() };
+        let config =
+            cpal::StreamConfig { channels: fmt.channels as u16, sample_rate: fmt.rate, buffer_size: cpal::BufferSize::Default };
+        let ch = fmt.channels;
+        let stream = match fmt.format {
+            SampleFormat::F32 => build_capture::<f32>(&device, &config, ch, feed, health.clone()),
+            SampleFormat::I16 => build_capture::<i16>(&device, &config, ch, feed, health.clone()),
+            SampleFormat::I32 => build_capture::<i32>(&device, &config, ch, feed, health.clone()),
+            SampleFormat::U16 => build_capture::<u16>(&device, &config, ch, feed, health.clone()),
+            SampleFormat::F64 => build_capture::<f64>(&device, &config, ch, feed, health.clone()),
+            other => Err(format!("扱っていない形式：{other:?}")),
+        }?;
+        stream.play().map_err(|e| format!("play: {e}"))?;
+        let open_done = qpc_now_ns();
+        let q1 = qpc_now_ns();
+        let now = instant_ns(stream.now());
+        let q2 = qpc_now_ns();
+        self.streams.push(CapStream {
+            source,
+            label: source.label(),
+            title,
+            id: info.id.clone(),
+            fmt,
+            stream: Some(stream),
+            health,
+            dropped,
+            samples: sc,
+            packets: pc,
+            track: CaptureTrack::new(fmt.rate),
+            next_click: 0,
+            devs,
+            open_ns: open_done.saturating_sub(open_start),
+            now_diff_ns: ((q1 / 2 + q2 / 2) as i64) - now as i64,
+        });
+        Ok(())
+    }
+
+    /// 輪から取り出し、狙った時刻の前後が録れた回を調べる。`finished` なら、録れていない回も「録れていない」で閉じる
+    fn tick(&mut self, events: &[ClickEvent], finished: bool) {
+        let targets = self.targets.clone();
+        let (look, burst_ms) = (self.look_ns, self.burst_ms);
+        let mut new_hits = false;
+        for (si, s) in self.streams.iter_mut().enumerate() {
+            // パケット → 標本 の順に取り出す（コールバックは標本を先に書くので、取り出したパケットの標本は必ずそろっている）
+            while let Ok(p) = s.packets.pop() {
+                let (jump, brk) = match s.track.add_packet(p) {
+                    PacketLink::First => (String::new(), 0),
+                    PacketLink::Connected(j) => (format!("{:.1}", j / 1e3), 0),
+                    PacketLink::Broken(j) => (format!("{:.1}", j / 1e3), 1),
+                };
+                let _ = writeln!(
+                    self.packets_csv,
+                    "{},{},{},{},{},{},{},{jump},{brk}",
+                    s.label, p.pos, p.stored_before, p.frames, p.capture_ns, p.callback_ns, p.qpc_ns
+                );
+            }
+            let n = s.samples.slots();
+            if n > 0 {
+                if let Ok(chunk) = s.samples.read_chunk(n) {
+                    let (a, b) = chunk.as_slices();
+                    s.track.add_samples(a);
+                    s.track.add_samples(b);
+                    chunk.commit_all();
+                }
+            }
+            while s.next_click < targets.len() {
+                let t = targets[s.next_click];
+                let results: Vec<(u8, Result<(f64, Onset), HitMiss>)> = match s.track.window(t.saturating_sub(look), t + look) {
+                    Err(WindowMiss::NotYet) if !finished => break,
+                    Err(WindowMiss::NotYet) | Err(WindowMiss::NotCaptured) => {
+                        s.devs.iter().map(|&d| (d, Err(HitMiss::NotCaptured))).collect()
+                    }
+                    Err(WindowMiss::Gap) => s.devs.iter().map(|&d| (d, Err(HitMiss::Gap))).collect(),
+                    Ok((win, start)) => {
+                        let mut v = vec![];
+                        for &d in &s.devs {
+                            let r = find_click_onset(&win, s.fmt.rate, click_freq_for(d), burst_ms).and_then(|o| {
+                                s.track.pos_to_ns(start as f64 + o.pos).map(|ns| (ns, o)).ok_or(HitMiss::Gap)
+                            });
+                            v.push((d, r));
+                        }
+                        v
+                    }
+                };
+                for (d, r) in results {
+                    self.hits.push(Hit { stream: si, dev: d, click: s.next_click, res: r });
+                }
+                new_hits = true;
+                s.next_click += 1;
+            }
+            // 次に調べる回の窓より前は要らない（長く流しても手元が増えない）
+            let keep = targets.get(s.next_click).map(|t| t.saturating_sub(look + 500_000_000)).unwrap_or(u64::MAX);
+            s.track.trim_before(keep);
+        }
+        if new_hits || finished {
+            self.write_clicks_csv(events);
+        }
+        let now = qpc_now_ns();
+        if finished || now >= self.next_flush_ns {
+            let _ = self.packets_csv.flush();
+            self.next_flush_ns = now + 1_000_000_000;
+        }
+    }
+
+    fn stop(&mut self) {
+        for s in self.streams.iter_mut() {
+            drop(s.stream.take());
+        }
+    }
+
+    fn rows(&self, events: &[ClickEvent]) -> Vec<ClickRow> {
+        let sources: Vec<CapSource> = self.streams.iter().map(|s| s.source).collect();
+        click_rows(&self.hits, &sources, &self.targets, events)
+    }
+
+    /// loopback_clicks.csv を書き直す（基準との差は、ほかの流れの同じ回がそろってから入る）
+    fn write_clicks_csv(&self, events: &[ClickEvent]) {
+        let Ok(f) = File::create(self.dir.join("loopback_clicks.csv")) else { return };
+        let mut w = BufWriter::new(f);
+        let first = self.targets.first().copied().unwrap_or(0);
+        let _ = writeln!(
+            w,
+            "stream,dev,open,click,status,target_ns,target_rel_ms,onset_ns,onset_minus_target_us,minus_base_us,minus_lb1_us,aimed_minus_target_us,peak_dbfs,snr_db,width_ms"
+        );
+        for r in self.rows(events) {
+            let found = r.res.ok();
+            let _ = writeln!(
+                w,
+                "{},{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{}",
+                self.streams[r.stream].label,
+                r.dev,
+                r.open_no,
+                r.click,
+                r.status(),
+                r.target_ns,
+                (r.target_ns as i64 - first as i64) as f64 / 1e6,
+                found.map(|(ns, _)| format!("{ns:.0}")).unwrap_or_default(),
+                opt_us(found.map(|(ns, _)| ns - r.target_ns as f64)),
+                opt_us(r.minus_base_ns),
+                opt_us(r.minus_lb1_ns),
+                opt_us(r.aimed_minus_target_ns),
+                found.map(|(_, o)| format!("{:.1}", 20.0 * (o.peak as f64).log10())).unwrap_or_default(),
+                found.map(|(_, o)| format!("{:.1}", o.snr_db)).unwrap_or_default(),
+                found.map(|(_, o)| format!("{:.3}", o.width_ms)).unwrap_or_default(),
+            );
+        }
+        let _ = w.flush();
+    }
+
+    /// 要約の「録った流れ」と「結果」
+    fn report(&self, events: &[ClickEvent], join: bool) -> String {
+        let rows = self.rows(events);
+        let mut s = String::new();
+        s.push_str("==== 録った流れ\n");
+        for c in &self.streams {
+            s.push_str(&c.header());
+        }
+        s.push_str("\n==== 結果（ms。＋は遅い。回は 1 から。鳴らした回だけ数える）\n");
+        for (si, c) in self.streams.iter().enumerate() {
+            for &d in &c.devs {
+                let mine: Vec<&ClickRow> = rows.iter().filter(|r| r.stream == si && r.dev == d).collect();
+                let st = section_stats(mine.iter().copied());
+                let base_mark = match c.source {
+                    CapSource::Loopback(1) => "（基準）",
+                    CapSource::Input(_) if d == 1 => "（この流れの基準）",
+                    _ => "",
+                };
+                let join_mark = if join && d == 2 { "・途中参加：回ごとに開き直し（差は開き直しごと）" } else { "" };
+                s.push_str(&format!("-- {}：{} の {} Hz{base_mark}{join_mark}\n", c.label, c.title, click_freq_for(d)));
+                s.push_str(&stats_line("狙いとの差", &st.vs_target));
+                let is_base = matches!(c.source, CapSource::Loopback(1)) || (matches!(c.source, CapSource::Input(_)) && d == 1);
+                if !is_base {
+                    s.push_str(&stats_line("基準との差", &st.vs_base));
+                }
+                if matches!(c.source, CapSource::Input(_)) {
+                    s.push_str(&stats_line("lb1 との差", &st.vs_lb1));
+                }
+                let misses: Vec<String> = HitMiss::ALL
+                    .iter()
+                    .filter_map(|m| st.misses.get(m).map(|n| format!("{} {n}", m.text())))
+                    .collect();
+                s.push_str(&format!(
+                    "  取れなかった：{}・鳴らしていない {} 回{}\n",
+                    if misses.is_empty() { "0 回".to_string() } else { misses.join("・") },
+                    st.not_played,
+                    if st.found_unplayed > 0 { format!("（うち {} 回は鳴らしていないのに見つかった＝見分けの誤りの疑い）", st.found_unplayed) } else { String::new() }
+                ));
+                s.push_str("  回・狙いとの差・基準との差・lb1 との差・状態\n");
+                const MAX_LINES: usize = 200;
+                for r in mine.iter().take(MAX_LINES) {
+                    s.push_str(&format!(
+                        "  {:>4}・{}・{}・{}・{}\n",
+                        r.click + 1,
+                        opt_ms(r.minus_target_ns()),
+                        opt_ms(r.minus_base_ns),
+                        opt_ms(r.minus_lb1_ns),
+                        r.status()
+                    ));
+                }
+                if mine.len() > MAX_LINES {
+                    s.push_str(&format!("  （残り {} 回は loopback_clicks.csv）\n", mine.len() - MAX_LINES));
+                }
+                s.push('\n');
+            }
+        }
+        s
+    }
+}
+
+fn build_capture<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    channels: usize,
+    mut feed: CaptureFeed,
+    health: Arc<Health>,
+) -> Result<cpal::Stream, String>
+where
+    T: SizedSample + Send + 'static,
+    f32: FromSample<T>,
+{
+    let ch = channels.max(1);
+    let data_cb = move |data: &[T], info: &cpal::InputCallbackInfo| {
+        let qpc = qpc_now_ns();
+        let ts = info.timestamp();
+        let frames = data.len() / ch;
+        let mono = data.chunks_exact(ch).map(|f| f.iter().map(|&v| <f32 as FromSample<T>>::from_sample_(v)).sum::<f32>() / ch as f32);
+        feed.push(frames, mono, instant_ns(ts.capture), instant_ns(ts.callback), qpc);
+    };
+    let err_cb = move |e: cpal::Error| {
+        if let Ok(mut v) = health.errors.lock() {
+            if v.len() < 100 {
+                v.push(format!("{:?}: {e}", e.kind()));
+            }
+        }
+    };
+    device.build_input_stream::<T, _, _>(*config, data_cb, err_cb, None).map_err(|e| format!("build_input_stream: {e}"))
 }
 
 // ----------------------------------------------------------------------
@@ -1771,7 +2990,7 @@ const SLIP_CHUNK: usize = 1024;
 #[test]
 #[ignore]
 fn slip_probe() {
-    let picked = pick_devices(1, 1, "slip_probe");
+    let picked = pick_devices(1, 1, "slip_probe", "");
     let p = picked.into_iter().next().unwrap();
     let secs = env_f64_in("PL_PROBE_SECS", 60.0, 1.0, MAX_PROBE_SECS);
     let ratio = env_f64_in("PL_PROBE_SLIP_RATIO", 1.0001, 0.99, 1.01);
@@ -2399,4 +3618,382 @@ fn click_render_late_click_is_not_played_and_next_one_is() {
     assert_eq!((ev[1].click, ev[1].status, ev[1].start_frame), (1, ClickStatus::Ok, 72_000));
     let (a, b) = sounding(&mono, 100 * FRAMES_PER_CB as u64).unwrap();
     assert!(a >= 72_000 && b < 72_000 + 240, "{a}..{b}");
+}
+
+// ---- 録った音からクリックを探す（loopback_click_probe。デバイスは使わず、作った波形で） ----
+
+/// -30 dBFS（loopback_click_probe の既定の大きさ）
+const AMP_M30: f32 = 0.031_622_776;
+
+/// 種を固定した雑音（-amp〜amp の一様）
+fn lcg_noise(n: usize, amp: f32, seed: u64) -> Vec<f32> {
+    let mut s = seed;
+    (0..n)
+        .map(|_| {
+            s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            ((s >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0) * amp
+        })
+        .collect()
+}
+
+/// `at` の標本から、高さ `freq` のクリック（5ms）を足す
+fn add_click(x: &mut [f32], at: usize, freq: f64, rate: u32, amp: f32) {
+    for (i, v) in click_burst(freq, rate, 5.0, CLICK_FADE_MS, amp).iter().enumerate() {
+        if let Some(d) = x.get_mut(at + i) {
+            *d += v;
+        }
+    }
+}
+
+fn add_sine(x: &mut [f32], freq: f64, rate: u32, amp: f32) {
+    for (k, v) in x.iter_mut().enumerate() {
+        *v += amp * (2.0 * std::f64::consts::PI * freq * k as f64 / rate as f64).sin() as f32;
+    }
+}
+
+#[test]
+fn onset_is_found_where_the_click_starts() {
+    for &rate in &[48_000u32, 44_100] {
+        for dev in 1..=3u8 {
+            let f = click_freq_for(dev);
+            let mut x = vec![0f32; rate as usize * 2 / 5]; // 400ms（既定の窓 ±200ms）
+            let at = 7_123;
+            add_click(&mut x, at, f, rate, AMP_M30);
+            let o = find_click_onset(&x, rate, f, 5.0).unwrap_or_else(|e| panic!("{rate} {f}: {e:?}"));
+            assert!((o.pos - at as f64).abs() < 0.2, "{rate} {f}: pos {}", o.pos);
+            assert!((o.peak - AMP_M30).abs() < AMP_M30 * 0.05, "{rate} {f}: peak {}", o.peak);
+            assert!((o.width_ms - 4.5).abs() < 0.3, "{rate} {f}: width {}", o.width_ms);
+        }
+    }
+    // クリックの長さを変えても（1ms・20ms）、最初の標本を指す
+    for &burst_ms in &[1.0, 20.0] {
+        let mut x = vec![0f32; 19_200];
+        let b = click_burst(3000.0, 48_000, burst_ms, CLICK_FADE_MS, AMP_M30);
+        x[5_000..5_000 + b.len()].copy_from_slice(&b);
+        let o = find_click_onset(&x, 48_000, 3000.0, burst_ms).unwrap();
+        assert!((o.pos - 5_000.0).abs() < 0.2, "{burst_ms}: {}", o.pos);
+    }
+}
+
+#[test]
+fn onset_survives_noise_and_other_tones() {
+    let rate = 48_000;
+    // 雑音（約 -56 dBFS の実効値）と、どのデバイスの高さでもない 2kHz・4kHz がずっと鳴っている（曲のつもり）
+    let mut x = lcg_noise(19_200, 0.003, 7);
+    add_sine(&mut x, 2000.0, rate, 0.01);
+    add_sine(&mut x, 4000.0, rate, 0.01);
+    // 3台のクリックが同じ入力に入る（仮想ケーブルを録るとき）。ずれは 0.2ms・-0.2ms
+    add_click(&mut x, 9_000, 1000.0, rate, AMP_M30);
+    add_click(&mut x, 9_010, 3000.0, rate, AMP_M30);
+    add_click(&mut x, 8_990, 5000.0, rate, AMP_M30);
+    // 重なったクリックの縁が少し漏れて偏る（下の overlapping_clicks_bias_is_small）。3 標本（48kHz で約 0.06ms）まで
+    for (f, at) in [(1000.0, 9_000.0), (3000.0, 9_010.0), (5000.0, 8_990.0)] {
+        let o = find_click_onset(&x, rate, f, 5.0).unwrap_or_else(|e| panic!("{f}: {e:?}"));
+        assert!((o.pos - at).abs() < 3.0, "{f}: pos {} want {at}", o.pos);
+        assert!(o.snr_db > ONSET_MIN_SNR_DB, "{f}: snr {}", o.snr_db);
+    }
+    // 雑音だけなら、ずれは 0.5 標本（約 10µs）未満
+    for seed in 1..8 {
+        let mut y = lcg_noise(19_200, 0.003, seed);
+        add_click(&mut y, 9_000, 1000.0, rate, AMP_M30);
+        let o = find_click_onset(&y, rate, 1000.0, 5.0).unwrap();
+        assert!((o.pos - 9_000.0).abs() < 0.5, "seed {seed}: {}", o.pos);
+    }
+}
+
+/// ほかのデバイスのクリックが前後 1.25ms 以内に重なる（録音デバイスに複数の出力が入るとき）。偏りの最大は約 0.06ms
+/// （TONE_WINDOW_MS の決め方。1ms の素の窓だと約 0.15ms だった）
+#[test]
+fn overlapping_clicks_bias_is_small() {
+    for &rate in &[48_000u32, 44_100] {
+        for fi in 0..3usize {
+            let freqs = [1000.0, 3000.0, 5000.0];
+            let mut worst = 0f64;
+            for off in (-60i64..=60).step_by(3) {
+                let mut x = vec![0f32; 19_200];
+                add_click(&mut x, 9_000, freqs[fi], rate, AMP_M30);
+                for (gi, &g) in freqs.iter().enumerate().filter(|(gi, _)| *gi != fi) {
+                    let at = 9_000 + if gi < fi { off } else { -off };
+                    add_click(&mut x, at as usize, g, rate, AMP_M30);
+                }
+                let o = find_click_onset(&x, rate, freqs[fi], 5.0).unwrap_or_else(|e| panic!("{rate} {} {off}: {e:?}", freqs[fi]));
+                worst = worst.max((o.pos - 9_000.0).abs() / rate as f64 * 1e6);
+            }
+            assert!(worst < 70.0, "{rate} {}: 最大 {worst:.1} µs", freqs[fi]);
+        }
+    }
+}
+
+#[test]
+fn onset_refuses_what_is_not_the_click() {
+    let rate = 48_000;
+    let n = 19_200;
+    // 無音・雑音だけ
+    assert_eq!(find_click_onset(&vec![0f32; n], rate, 1000.0, 5.0), Err(HitMiss::NoSignal));
+    assert!(find_click_onset(&lcg_noise(n, 0.003, 1), rate, 1000.0, 5.0).is_err());
+    // ほかの高さのクリックだけ（1kHz を探すと 3kHz・5kHz は見えない）
+    let mut other = vec![0f32; n];
+    add_click(&mut other, 9_000, 3000.0, rate, AMP_M30);
+    add_click(&mut other, 9_000, 5000.0, rate, AMP_M30);
+    assert!(find_click_onset(&other, rate, 1000.0, 5.0).is_err(), "{:?}", find_click_onset(&other, rate, 1000.0, 5.0));
+    // 同じ高さがずっと鳴っている（クリックが埋もれる）→ 小さい
+    let mut steady = vec![0f32; n];
+    add_sine(&mut steady, 1000.0, rate, 0.01);
+    add_click(&mut steady, 9_000, 1000.0, rate, AMP_M30);
+    assert_eq!(find_click_onset(&steady, rate, 1000.0, 5.0), Err(HitMiss::Weak));
+    // 窓の端で切れている（始まりの前から・終わりの途中まで）
+    let mut head_cut = vec![0f32; n];
+    let b = click_burst(1000.0, rate, 5.0, CLICK_FADE_MS, AMP_M30);
+    head_cut[..120].copy_from_slice(&b[120..]);
+    assert_eq!(find_click_onset(&head_cut, rate, 1000.0, 5.0), Err(HitMiss::Truncated));
+    let mut tail_cut = vec![0f32; n];
+    tail_cut[n - 100..].copy_from_slice(&b[..100]);
+    assert_eq!(find_click_onset(&tail_cut, rate, 1000.0, 5.0), Err(HitMiss::Truncated));
+    // 長い音（50ms）→ 長さが違う
+    let mut long = vec![0f32; n];
+    let lb = click_burst(1000.0, rate, 50.0, CLICK_FADE_MS, AMP_M30);
+    long[5_000..5_000 + lb.len()].copy_from_slice(&lb);
+    assert_eq!(find_click_onset(&long, rate, 1000.0, 5.0), Err(HitMiss::WrongShape));
+    // 同じ高さのクリックが2つ（100ms 離れて）→ 紛らわしい
+    let mut two = vec![0f32; n];
+    add_click(&mut two, 5_000, 1000.0, rate, AMP_M30);
+    add_click(&mut two, 9_800, 1000.0, rate, AMP_M30 * 0.8);
+    assert_eq!(find_click_onset(&two, rate, 1000.0, 5.0), Err(HitMiss::Ambiguous));
+    // 一瞬だけ全部の高さが鳴る音（5ms の雑音のかたまり＝物音）→ クリックとしない
+    let mut thump = lcg_noise(n, 0.0003, 3);
+    for (i, v) in lcg_noise(240, 0.3, 4).into_iter().enumerate() {
+        thump[9_000 + i] += v;
+    }
+    for f in [1000.0, 3000.0, 5000.0] {
+        assert!(find_click_onset(&thump, rate, f, 5.0).is_err(), "{f}: {:?}", find_click_onset(&thump, rate, f, 5.0));
+    }
+}
+
+/// 10ms ごとの、すき間の無いパケット
+fn even_packets(n: usize, frames: u32, rate: u32, t0: u64) -> Vec<CapPacket> {
+    (0..n)
+        .map(|i| {
+            let pos = i as u64 * frames as u64;
+            CapPacket {
+                pos,
+                stored_before: pos,
+                frames,
+                capture_ns: t0 + (pos as f64 * 1e9 / rate as f64).round() as u64,
+                callback_ns: 0,
+                qpc_ns: 0,
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn window_positions_cover_and_detect_gaps() {
+    let (rate, t0, tol) = (48_000, 1_000_000_000u64, CAPTURE_GAP_TOL_NS);
+    let p = even_packets(100, 480, rate, t0);
+    let ms = |x: u64| x * 1_000_000;
+    assert_eq!(window_positions(&p, rate, t0 + ms(105), t0 + ms(205), tol), Ok((5_040, 4_800, 5_040)));
+    // まだ録れていない・始まる前
+    assert_eq!(window_positions(&p, rate, t0 + ms(990), t0 + ms(1010), tol), Err(WindowMiss::NotYet));
+    assert_eq!(window_positions(&[], rate, t0, t0 + 1, tol), Err(WindowMiss::NotYet));
+    assert_eq!(window_positions(&p, rate, t0 - ms(50), t0 + ms(50), tol), Err(WindowMiss::NotCaptured));
+    // パケットを1つ取りこぼした（通し番号が飛ぶ）→ 途切れ
+    let mut dropped = p.clone();
+    dropped.remove(15);
+    assert_eq!(window_positions(&dropped, rate, t0 + ms(100), t0 + ms(200), tol), Err(WindowMiss::Gap));
+    // その手前・後ろだけなら使える
+    assert!(window_positions(&dropped, rate, t0 + ms(20), t0 + ms(120), tol).is_ok());
+    // 時刻が 2ms 飛んだ → 途切れ。0.3ms の揺れはつながっている
+    let mut jumped = p.clone();
+    for q in jumped.iter_mut().skip(15) {
+        q.capture_ns += 2_000_000;
+    }
+    assert_eq!(window_positions(&jumped, rate, t0 + ms(100), t0 + ms(200), tol), Err(WindowMiss::Gap));
+    let mut jitter = p.clone();
+    jitter[15].capture_ns += 300_000;
+    assert!(window_positions(&jitter, rate, t0 + ms(100), t0 + ms(200), tol).is_ok());
+    // 通し番号 → 時刻（そのフレームを含むパケットから）
+    assert_eq!(pos_to_ns(&p, 480.0 * 3.0 + 240.0, rate), Some(t0 as f64 + 35_000_000.0));
+    assert_eq!(pos_to_ns(&p, 1e9, rate), None);
+    assert_eq!(pos_to_ns(&p, -1.0, rate), None);
+}
+
+/// コールバックの役（CaptureFeed）→ 輪 → 手元（CaptureTrack）→ 切り出し → 立ち上がりの QPC 時刻、を通しで
+#[test]
+fn feed_and_track_give_click_time() {
+    for &rate in &[48_000u32, 44_100] {
+        let frames = (rate / 100) as usize;
+        let ch = 2;
+        let (sp, mut sc) = rtrb::RingBuffer::<f32>::new(rate as usize * 4);
+        let (pp, mut pc) = rtrb::RingBuffer::<CapPacket>::new(4096);
+        let dropped = Arc::new(AtomicU64::new(0));
+        let mut feed = CaptureFeed { samples: sp, packets: pp, pos: 0, stored: 0, dropped: dropped.clone() };
+        let t0 = 5_000_000_000u64;
+        // 3秒ぶんのステレオ。1.2345 秒の所に 1kHz のクリック（左右同じ）と、右だけに雑音
+        let total = rate as usize * 3;
+        let k0 = (1.2345 * rate as f64).round() as usize;
+        let mut mono = vec![0f32; total];
+        add_click(&mut mono, k0, 1000.0, rate, AMP_M30);
+        let noise = lcg_noise(total, 0.001, 9);
+        let mut track = CaptureTrack::new(rate);
+        for (i, chunk) in mono.chunks(frames).enumerate() {
+            let pos = (i * frames) as u64;
+            // WASAPI と同じく 100ns 単位に丸めた時刻
+            let cap = (t0 + (pos as f64 * 1e9 / rate as f64) as u64) / 100 * 100;
+            let inter: Vec<f32> = chunk.iter().enumerate().flat_map(|(j, &v)| [v, v + noise[i * frames + j]]).collect();
+            let m = inter.chunks_exact(ch).map(|f| f.iter().sum::<f32>() / ch as f32);
+            feed.push(chunk.len(), m, cap, cap + 10_000_000, cap + 10_050_000);
+            // 取り出す側（ときどき）
+            if i % 7 == 0 {
+                while let Ok(p) = pc.pop() {
+                    track.add_packet(p);
+                }
+                let n = sc.slots();
+                let c = sc.read_chunk(n).unwrap();
+                let (a, b) = c.as_slices();
+                track.add_samples(a);
+                track.add_samples(b);
+                c.commit_all();
+                track.trim_before(t0 + 1_000_000_000);
+            }
+        }
+        while let Ok(p) = pc.pop() {
+            track.add_packet(p);
+        }
+        let n = sc.slots();
+        let c = sc.read_chunk(n).unwrap();
+        let (a, b) = c.as_slices();
+        track.add_samples(a);
+        track.add_samples(b);
+        c.commit_all();
+        assert_eq!(dropped.load(Ordering::Relaxed), 0);
+        assert_eq!(track.breaks, 0);
+        let truth = t0 as f64 + k0 as f64 * 1e9 / rate as f64;
+        let target = truth as u64 + 3_000_000; // 狙いより 3ms 早く鳴った
+        let (win, start) = track.window(target - 200_000_000, target + 200_000_000).unwrap();
+        let o = find_click_onset(&win, rate, 1000.0, 5.0).unwrap();
+        let ns = track.pos_to_ns(start as f64 + o.pos).unwrap();
+        assert!((ns - truth).abs() < 5_000.0, "{rate}: {ns} vs {truth}（{} µs）", (ns - truth) / 1e3);
+        assert!(((ns - target as f64) / 1e6 + 3.0).abs() < 0.01);
+        // 古い所を捨てる（最後のパケットだけ残る）
+        track.trim_before(u64::MAX);
+        assert_eq!(track.packets.len(), 1);
+        assert!(track.samples.len() <= frames, "{}", track.samples.len());
+    }
+}
+
+#[test]
+fn feed_drops_whole_packets_when_ring_is_full_and_track_sees_the_break() {
+    let (sp, mut sc) = rtrb::RingBuffer::<f32>::new(1_000);
+    let (pp, mut pc) = rtrb::RingBuffer::<CapPacket>::new(16);
+    let dropped = Arc::new(AtomicU64::new(0));
+    let mut feed = CaptureFeed { samples: sp, packets: pp, pos: 0, stored: 0, dropped: dropped.clone() };
+    let mut track = CaptureTrack::new(48_000);
+    let push = |feed: &mut CaptureFeed, k: u64| feed.push(480, std::iter::repeat(0.0), 1_000_000_000 + k * 10_000_000, 0, 0);
+    push(&mut feed, 0);
+    push(&mut feed, 1);
+    push(&mut feed, 2); // 空きは 40 → 捨てる
+    assert_eq!(dropped.load(Ordering::Relaxed), 1);
+    while let Ok(p) = pc.pop() {
+        track.add_packet(p);
+    }
+    let c = sc.read_chunk(sc.slots()).unwrap();
+    assert_eq!(c.len(), 960);
+    c.commit_all();
+    push(&mut feed, 3);
+    let p = pc.pop().unwrap();
+    assert_eq!((p.pos, p.stored_before), (1_440, 960));
+    assert_eq!(track.add_packet(p), PacketLink::Broken(10_000_000.0));
+    assert_eq!(track.breaks, 1);
+}
+
+fn click_event(dev: u8, click: u32, status: ClickStatus, target_ns: u64, aimed_off: i64) -> ClickEvent {
+    ClickEvent {
+        dev,
+        open_no: if dev == 2 { click + 1 } else { 1 },
+        click,
+        status,
+        target_ns,
+        start_frame: 0,
+        aimed_ns: target_ns as i64 + aimed_off,
+        fit_minus_raw_ns: 0.0,
+        fit_points: 10,
+        l_ns: 0,
+        used_fit: true,
+        decided_ns: 0,
+    }
+}
+
+#[test]
+fn click_rows_give_differences_and_mark_unplayed() {
+    let t = [10_000_000_000u64, 12_000_000_000];
+    let sources = [CapSource::Loopback(1), CapSource::Loopback(2), CapSource::Input(1)];
+    let events = [
+        click_event(1, 0, ClickStatus::Ok, t[0], 5_000),
+        click_event(1, 1, ClickStatus::Ok, t[1], -5_000),
+        click_event(2, 0, ClickStatus::Ok, t[0], 0),
+        click_event(2, 1, ClickStatus::Late, t[1], 0),
+    ];
+    let on = |ns: f64| -> Result<(f64, Onset), HitMiss> { Ok((ns, Onset { pos: 0.0, peak: AMP_M30, snr_db: 60.0, width_ms: 4.5 })) };
+    let us = |x: f64| x * 1e3;
+    let hits = [
+        Hit { stream: 0, dev: 1, click: 0, res: on(t[0] as f64 + us(100.0)) },
+        Hit { stream: 0, dev: 1, click: 1, res: on(t[1] as f64 + us(200.0)) },
+        Hit { stream: 1, dev: 2, click: 0, res: on(t[0] as f64 + us(600.0)) },
+        Hit { stream: 1, dev: 2, click: 1, res: on(t[1] as f64) }, // 鳴らしていないのに見つかった
+        Hit { stream: 2, dev: 1, click: 0, res: on(t[0] as f64 + us(20_000.0)) },
+        Hit { stream: 2, dev: 2, click: 0, res: on(t[0] as f64 + us(20_500.0)) },
+        Hit { stream: 2, dev: 1, click: 1, res: Err(HitMiss::Weak) },
+        Hit { stream: 2, dev: 2, click: 1, res: Err(HitMiss::NoSignal) },
+    ];
+    let rows = click_rows(&hits, &sources, &t, &events);
+    assert_eq!(rows.len(), 8);
+    let get = |s: usize, d: u8, c: usize| *rows.iter().find(|r| (r.stream, r.dev, r.click) == (s, d, c)).unwrap();
+    let close = |a: Option<f64>, b: f64| a.is_some_and(|a| (a - b).abs() < 1.0);
+    // lb1 は基準（基準との差は無い）。狙いとの差・選んだフレームの丸め
+    let r = get(0, 1, 0);
+    assert!(close(r.minus_target_ns(), us(100.0)) && r.minus_base_ns.is_none() && close(r.aimed_minus_target_ns, 5_000.0));
+    assert_eq!(r.status(), "ok");
+    // lb2：基準（lb1）との差 0.5ms。途中参加なら開き直しの回は click＋1
+    let r = get(1, 2, 0);
+    assert!(close(r.minus_base_ns, us(500.0)), "{r:?}");
+    assert_eq!(r.open_no, 1);
+    let r = get(1, 2, 1);
+    assert_eq!((r.status(), r.open_no, r.minus_target_ns()), ("not_played", 2, None));
+    // 録音デバイス：その中の 1kHz との差と、lb1 との差
+    let r = get(2, 2, 0);
+    assert!(close(r.minus_base_ns, us(500.0)) && close(r.minus_lb1_ns, us(20_400.0)), "{r:?}");
+    let r = get(2, 1, 0);
+    assert!(r.minus_base_ns.is_none() && close(r.minus_lb1_ns, us(19_900.0)), "{r:?}");
+    // 2回目：1kHz は小さくて取れず、2台目はもともと鳴らしていない（遅れて鳴らさなかった回は、見つからなくても not_played）
+    assert_eq!(get(2, 1, 1).status(), "weak");
+    assert_eq!(get(2, 2, 1).status(), "not_played");
+    // 集計
+    let st = section_stats(rows.iter().filter(|r| r.stream == 1));
+    assert_eq!((st.vs_target.len(), st.vs_base.len(), st.not_played, st.found_unplayed), (1, 1, 1, 1));
+    let st = section_stats(rows.iter().filter(|r| r.stream == 2 && r.dev == 1));
+    assert_eq!(st.misses.get(&HitMiss::Weak), Some(&1));
+    assert_eq!(st.vs_lb1.len(), 1);
+}
+
+#[test]
+fn diff_stats_and_capture_settings() {
+    assert_eq!(diff_stats(&[]), None);
+    let d = diff_stats(&[1.0, 2.0, 3.0, 4.0]).unwrap();
+    assert_eq!((d.n, d.mean, d.min, d.max), (4, 2.5, 1.0, 4.0));
+    assert!((d.std - 1.25f64.sqrt()).abs() < 1e-12);
+    // 既定の大きさは範囲の中。ループバックは小さめ
+    assert!(level_amp("PL_PROBE_CLICK_DB", CLICK_DB_LOOPBACK).is_ok());
+    assert!(level_amp("PL_PROBE_CLICK_DB", CLICK_DB_RECORD).is_ok());
+    assert!(CLICK_DB_LOOPBACK < CLICK_DB_RECORD);
+    assert_eq!(ClickMode::Loopback.default_db(), -30.0);
+    assert_eq!(ClickMode::Record.default_db(), -12.0);
+    // 録音デバイスの選び方（指定の仕方は PL_PROBE_DEVICES と同じ。既定が無いとき・空のときの知らせは「録音」）
+    let inputs = vec![dev("{x}", "マイク (USB)", false), dev("{y}", "仮想ケーブルの出口 (Virtual Audio)", false)];
+    assert_eq!(select_from(&inputs, "virtual", "録音", "PL_PROBE_CAPTURE").unwrap(), vec![1]);
+    assert_eq!(select_from(&inputs, "#0|{y}", "録音", "PL_PROBE_CAPTURE").unwrap(), vec![0, 1]);
+    assert!(select_from(&inputs, "default", "録音", "PL_PROBE_CAPTURE").unwrap_err().contains("録音"));
+    assert!(select_from(&inputs, "|", "録音", "PL_PROBE_CAPTURE").unwrap_err().contains("PL_PROBE_CAPTURE"));
+    assert!(device_list_text_of(&[], "録音").contains("録音デバイスが見つからない"));
+    assert_eq!(CapSource::Loopback(2).label(), "lb2");
+    assert_eq!(CapSource::Input(1).label(), "cap1");
 }
