@@ -1,9 +1,11 @@
 //! 画面との窓口。薄く保ち、判断を持たない（判断は playback / library / settings が持つ）。
 
 pub mod devices;
+pub mod latency;
 pub mod library;
 pub mod lyrics;
 pub mod metadata;
+pub mod outputs;
 pub mod playback;
 pub mod playlist;
 pub mod queue;
@@ -17,7 +19,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::db::Db;
-use crate::playback::{Controller, Notice, PlaybackListener, Snapshot};
+use crate::playback::{Controller, Notice, OutputsView, PlaybackListener, Snapshot};
 use crate::settings::store::AppSettings;
 
 /// 画面へ送る通知の名前（src/ipc/events.ts と同じ）
@@ -42,6 +44,8 @@ pub mod ev {
     /// v3.5.0：古い文字コードのタグの読み直しの進み具合と終わり
     pub const LEGACY_REREAD_PROGRESS: &str = "pl://legacy-reread-progress";
     pub const LEGACY_REREAD_DONE: &str = "pl://legacy-reread-done";
+    /// v3.8.0：出力先の設定・状態・表示のモード（変わるたびに全部）
+    pub const OUTPUTS: &str = "pl://outputs";
 }
 
 pub struct Paths {
@@ -64,6 +68,10 @@ pub struct AppState {
     pub skin: Mutex<crate::skins::runtime::Runtime>,
     /// v3.5.0：古い文字コードのタグの読み直し（同時に1つだけ・取り込みとは同時に走らせない・やめるボタン・進み具合）
     pub legacy_reread: crate::library::legacy_reread::Control,
+    /// v3.8.0：メーターの送り役（同時に1つだけ）
+    pub meter: outputs::MeterControl,
+    /// v3.8.0 段3：遅れを測る（同時に1つだけ・やめる）
+    pub latency: latency::LatencyControl,
 }
 
 impl AppState {
@@ -97,6 +105,9 @@ impl PlaybackListener for UiEmitter {
     }
     fn on_devices_changed(&self) {
         let _ = self.0.emit(ev::DEVICES, ());
+    }
+    fn on_outputs(&self, v: &OutputsView) {
+        let _ = self.0.emit(ev::OUTPUTS, v);
     }
 }
 

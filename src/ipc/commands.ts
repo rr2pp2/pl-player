@@ -1,22 +1,28 @@
 // invoke を呼ぶのはここだけ。型付きの関数にして外へ出す。
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AppInfo,
   AppSettings,
   ArtChange,
   BackupReport,
+  CaptureSource,
   DeviceInfo,
   FolderEntry,
   Group,
   HotkeyStatus,
   InboxReport,
+  LatencyReport,
+  LatencySetup,
   LegacyRereadProgress,
   LyricsFetchMode,
   LyricsFetchOne,
   LyricsFetchProgress,
   LyricsPayload,
   LyricsPreview,
+  MeterFrame,
   MetadataView,
+  OutputIcon,
+  OutputsView,
   Playlist,
   PlaylistEntry,
   TrashReport,
@@ -28,6 +34,7 @@ import type {
   TagValues,
   Track,
   TrackQuery,
+  ViewMode,
   YearlyTop,
 } from "./types";
 
@@ -43,7 +50,12 @@ export type PlaybackAction =
   | "volumeUp"
   | "volumeDown"
   | "seekForward"
-  | "seekBackward";
+  | "seekBackward"
+  // v3.8.0：詳細表示の切替・出力 1〜3 のオン/オフ（Rust の playback_action と hotkeys の dispatch が同じ関数を呼ぶ）
+  | "toggleDetail"
+  | "toggleOutput1"
+  | "toggleOutput2"
+  | "toggleOutput3";
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
@@ -128,7 +140,50 @@ export const api = {
 
   // デバイス
   devices: () => invoke<DeviceInfo[]>("devices_list"),
+  /** 出力先1のデバイスを差し替える（3.7.0 の設定画面の「再生デバイス」） */
   setDevice: (id: string | null) => invoke<void>("device_set", { id }),
+
+  // 同時再生（v3.8.0）。出力先の設定を書くのは Rust だけ。変わるたびに pl://outputs で全部が来る
+  outputsGet: () => invoke<OutputsView>("outputs_get"),
+  /** 出力先を足す（null は既定のデバイス）。足した直後はオフ。足した枠の番号を返す。3つあると output_invalid */
+  outputAdd: (deviceId: string | null) => invoke<number>("output_add", { deviceId }),
+  /** 外す（確認なし。設定は覚えておき、同じデバイスを足したら戻る） */
+  outputRemove: (slot: number) => invoke<void>("output_remove", { slot }),
+  outputSetOn: (slot: number, on: boolean) => invoke<void>("output_set_on", { slot, on }),
+  /** 出力ごとの音量（動かしている間）。離したら outputCommitVolume */
+  outputSetVolume: (slot: number, volume: number) => invoke<void>("output_set_volume", { slot, volume }),
+  outputCommitVolume: () => invoke<void>("output_commit_volume"),
+  /** 遅らせ量（0〜1000ms の整数）。その出力だけ約150ms 後に入り直す */
+  outputSetDelay: (slot: number, delayMs: number) =>
+    invoke<void>("output_set_delay", { slot, delayMs: Math.max(0, Math.min(1000, Math.round(delayMs))) }),
+  outputSetFollow: (slot: number, follow: boolean) => invoke<void>("output_set_follow", { slot, follow }),
+  /** アイコンの選び直し（null で自動に戻す） */
+  outputSetIcon: (slot: number, icon: OutputIcon | null) => invoke<void>("output_set_icon", { slot, icon }),
+  /** デバイスの差し替え（null は既定のデバイス）。前のデバイスの設定は覚える */
+  outputSetDevice: (slot: number, deviceId: string | null) => invoke<void>("output_set_device", { slot, deviceId }),
+  /** 表示のモード（通常／詳細）。音量の組がそのモードのものに入れ替わる */
+  viewModeSet: (mode: ViewMode) => invoke<void>("view_mode_set", { mode }),
+  /**
+   * メーターを受け始める（メーターが出ている間だけ）。止めるときは meterStop。次の meterStart でも前のものは止まる。
+   * seq は開始・停止のたびに増やす通し番号（実行が入れ替わっても、いちばん新しい番号だけが効く。Rust の MeterControl）
+   */
+  meterStart: (seq: number, onFrame: (f: MeterFrame) => void) => {
+    const ch = new Channel<MeterFrame>();
+    ch.onmessage = onFrame;
+    return invoke<void>("meter_start", { seq, onFrame: ch });
+  },
+  meterStop: (seq: number) => invoke<void>("meter_stop", { seq }),
+  // 遅れを測る（v3.8.0 段3）。曲を流している間・ほかの測定の間は、Rust が始めずに abort で返す
+  latencySetup: () => invoke<LatencySetup>("latency_setup"),
+  /**
+   * 測る（通常は約 6 秒）。run は測るたびに増やす番号（0 は使わない）。choices は録る所を選び直した出力だけ
+   */
+  latencyMeasure: (run: number, choices: { slot: number; capture: CaptureSource }[]) =>
+    invoke<LatencyReport>("latency_measure", { run, choices }),
+  /** やめる。run は latencyMeasure に渡した番号（まだ始まっていなくても、その測定に効く） */
+  latencyCancel: (run: number) => invoke<void>("latency_cancel", { run }),
+  /** 遅らせ量にまとめて入れる。測ったときと同じデバイスの枠にだけ入る。入れた枠の番号を返す */
+  latencyApply: (items: { slot: number; deviceId: string | null; delayMs: number }[]) => invoke<number[]>("latency_apply", { items }),
 
   // 歌詞（v3）。曲ファイルには書き込まない
   getLyrics: (trackId: number) => invoke<LyricsPayload>("get_lyrics", { trackId }),

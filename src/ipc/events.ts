@@ -10,6 +10,7 @@ import type {
   LyricsFetchDone,
   LyricsFetchProgress,
   Notice,
+  OutputsView,
   SkinState,
   Snapshot,
 } from "./types";
@@ -31,6 +32,8 @@ export const EV = {
   skin: "pl://skin",
   legacyRereadProgress: "pl://legacy-reread-progress",
   legacyRereadDone: "pl://legacy-reread-done",
+  // v3.8.0：出力先の設定・状態・表示のモード（変わるたびに全部）
+  outputs: "pl://outputs",
 } as const;
 
 type Handlers = {
@@ -50,6 +53,7 @@ type Handlers = {
   skin: SkinState;
   legacyRereadProgress: LegacyRereadProgress;
   legacyRereadDone: LegacyRereadProgress;
+  outputs: OutputsView;
 };
 
 export function on<K extends keyof Handlers>(name: K, cb: (payload: Handlers[K]) => void): Promise<UnlistenFn> {

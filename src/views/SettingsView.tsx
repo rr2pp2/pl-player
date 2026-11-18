@@ -6,11 +6,10 @@
 // 最後に開いていたタブは、アプリを閉じるまで覚える（settingsTab。保存はしない）。
 // v3.4.0：表示のタブに「曲一覧のコンパクト表示」（曲一覧の列のすぐ下）と「サイドバーのアイコンの大きさ」（サイドバーの項目のすぐ下）。
 // v3.8.0：コンパクト表示を「使わない／いつも」＋チェック「窓が狭いときは自動でコンパクトにする」に作り直した。
+// v3.8.0 段2-2：再生デバイスの欄を、3つの出力先のデバイスを選ぶだけにした（DeviceField。仕様 7章）。再生バーのボタンに「出力先」を足した。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
-import { on } from "../ipc/events";
-import type { AppInfo, BackupReport, DeviceInfo, FolderEntry } from "../ipc/types";
-import { playback } from "../stores/playback";
+import type { AppInfo, BackupReport, FolderEntry } from "../ipc/types";
 import { libraryVersion } from "../stores/library";
 import { notify } from "../stores/notices";
 import { lyricsOnlineOn, settings, updateSettings } from "../stores/settings";
@@ -30,6 +29,8 @@ import { SettingsTabs } from "./SettingsTabs";
 import { createStore } from "../stores/store";
 import { mergeTabOrder, PLAYER_BUTTONS, playerButtonShown, SIDEBAR_ITEMS, sidebarItemShown } from "../layout/visibility";
 import { COMPACT_AUTO_BELOW, COMPACT_LIST_MODES, compactAutoOn, compactListMode, SIDEBAR_ICON_PX, sidebarIconPx } from "../layout/density";
+import { deviceChoices, registered, slotName, STATUS_TEXT } from "../layout/outputs";
+import { devices, loadDevices, outputs, watchDevices } from "../stores/outputs";
 
 /** 開いているタブ（アプリを閉じるまで覚える） */
 const settingsTab = createStore<string>("");
@@ -272,6 +273,79 @@ function previewPatch(label: string, v: number) {
   return { uiOpacity: v };
 }
 
+/**
+ * v3.8.0 段2-2：再生デバイス（仕様 7章）。3つの出力先それぞれのデバイスを選ぶだけ（詳細のミキサーの「…」の「デバイスを差し替える」と同じ値）。
+ * 足す・外す・オン/オフ・音量・遅らせ量は、再生バーの出力ボタンのプルダウンと、詳細のミキサーで。並びは 3.7.0 の欄のまま（出力先が1つなら見た目も同じ）。
+ * ほかの出力先で使っているデバイスは一覧に出さない（2.1）
+ */
+function DeviceField() {
+  const v = useStore(outputs);
+  const list = useStore(devices);
+  const all = registered(v);
+  const [pick, setPick] = useState<number | null>(null);
+  const cur = all.find((x) => x.slot === pick) ?? all[0] ?? null;
+  // 設定画面が出ている間だけ、デバイスの変化の知らせで一覧を引き直す（閉じたら受け口を外す。3.7.0 と同じ）
+  useEffect(() => watchDevices(), []);
+  const now = cur ? cur.deviceName ?? (STATUS_TEXT[cur.status] ? `（${STATUS_TEXT[cur.status]}）` : "（まだ開いていません）") : "";
+  return (
+    <>
+      <div className="field field-top">
+        <span className="flabel">出力先</span>
+        <div>
+          {all.length > 1 ? (
+            <span className="seg device-slot-seg" role="radiogroup" aria-label="デバイスを選ぶ出力先">
+              {all.map((x) => (
+                <button key={x.slot} role="radio" aria-checked={cur?.slot === x.slot} className={cur?.slot === x.slot ? "on" : ""} onClick={() => setPick(x.slot)} title={slotName(x)}>
+                  出力先{x.slot + 1}
+                </button>
+              ))}
+            </span>
+          ) : null}
+          {cur ? (
+            <div className="list-box" role="radiogroup" aria-label={`出力先${cur.slot + 1}のデバイス`}>
+              {deviceChoices(list, v, cur.slot).map((d) => {
+                const on = cur.deviceId === d.id;
+                return (
+                  <button
+                    key={d.id ?? "default"}
+                    role="radio"
+                    aria-checked={on}
+                    className={"li device-item" + (on ? " on" : "")}
+                    onClick={() => api.outputSetDevice(cur.slot, d.id).catch((err) => notify({ level: "error", error: err }))}
+                  >
+                    <span className="radio-dot" />
+                    <span className="grow">
+                      {d.name}
+                      {d.isDefault ? "（今の既定）" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {list.length === 0 ? <div className="li path-text">出力デバイスが見つかりません。「一覧を更新」を押してください。</div> : null}
+            </div>
+          ) : (
+            <div className="list-box">
+              <div className="li path-text">出力先がありません。上の帯の「詳細」を開き、「＋ 出力先を追加」で足してください。</div>
+            </div>
+          )}
+        </div>
+        <span className="hint">
+          {cur ? `出力先${cur.slot + 1}でいま使っているデバイス：${now}。` : ""}
+          再生中に変えても、曲と位置はそのままです。出力先は3つまで足せて、オンにした出力先全部で同じ曲を同時に鳴らします（ほかの出力先で使っているデバイスは一覧に出ません）。足す・外すは上の帯の「詳細」で、オン／オフと音量は再生バーの出力ボタンでも変えられます。切断されたら、その出力先だけ「切断中」になり、つながると自動で戻ります（既定のデバイスへは移りません）。オンの出力先が全部使えなくなったら一時停止し、戻っても自動では再生しません。
+        </span>
+      </div>
+      <div className="field">
+        <span className="flabel" />
+        <span>
+          <button className="btn" onClick={() => void loadDevices()}>
+            <IconRefresh /> 一覧を更新
+          </button>
+        </span>
+      </div>
+    </>
+  );
+}
+
 function report(r: BackupReport | null, kind: "export" | "import") {
   if (!r) return;
   if (kind === "export") {
@@ -292,7 +366,6 @@ function report(r: BackupReport | null, kind: "export" | "import") {
 
 export function SettingsView() {
   const s = useStore(settings);
-  const pb = useStore(playback);
   const drop = useStore(dropState);
   const lver = useStore(libraryVersion);
   const inbox = useStore(lastInboxReport);
@@ -300,24 +373,9 @@ export function SettingsView() {
   const fetchProg = useStore(lyricsFetch);
   const fetchOne = useStore(lyricsFetchOne);
   const [fetchMode, setFetchMode] = useState<LyricsFetchMode>("missing");
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [info, setInfo] = useState<AppInfo | null>(null);
 
-  const loadDevices = () => api.devices().then(setDevices).catch((e) => notify({ level: "error", error: e }));
-  useEffect(() => {
-    void loadDevices();
-    let un: (() => void) | undefined;
-    let t: number | undefined;
-    void on("devices", () => {
-      window.clearTimeout(t);
-      t = window.setTimeout(() => void loadDevices(), 300);
-    }).then((f) => (un = f));
-    return () => {
-      un?.();
-      window.clearTimeout(t);
-    };
-  }, []);
   useEffect(() => {
     api.libraryFolders().then(setFolders).catch(() => {});
     api.appInfo().then(setInfo).catch(() => {});
@@ -441,41 +499,7 @@ export function SettingsView() {
         {tab === "device" ? (
           <section>
             <h3>再生デバイス</h3>
-            <div className="field">
-              <span className="flabel">出力先</span>
-              <div className="list-box" role="radiogroup" aria-label="出力先">
-                {[{ id: "", name: "既定のデバイス（Windows の設定に従う）", isDefault: false }, ...devices].map((d) => {
-                  const on = (pb.deviceId ?? "") === d.id;
-                  return (
-                    <button
-                      key={d.id || "default"}
-                      role="radio"
-                      aria-checked={on}
-                      className={"li device-item" + (on ? " on" : "")}
-                      onClick={() => api.setDevice(d.id || null).catch((err) => notify({ level: "error", error: err }))}
-                    >
-                      <span className="radio-dot" />
-                      <span className="grow">
-                        {d.name}
-                        {d.isDefault ? "（今の既定）" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-                {devices.length === 0 ? <div className="li path-text">出力デバイスが見つかりません。「一覧を更新」を押してください。</div> : null}
-              </div>
-              <span className="hint">
-                いま使っているデバイス：{pb.deviceName || "（まだ開いていません）"}。再生中に変えても、曲と位置はそのままです。切断されたら既定のデバイスで続けます。
-              </span>
-            </div>
-            <div className="field">
-              <span className="flabel" />
-              <span>
-                <button className="btn" onClick={() => void loadDevices()}>
-                  <IconRefresh /> 一覧を更新
-                </button>
-              </span>
-            </div>
+            <DeviceField />
           </section>
         ) : null}
 

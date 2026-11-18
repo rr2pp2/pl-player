@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use pl_player_lib::audio::devices::list_output_devices;
+use pl_player_lib::audio::engine::single_output;
 use pl_player_lib::audio::{AudioEngine, Command, Event};
 use pl_player_lib::db::{self, Db};
 use pl_player_lib::library::import;
@@ -45,7 +46,7 @@ fn plays_all_formats_to_the_end() {
     if !has_device() {
         return;
     }
-    let engine = AudioEngine::start(0.0, false, None);
+    let engine = AudioEngine::start_single(0.0, None);
     let rx = engine.events();
     for (i, name) in ["sine.mp3", "sine.wav", "sine.flac", "sine_aaclc.m4a", "sine_alac.m4a", "sine.aac", "sine.ogg", "sine.opus", "mono_22k.wav", "sine_heaac.m4a"]
         .iter()
@@ -88,7 +89,7 @@ fn switching_device_keeps_position_for(name: &str) {
         return;
     }
     // 長めの曲（3秒の曲を、0.5秒から）
-    let engine = AudioEngine::start(0.0, false, None);
+    let engine = AudioEngine::start_single(0.0, None);
     let rx = engine.events();
     engine.send(Command::Load { path: fixture(name), start_ms: 500, play: true, token: 7 });
     let mut before_switch = 0;
@@ -102,13 +103,14 @@ fn switching_device_keeps_position_for(name: &str) {
     // 別のデバイスがあればそれへ、無ければ同じデバイスを ID で選び直す
     let target = devs.iter().find(|d| !d.is_default).unwrap_or(&devs[0]).clone();
     println!("switch to {}", target.name);
-    engine.send(Command::SetDevice(Some(target.id.clone())));
+    // v3.8.0：出力先の枠を入れ替える（3.7.0 の SetDevice の代わり）。新しい出力は途中から入る
+    engine.send(Command::SetOutputs(single_output(Some(target.id.clone()))));
     let seen = wait_for(&rx, 5, |e| match e {
         Event::Position { position_ms, .. } => {
             before_switch = before_switch.max(*position_ms);
             false
         }
-        Event::DeviceChanged { .. } => true,
+        Event::Output { status: pl_player_lib::audio::OutputStatus::Ok, name: Some(_), .. } => true,
         Event::Error { error, .. } => panic!("{error}"),
         _ => false,
     });
@@ -145,7 +147,7 @@ fn pause_seek_resume_for(name: &str) {
     if !has_device() {
         return;
     }
-    let engine = AudioEngine::start(0.0, false, None);
+    let engine = AudioEngine::start_single(0.0, None);
     let rx = engine.events();
     engine.send(Command::Load { path: fixture(name), start_ms: 0, play: true, token: 1 });
     wait_for(&rx, 5, |e| matches!(e, Event::Position { position_ms, .. } if *position_ms >= 500));

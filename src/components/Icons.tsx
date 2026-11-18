@@ -347,6 +347,56 @@ export const IconViewCompact = (p: P) => (
     <path d="M3 5h18M3 9.67h18M3 14.33h18M3 19h18" />
   </S>
 );
+/** 詳細の表示（v3.8.0 段2-2）：ミキサーのつまみ3本 */
+export const IconViewDetail = (p: P) => (
+  <S {...p}>
+    <path d="M6 4v16M12 4v16M18 4v16" />
+    <path d="M4 15h4M10 8h4M16 12h4" />
+  </S>
+);
+
+// v3.8.0 段2-2：出力先のアイコン（仕様 4.3。Windows が教える機器の種類から自動で決め、詳細の「…」で選び直せる）。
+// 着せ替えでは差し替えない（スキンの ICONS には足さない）。どれも枠（.output-icon）の大きさが決まっているので、形を変えても並びは崩れない
+/** ヘッドホン */
+export const IconHeadphones = (p: P) => (
+  <S {...p}>
+    <path d="M4 15v-3a8 8 0 0 1 16 0v3" />
+    <rect x="3" y="14" width="4.5" height="7" rx="1.5" />
+    <rect x="16.5" y="14" width="4.5" height="7" rx="1.5" />
+  </S>
+);
+/** スピーカー */
+export const IconSpeaker = (p: P) => (
+  <S {...p}>
+    <rect x="5" y="2.5" width="14" height="19" rx="2.5" />
+    <circle cx="12" cy="14.5" r="3.5" />
+    <circle cx="12" cy="7" r="1.3" />
+  </S>
+);
+/** 配信（仮想ケーブル）：電波 */
+export const IconStream = (p: P) => (
+  <S {...p}>
+    <circle cx="12" cy="12" r="2" />
+    <path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6" />
+    <path d="M5.2 18.8a9.6 9.6 0 0 1 0-13.6M18.8 5.2a9.6 9.6 0 0 1 0 13.6" />
+  </S>
+);
+/** モニター */
+export const IconMonitor = (p: P) => (
+  <S {...p}>
+    <rect x="2.5" y="4" width="19" height="13" rx="2" />
+    <path d="M9 21h6M12 17v4" />
+  </S>
+);
+/** 出力先のアイコン（"muted" は消音。消音だけは IconVolume なので、着せ替えの画像があればそれを出す） */
+export function OutputIconView(props: P & { icon: string }) {
+  const { icon, ...p } = props;
+  if (icon === "muted") return <IconVolume {...p} muted />;
+  if (icon === "headphones") return <IconHeadphones {...p} />;
+  if (icon === "stream") return <IconStream {...p} />;
+  if (icon === "monitor") return <IconMonitor {...p} />;
+  return <IconSpeaker {...p} />;
+}
 /** その他（···） */
 export const IconMore = (p: P) => (
   <S {...p} fill>

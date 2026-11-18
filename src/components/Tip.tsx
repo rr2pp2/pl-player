@@ -13,14 +13,14 @@ export function Tip(props: {
   children: ReactElement<any>;
   delay?: number;
   className?: string;
-  place?: "right" | "below";
+  place?: "right" | "below" | "above";
   /** v3.8.0：false なら読み上げ用の文と aria-describedby を付けない（包んだ要素の aria-label と同じ文を二重に読ませないため。吹き出しは出す） */
   describe?: boolean;
 }) {
   const id = useId();
   const ref = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
-  const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean; above?: boolean } | null>(null);
   const descId = `${id}-tip`;
   const full = tipParts(props.text, descId);
   // 読み上げを付けないときも、包み方（span と子へ渡す属性の形）は同じ。結びつけと見えない文だけを外す
@@ -40,6 +40,11 @@ export function Tip(props: {
     // v3.8.0：below は下に出す（上の帯の右端のモード切替。右に出すと画面の外へはみ出すため）。左端をそろえ、右へはみ出すなら左へ寄せる
     if (props.place === "below") {
       setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - 288)), top: r.bottom + 6, below: true });
+      return;
+    }
+    // v3.8.0 段2-2：above は上に出す（再生バーの出力ボタン。画面の下の端にあるため）。左端の決め方は below と同じ
+    if (props.place === "above") {
+      setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - 288)), top: r.top - 6, below: false, above: true });
       return;
     }
     // 右に出す。はみ出すときは下に出す（狭いウィンドウ）
@@ -83,7 +88,7 @@ export function Tip(props: {
       ) : null}
       {pos && parts.canShow
         ? createPortal(
-            <div className={"tip-bubble" + (pos.below ? " below" : "")} style={{ left: pos.left, top: pos.top }} aria-hidden="true">
+            <div className={"tip-bubble" + (pos.below ? " below" : "") + (pos.above ? " above" : "")} style={{ left: pos.left, top: pos.top }} aria-hidden="true">
               {full.srText}
             </div>,
             document.body,

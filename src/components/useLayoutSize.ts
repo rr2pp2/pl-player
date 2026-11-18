@@ -8,23 +8,26 @@ import { listLayoutFor, type ListLayout } from "../layout/density";
  */
 export interface LayoutSize {
   width: number;
+  /** v3.8.0 段2-2：窓の高さ（詳細の左右・上下と、曲一覧の行の数を決める。src\layout\detailLayout.ts） */
+  height: number;
   sidebarAuto: boolean; // 1100px 未満：サイドバーをアイコンだけに
 }
 
-export function layoutSizeFor(w: number): LayoutSize {
+export function layoutSizeFor(w: number, h = 0): LayoutSize {
   return {
     width: w,
+    height: h,
     sidebarAuto: w < 1100,
   };
 }
 
 export function useLayoutSize(): LayoutSize {
-  const [s, setS] = useState(() => layoutSizeFor(window.innerWidth));
+  const [s, setS] = useState(() => layoutSizeFor(window.innerWidth, window.innerHeight));
   useEffect(() => {
     let raf = 0;
     const on = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setS(layoutSizeFor(window.innerWidth)));
+      raf = requestAnimationFrame(() => setS(layoutSizeFor(window.innerWidth, window.innerHeight)));
     };
     window.addEventListener("resize", on);
     return () => {
@@ -40,6 +43,12 @@ export function useLayoutSize(): LayoutSize {
  * 測る前（最初の描画）は、ウィンドウの幅からサイドバーをたたんだときの式（density.ts の LIST_BELOW の説明）で見積もる
  */
 export const listPaneWidth = createStore<number>(typeof window !== "undefined" ? Math.max(0, window.innerWidth - 94) : 1000);
+
+/**
+ * v3.8.0 段2-2：詳細を抜けたあとの曲一覧の側の幅（サイドバーを除いた中央の幅。ミキサーを引かない）。AppShell が入れる。
+ * 詳細のときに上の帯の「通常」「コンパクト」を押したら、この幅で設定を決める（仕様 13.5 の11。density.ts の pressMode）
+ */
+export const listPaneExitWidth = createStore<number>(typeof window !== "undefined" ? Math.max(0, window.innerWidth - 94) : 1000);
 
 /** 曲一覧の大きさ（列・ジャケット・行の高さ）。曲一覧の側の幅で決める */
 export function useListLayout(): ListLayout {

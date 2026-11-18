@@ -130,8 +130,9 @@ fn tab_name_ok(s: &str) -> bool {
 }
 
 /// v3.3.0：再生バーで隠せるボタン（画面の src/layout/visibility.ts と同じ並び）。
-/// 再生・一時停止・前・次・シークバーは、隠すと操作できなくなるので入れない
-pub const PLAYER_BUTTONS_HIDEABLE: &[&str] = &["shuffle", "repeat", "volume", "lyricsRow", "lyrics"];
+/// 再生・一時停止・前・次・シークバーは、隠すと操作できなくなるので入れない。
+/// v3.8.0：出力ボタン `outputs`（同時再生）を全体の音量の前に足した。3.7.0 までの設定・zip には無いので出す（無いキーは出す、の決まりのまま）
+pub const PLAYER_BUTTONS_HIDEABLE: &[&str] = &["shuffle", "repeat", "outputs", "volume", "lyricsRow", "lyrics"];
 
 /// v3.3.0：サイドバーで隠せる項目（画面の src/layout/visibility.ts と同じ並び）。設定は戻れなくなるので入れない。
 /// v3.6.0：`yearly_top`（年間まとめ）を「最近再生」の次に足した。3.5.0 までの設定・zip には無いので出す（無いキーは出す、の決まりのまま）
@@ -227,6 +228,11 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("toggleLyrics", "Ctrl+L"),
         // v3.0.2：流れる歌詞の列を出す／隠す（アプリ内だけ）
         ("toggleLyricsRow", "Ctrl+Shift+L"),
+        // v3.8.0（仕様 7章・13.5 の11）：詳細表示の切替・出力 1〜3 のオン/オフ。既定のキーは空（グローバルにもできる）
+        ("toggleDetail", ""),
+        ("toggleOutput1", ""),
+        ("toggleOutput2", ""),
+        ("toggleOutput3", ""),
     ]
     .into_iter()
     .map(|(a, b)| (a.to_string(), b.to_string()))
@@ -361,7 +367,11 @@ mod tests {
     #[test]
     fn defaults_and_partial_json() {
         let s = AppSettings::default();
-        assert_eq!(s.shortcuts.len(), 12);
+        // v3.8.0：詳細表示の切替・出力 1〜3 のオン/オフ（既定のキーは空）を足して 16
+        assert_eq!(s.shortcuts.len(), 16);
+        for k in ["toggleDetail", "toggleOutput1", "toggleOutput2", "toggleOutput3"] {
+            assert_eq!(s.shortcuts[k], "", "{k}");
+        }
         assert_eq!(s.shortcuts["toggleLyrics"], "Ctrl+L");
         assert_eq!(s.shortcuts["toggleLyricsRow"], "Ctrl+Shift+L");
         assert!(s.ui.lyrics_row);
@@ -370,7 +380,7 @@ mod tests {
         let p = partial.sanitize();
         assert_eq!(p.theme, "light");
         assert_eq!(p.background.dim, 0.95);
-        assert_eq!(p.shortcuts.len(), 12);
+        assert_eq!(p.shortcuts.len(), 16);
         // 歌詞の列の設定が無い（3.0.1 までの設定・v2 の書き出し）ならオン
         assert!(p.ui.lyrics_row);
         let old_ui: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarCollapsed":true}}"#).unwrap();
@@ -457,6 +467,24 @@ mod tests {
         assert_eq!(old.ui.sidebar_items.get("genre"), Some(&false));
         let hidden: AppSettings = serde_json::from_str(r#"{"ui":{"sidebarItems":{"yearly_top":false}}}"#).unwrap();
         assert_eq!(hidden.sanitize().ui.sidebar_items.get("yearly_top"), Some(&false));
+    }
+
+    /// v3.8.0：再生バーの出力ボタン（outputs）。既定は出す。3.7.0 までの設定（ほかのボタンを書いてあっても）には無いので、
+    /// 読んでもキーは無いまま（画面は「無いキーは出す」で読む）。隠した値は残る。並びは全体の音量の前（再生バーの左から）
+    #[test]
+    fn outputs_player_button() {
+        assert_eq!(AppSettings::default().ui.player_buttons.get("outputs"), Some(&true));
+        let pos = |k: &str| PLAYER_BUTTONS_HIDEABLE.iter().position(|x| *x == k).unwrap();
+        assert_eq!(pos("outputs") + 1, pos("volume"));
+        let old: AppSettings = serde_json::from_str(
+            r#"{"ui":{"playerButtons":{"shuffle":true,"repeat":false,"volume":true,"lyricsRow":true,"lyrics":true}}}"#,
+        )
+        .unwrap();
+        let old = old.sanitize();
+        assert_eq!(old.ui.player_buttons.get("outputs"), None);
+        assert_eq!(old.ui.player_buttons.get("repeat"), Some(&false));
+        let hidden: AppSettings = serde_json::from_str(r#"{"ui":{"playerButtons":{"outputs":false}}}"#).unwrap();
+        assert_eq!(hidden.sanitize().ui.player_buttons.get("outputs"), Some(&false));
     }
 
     /// v3.3.0：設定のタブの並び。古い設定には無い（空＝既定の順）。形の合わない名前・重なりは捨てる

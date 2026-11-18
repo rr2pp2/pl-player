@@ -91,6 +91,8 @@ pub enum ErrorKind {
     LibraryImportBusy,
     /// タグの編集画面の保存（v3.6.0）：保存の時点で、その曲はもうライブラリから外されていた。曲ファイルに書かず、ライブラリにも戻していない
     TrackRemovedBeforeSave,
+    /// 出力先の操作を断った（v3.8.0：出力先は3つまで・ほかの出力先で使っているデバイス・無い枠・範囲の外の値）。何も変えていない
+    OutputInvalid,
     /// 上のどれにも当たらないもの（入力の誤りなど）
     Other,
 }
@@ -200,6 +202,7 @@ mod tests {
             ErrorKind::LegacyRereadBusy,
             ErrorKind::LibraryImportBusy,
             ErrorKind::TrackRemovedBeforeSave,
+            ErrorKind::OutputInvalid,
             ErrorKind::Other,
         ] {
             let code = serde_json::to_value(k).unwrap();

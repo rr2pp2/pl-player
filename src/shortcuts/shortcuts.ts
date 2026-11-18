@@ -52,6 +52,11 @@ const ACTION_TO_IPC: Record<string, PlaybackAction> = {
   mute: "toggleMute",
   shuffle: "toggleShuffle",
   repeat: "cycleRepeat",
+  // v3.8.0（仕様 7章・13.5 の11）：詳細表示は Rust が持つので、アプリ内のキーも Rust を通す（グローバルにもできる）
+  toggleDetail: "toggleDetail",
+  toggleOutput1: "toggleOutput1",
+  toggleOutput2: "toggleOutput2",
+  toggleOutput3: "toggleOutput3",
 };
 
 function typingTarget(t: EventTarget | null): boolean {

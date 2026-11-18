@@ -2,7 +2,10 @@
 
 pub mod controller;
 pub mod order;
+pub mod output_control;
+pub mod outputs;
 pub mod queue;
 mod state;
 
 pub use controller::{Controller, Notice, PlaybackListener, Snapshot, Status};
+pub use output_control::{MeasureSlot, OutputsView, SlotView};

@@ -36,7 +36,8 @@ export const RADIUS_VARS = ["--radius", "--radius-card", "--radius-small"];
 export const DURATION_VARS = ["--dur-hover", "--dur-panel", "--dur-page", "--dur-bg"];
 
 /** スキンから変えさせない（当てるときにも外す）。Rust（src-tauri\src\skins\tokens.rs）の LOCKED_VARS と同じ並び。
- *  v3.8.0：再生バーの真ん中の列の幅 --player-center-w を足した（3列と1段の切り替えの計算 src\layout\playerLayout.ts が前提にする） */
+ *  v3.8.0：再生バーの真ん中の列の幅 --player-center-w を足した（3列と1段の切り替えの計算 src\layout\playerLayout.ts が前提にする）。
+ *  v3.8.0 段2-2：出力ボタン・出力のプルダウン・ミキサー・メーターの寸法を足した（再生バーの計算と、詳細の配置の計算 src\layout\detailLayout.ts が前提にする） */
 export const LOCKED_VARS = [
   "--sidebar-w",
   "--sidebar-w-collapsed",
@@ -44,6 +45,11 @@ export const LOCKED_VARS = [
   "--row-art",
   "--player-h",
   "--player-center-w",
+  "--player-output-w",
+  "--output-popup-w",
+  "--mixer-w",
+  "--mixer-strip-min-w",
+  "--meter-h",
   "--topbar-h",
   "--lyrics-row-h",
   "--lyrics-row-anchor",

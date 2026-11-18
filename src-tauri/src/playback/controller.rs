@@ -10,8 +10,10 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use super::order::{build_order, next_pos, prev_pos, Repeat, Rng};
+use super::output_control::{OutRuntime, OutputsView};
+use super::outputs::{self, Mode, OutputsDoc};
 use super::queue::Queue;
-use crate::audio::{AudioEngine, Command, Event};
+use crate::audio::{AudioEngine, Command, Event, SLOTS};
 use crate::db::{self, tracks::Track, Db};
 use crate::error::{AppError, ErrorKind};
 
@@ -40,7 +42,7 @@ pub struct Snapshot {
     pub context_len: usize,
 }
 
-/// 画面へ出す知らせ。`code` は ErrorKind の名前か、情報の種類（device_fallback など）
+/// 画面へ出す知らせ。`code` は ErrorKind の名前か、情報の種類（output_returned など）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Notice {
@@ -81,6 +83,8 @@ pub trait PlaybackListener: Send + Sync {
     fn on_queue_changed(&self) {}
     fn on_notice(&self, _n: &Notice) {}
     fn on_devices_changed(&self) {}
+    /// v3.8.0：出力先の設定・状態・表示のモードが変わった（変わるたびに全部を送る。13.5 の9）
+    fn on_outputs(&self, _v: &OutputsView) {}
 }
 
 pub(super) struct Inner {
@@ -93,12 +97,16 @@ pub(super) struct Inner {
     pub(super) status: Status,
     pub(super) position_ms: u64,
     pub(super) duration_ms: u64,
+    /// 今の表示のモードの、全体の音量（`outputs.master` の今のモードの値と同じ）
     pub(super) volume: f32,
     pub(super) muted: bool,
     pub(super) shuffle: bool,
     pub(super) repeat: Repeat,
-    pub(super) device_id: Option<String>,
-    pub(super) device_name: String,
+    /// v3.8.0：出力先の設定（DB のキー `outputs`。書くのは Rust だけ）と、表示のモード（キー `mode`）
+    pub(super) outputs: OutputsDoc,
+    pub(super) mode: Mode,
+    /// 枠ごとの、音声スレッドが知らせた今の状態
+    pub(super) out_rt: [OutRuntime; SLOTS],
     pub(super) rng: Rng,
     /// 再生できない曲が続いたときに止めるための数
     pub(super) consecutive_failures: usize,
@@ -107,9 +115,29 @@ pub(super) struct Inner {
 
 pub struct Controller {
     pub(super) db: Arc<Db>,
-    engine: AudioEngine,
+    pub(super) engine: AudioEngine,
     inner: Mutex<Inner>,
-    listeners: RwLock<Vec<Arc<dyn PlaybackListener>>>,
+    listeners: Listeners,
+}
+
+/// 通知の受け口の一覧。配る間は鍵を持たない：写しを取ってすぐ離し、離してから配る。
+/// 受け手には、メインのスレッドを待つもの（トレイのヒントの書き換え）がある。鍵を持ったまま配ると、
+/// 起動の途中でメインのスレッドが `add` の鍵を待っている間に、再生のスレッドがメインのスレッドを待って、互いに止まる
+/// （v3.8.0 段2 の画面の確認で、起動直後に「応答なし」。3.7.0 からあった形で、段2-1 で起動直後の通知の順番が変わって毎回当たった）
+#[derive(Default)]
+struct Listeners(RwLock<Vec<Arc<dyn PlaybackListener>>>);
+
+impl Listeners {
+    fn add(&self, l: Arc<dyn PlaybackListener>) {
+        self.0.write().unwrap_or_else(|p| p.into_inner()).push(l);
+    }
+
+    fn each(&self, f: impl Fn(&dyn PlaybackListener)) {
+        let list: Vec<Arc<dyn PlaybackListener>> = self.0.read().unwrap_or_else(|p| p.into_inner()).clone();
+        for l in &list {
+            f(l.as_ref());
+        }
+    }
 }
 
 /// タグを書き換える間、再生中の曲を手放して、あとで同じ位置から戻すための控え
@@ -122,8 +150,11 @@ pub struct Resume {
 impl Controller {
     pub fn new(db: Arc<Db>) -> Arc<Self> {
         let saved = db::state::load(&db).unwrap_or_default();
-        let volume = if saved.volume.is_finite() { saved.volume as f32 } else { 0.8 };
-        let engine = AudioEngine::start(volume, saved.muted, saved.device_id.clone());
+        // v3.8.0：出力先の設定。3.7.0 から上げたときは、今のデバイスを出力先1・オンで入れる（13.5 の9）
+        let out_doc = outputs::load_or_migrate(&db, &saved);
+        let mode = outputs::load_mode(&db);
+        let volume = out_doc.master.get(mode);
+        let engine = AudioEngine::start(out_doc.specs(), out_doc.gains(mode, saved.muted));
         let queue_ids = db::queue::load(&db).unwrap_or_default();
         let mut rng = Rng::from_time();
         let ctx = saved.context.clone();
@@ -147,13 +178,14 @@ impl Controller {
                 muted: saved.muted,
                 shuffle: saved.shuffle,
                 repeat: Repeat::parse(&saved.repeat_mode),
-                device_id: saved.device_id.clone(),
-                device_name: String::new(),
+                outputs: out_doc,
+                mode,
+                out_rt: Default::default(),
                 rng,
                 consecutive_failures: 0,
                 last_saved: Instant::now(),
             }),
-            listeners: RwLock::new(vec![]),
+            listeners: Listeners::default(),
         });
         // 通知を受けるスレッド
         let weak = Arc::downgrade(&c);
@@ -177,17 +209,15 @@ impl Controller {
     }
 
     pub fn add_listener(&self, l: Arc<dyn PlaybackListener>) {
-        self.listeners.write().unwrap_or_else(|p| p.into_inner()).push(l);
+        self.listeners.add(l);
     }
 
     pub(super) fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn each(&self, f: impl Fn(&dyn PlaybackListener)) {
-        for l in self.listeners.read().unwrap_or_else(|p| p.into_inner()).iter() {
-            f(l.as_ref());
-        }
+    pub(super) fn each(&self, f: impl Fn(&dyn PlaybackListener)) {
+        self.listeners.each(f);
     }
 
     fn snapshot_of(inner: &Inner) -> Snapshot {
@@ -200,8 +230,13 @@ impl Controller {
             muted: inner.muted,
             shuffle: inner.shuffle,
             repeat: inner.repeat,
-            device_id: inner.device_id.clone(),
-            device_name: inner.device_name.clone(),
+            // v3.8.0：出力先1（3.7.0 の設定画面の「再生デバイス」が見る値）
+            device_id: inner.outputs.slot(0).and_then(|s| s.device.id.clone()),
+            device_name: inner.out_rt[0]
+                .name
+                .clone()
+                .or_else(|| inner.outputs.slot(0).map(|s| s.device.name.clone()))
+                .unwrap_or_default(),
             queue_len: inner.queue.len(),
             context_len: inner.context.len(),
         }
@@ -211,7 +246,7 @@ impl Controller {
         Self::snapshot_of(&self.lock())
     }
 
-    fn publish(&self) {
+    pub(super) fn publish(&self) {
         let s = self.snapshot();
         self.each(|l| l.on_snapshot(&s));
     }
@@ -432,29 +467,36 @@ impl Controller {
     }
 
     pub fn set_volume(&self, v: f32) {
-        let v = v.clamp(0.0, 1.0);
-        self.engine.set_volume(v);
+        let v = if v.is_finite() { v.clamp(0.0, 1.0) } else { return };
         {
             let mut i = self.lock();
             i.volume = v;
+            let mode = i.mode;
+            i.outputs.master.set(mode, v);
+            // 全体の音量を 0 より上にするとミュートが外れる（3.7.0 と同じ）。出力ごとの音量・モードの切り替えはこの道を通さない
             if v > 0.0 && i.muted {
                 i.muted = false;
-                self.engine.set_muted(false);
             }
+            self.apply_gains(&i);
         }
         self.publish();
+        self.publish_outputs();
     }
 
     pub fn volume_step(&self, delta: f32) {
         let v = self.lock().volume;
         self.set_volume(v + delta);
-        self.save_state();
+        self.commit_volume();
     }
 
     pub fn set_muted(&self, m: bool) {
-        self.engine.set_muted(m);
-        self.lock().muted = m;
+        {
+            let mut i = self.lock();
+            i.muted = m;
+            self.apply_gains(&i);
+        }
         self.publish();
+        self.publish_outputs();
         self.save_state();
     }
 
@@ -498,9 +540,28 @@ impl Controller {
         self.set_repeat(r.cycle());
     }
 
-    pub fn set_device(&self, id: Option<String>) {
-        self.lock().device_id = id.clone();
-        self.engine.send(Command::SetDevice(id));
+    /// 3.7.0 の「再生デバイス」の選び方（設定画面）：出力先1のデバイスを差し替える。出力先1が空なら足してオンにする
+    /// `name` は一覧の名前（切断中の行に出すためだけ）
+    pub fn set_device(&self, id: Option<String>, name: String) {
+        let r = self.update_outputs(|d| {
+            let dev = outputs::DeviceRef { id: id.clone(), name };
+            if d.slot(0).is_some() {
+                d.replace_device(0, dev, db::now_ms())
+            } else {
+                // 空の出力先1：ほかの枠で使っていれば断る（同じデバイスは1つまで）
+                let key = dev.key();
+                if d.slots.iter().flatten().any(|s| s.device.key() == key) {
+                    return Err(outputs::OpError::Duplicate);
+                }
+                let mut s = outputs::Slot::fresh(dev);
+                s.on = true;
+                d.slots[0] = Some(s);
+                Ok(())
+            }
+        });
+        if let Err(e) = r {
+            self.notice(Notice::error(&e));
+        }
         self.save_state();
     }
 
@@ -727,26 +788,63 @@ impl Controller {
                     self.publish();
                 }
             }
-            Event::DeviceChanged {
-                device_id,
-                name,
-                fallback_from,
-            } => {
+            Event::Output { slot, status, reason, name, resolved_id, kind } => {
+                self.on_output_status(slot, status, reason, name, resolved_id, kind);
+            }
+            Event::OutputReturned { name, .. } => {
+                self.notice(Notice::info("output_returned", Some(name), None));
+            }
+            Event::OutputsAllLost => {
                 {
                     let mut i = self.lock();
-                    if fallback_from.is_some() {
-                        i.device_id = device_id.clone();
+                    if i.status == Status::Playing {
+                        i.status = Status::Paused;
                     }
-                    i.device_name = name.clone();
                 }
-                if let Some(from) = fallback_from {
-                    self.notice(Notice::info("device_fallback", Some(from), Some(name)));
-                    self.save_state();
-                }
+                self.notice(Notice::info("outputs_all_lost", None, None));
                 self.publish();
-                self.each(|l| l.on_devices_changed());
+                self.save_state();
             }
+            Event::SyncUnavailable => self.notice(Notice::info("sync_unavailable", None, None)),
             Event::DevicesChanged => self.each(|l| l.on_devices_changed()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Listeners, PlaybackListener};
+    use std::sync::mpsc;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// 受け手が「別のスレッドの add が終わるのを待つ」形でも止まらない（起動直後の「応答なし」の再現。
+    /// 実物では、トレイのヒントの書き換えがメインのスレッドを待ち、メインのスレッドは add_listener の鍵を待っていた）
+    #[test]
+    fn listener_can_wait_for_another_add() {
+        struct WaitsForAdd(Arc<Listeners>);
+        impl PlaybackListener for WaitsForAdd {
+            fn on_devices_changed(&self) {
+                let ls = self.0.clone();
+                let (tx, rx) = mpsc::channel();
+                std::thread::spawn(move || {
+                    struct Nop;
+                    impl PlaybackListener for Nop {}
+                    ls.add(Arc::new(Nop));
+                    let _ = tx.send(());
+                });
+                rx.recv_timeout(Duration::from_secs(5)).expect("add was blocked while listeners were being called");
+            }
+        }
+        let ls = Arc::new(Listeners::default());
+        ls.add(Arc::new(WaitsForAdd(ls.clone())));
+        let (tx, rx) = mpsc::channel();
+        let ls2 = ls.clone();
+        std::thread::spawn(move || {
+            ls2.each(|l| l.on_devices_changed());
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(10)).expect("each did not finish");
+        assert_eq!(ls.0.read().unwrap().len(), 2);
     }
 }

@@ -3,6 +3,11 @@
 //! 対象：テーマ・背景・UI 設定・ショートカット・プレイリスト・お気に入り・ライブラリ設定。
 //! 1つの zip（中身は JSON と背景画像）にまとめる。曲はパスで持つので、別の PC では見つからない曲が出る。
 //! 読み込みのときに、その件数を知らせる。
+//!
+//! v3.8.0：出力先の設定（DB の `outputs`）を `outputs.json` として入れる（登録したデバイス・外した出力先の覚えも全部。
+//! デバイスの名前が入るので、人に渡すときは注意。README）。FORMAT_VERSION は上げない（古い版は知らない名前を読まない）。
+//! 読み込むときは全部を確かめてから書き、出力先は全部オフで入れる（一時停止は呼び出し側）。`outputs.json` の無い zip
+//! （3.7.0 まで）では出力に触らない。表示のモード（DB の `mode`）は入れない
 
 use std::fs;
 use std::path::Path;
@@ -15,6 +20,7 @@ use crate::db::{self, Db};
 use crate::error::{AppError, AppResult, ErrorKind};
 use crate::library::{artwork, import};
 use crate::platform::windows::localpath;
+use crate::playback::outputs::{OutputsDoc, OUTPUTS_KEY};
 
 const FORMAT_VERSION: u32 = 1;
 
@@ -55,10 +61,29 @@ pub struct BackupReport {
     pub folders_rejected: usize,
     /// v3.1.1：zip の背景が画像として読めなかったので、入れなかった
     pub background_rejected: bool,
+    /// v3.8.0：出力先の設定（outputs.json）を書き出した・読み込んだ（読み込んだときは全部オフ）
+    pub outputs: bool,
+}
+
+/// 読み込みの結果（v3.8.0：出力先の設定を足した。`import` は 3.7.0 までと同じ3つを返す）
+pub struct Imported {
+    pub settings: AppSettings,
+    pub report: BackupReport,
+    pub folders: Vec<(String, bool)>,
+    /// zip に outputs.json があれば、確かめて全部オフにしたもの。司令塔が一時停止して入れる
+    pub outputs: Option<OutputsDoc>,
 }
 
 /// 書き出し。`bg_dir` はデータフォルダの背景の置き場（v3.1.1：そこにある背景だけを zip に入れる）
 pub fn export(db: &Db, settings: &AppSettings, bg_dir: &Path, dest: &Path) -> AppResult<BackupReport> {
+    let (entries, report) = export_entries(db, settings, bg_dir)?;
+    let mut f = fs::File::create(dest).map_err(|e| AppError::from_io(&e, dest))?;
+    zip::write(&mut f, &entries).map_err(|e| AppError::from_io(&e, dest))?;
+    Ok(report)
+}
+
+/// zip に入れる中身を作る（テストは zip のファイルを作らずにここを呼べる）
+pub(crate) fn export_entries(db: &Db, settings: &AppSettings, bg_dir: &Path) -> AppResult<(Vec<zip::Entry>, BackupReport)> {
     let mut entries = vec![];
     let mut report = BackupReport::default();
     entries.push(zip::Entry {
@@ -120,14 +145,20 @@ pub fn export(db: &Db, settings: &AppSettings, bg_dir: &Path, dest: &Path) -> Ap
         name: "library.json".into(),
         data: serde_json::to_vec_pretty(&folders)?,
     });
-    let mut f = fs::File::create(dest).map_err(|e| AppError::from_io(&e, dest))?;
-    zip::write(&mut f, &entries).map_err(|e| AppError::from_io(&e, dest))?;
-    Ok(report)
+    // v3.8.0：出力先の設定（Rust が保存している DB の値のまま。書き出す前に司令塔が保存し直す）
+    if let Some(v) = db::settings::get(db, OUTPUTS_KEY)? {
+        entries.push(zip::Entry { name: "outputs.json".into(), data: serde_json::to_vec_pretty(&v)? });
+        report.outputs = true;
+    }
+    Ok((entries, report))
 }
 
 /// 設定 zip から取り出す名前（ほかの名前は中身を写さない。v3.1.1）
 fn wanted(name: &str) -> bool {
-    matches!(name, "manifest.json" | "settings.json" | "playlists.json" | "favorites.json" | "library.json")
+    matches!(
+        name,
+        "manifest.json" | "settings.json" | "playlists.json" | "favorites.json" | "library.json" | "outputs.json"
+    )
         || name.starts_with("background/")
 }
 
@@ -149,10 +180,21 @@ fn json_entry<T: serde::de::DeserializeOwned>(entries: &[zip::Entry], name: &str
 /// v3.1.1：中身を全部確かめてから、背景・DB に書く。`settings.json` が無い・壊れている、
 /// ほかの JSON が壊れているときは、何も変えずにエラーを返す（ペネトレーションテスト v3.0.2 の13）
 pub fn import(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<(AppSettings, BackupReport, Vec<(String, bool)>)> {
+    let r = import_full(db, src, bg_dir)?;
+    Ok((r.settings, r.report, r.folders))
+}
+
+/// 読み込み（v3.8.0：出力先の設定も返す）
+pub fn import_full(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<Imported> {
     let mut f = fs::File::open(src).map_err(|e| AppError::from_io(&e, src))?;
     let entries = zip::read(&mut f, &wanted)
         .map_err(|e| AppError::new(ErrorKind::UnsupportedFormat, format!("{}: {e}", src.display())))?;
-    let manifest: Manifest = json_entry(&entries, "manifest.json")?
+    import_entries(db, &entries, bg_dir)
+}
+
+/// zip の中身から読み込む（テストは zip のファイルを作らずにここを呼べる）
+pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> AppResult<Imported> {
+    let manifest: Manifest = json_entry(entries, "manifest.json")?
         .ok_or_else(|| AppError::new(ErrorKind::UnsupportedFormat, "manifest.json missing"))?;
     if manifest.format_version > FORMAT_VERSION {
         return Err(AppError::new(
@@ -160,11 +202,16 @@ pub fn import(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<(AppSettings, Bac
             format!("format version {}", manifest.format_version),
         ));
     }
-    let mut settings: AppSettings = json_entry(&entries, "settings.json")?
+    let mut settings: AppSettings = json_entry(entries, "settings.json")?
         .ok_or_else(|| AppError::new(ErrorKind::UnsupportedFormat, "settings.json missing"))?;
-    let folders: Vec<FolderOut> = json_entry(&entries, "library.json")?.unwrap_or_default();
-    let favs: Vec<String> = json_entry(&entries, "favorites.json")?.unwrap_or_default();
-    let pls: Vec<PlaylistOut> = json_entry(&entries, "playlists.json")?.unwrap_or_default();
+    let folders: Vec<FolderOut> = json_entry(entries, "library.json")?.unwrap_or_default();
+    let favs: Vec<String> = json_entry(entries, "favorites.json")?.unwrap_or_default();
+    let pls: Vec<PlaylistOut> = json_entry(entries, "playlists.json")?.unwrap_or_default();
+    // v3.8.0：出力先の設定も、何かを書く前に全部確かめる（外れた値があれば zip 全体を断る）
+    let outputs = match entries.iter().find(|e| e.name == "outputs.json") {
+        None => None,
+        Some(e) => Some(OutputsDoc::from_zip(&e.data).map_err(|err| broken("outputs.json", err))?),
+    };
 
     let mut report = BackupReport::default();
     // 背景画像：zip から取り出し、画像として最後まで読めるものだけを、自前の名前でデータフォルダへ（v3.1.1 の6）
@@ -234,7 +281,8 @@ pub fn import(db: &Db, src: &Path, bg_dir: &Path) -> AppResult<(AppSettings, Bac
     settings.skin = store::load(db).skin;
     store::save(db, &settings)?;
     let folder_list = folders.into_iter().map(|f| (f.path, f.recursive)).collect();
-    Ok((settings, report, folder_list))
+    report.outputs = outputs.is_some();
+    Ok(Imported { settings, report, folders: folder_list, outputs })
 }
 
 #[cfg(test)]
@@ -562,5 +610,100 @@ mod tests {
         assert_eq!(s2.skin, mine.skin);
         assert_eq!(store::load(&b).skin, mine.skin);
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    fn outputs_json(on: bool, delay: u32) -> serde_json::Value {
+        serde_json::json!({
+            "version": 1,
+            "slots": [
+                {"device": {"id": null, "name": ""}, "on": on, "delayMs": 0, "icon": null, "volume": {"normal": 1.0, "detail": 1.0}, "followMaster": true},
+                {"device": {"id": "wasapi:{test-out-b}", "name": "テスト用スピーカー"}, "on": on, "delayMs": delay, "icon": "speaker", "volume": {"normal": 0.5, "detail": 0.25}, "followMaster": false},
+                null
+            ],
+            "master": {"normal": 0.7, "detail": 0.4},
+            "remembered": [{"key": "wasapi:{test-out-z}", "name": "外したテスト用デバイス", "delayMs": 12, "icon": null, "volume": {"normal": 1.0, "detail": 1.0}, "followMaster": true, "removedAt": 5}]
+        })
+    }
+
+    /// v3.8.0：出力先の設定は outputs.json として書き出す（デバイス・覚えも全部）。表示のモードは入れない。
+    /// 読み込むと全部オフで返り（一時停止は司令塔）、デバイス・音量・遅らせ量・アイコン・覚えは zip のとおり
+    #[test]
+    fn outputs_round_trip_and_import_all_off() {
+        let a = Db::open_memory("backup_outputs_a").unwrap();
+        db::settings::set(&a, OUTPUTS_KEY, &outputs_json(true, 300)).unwrap();
+        crate::playback::outputs::save_mode(&a, crate::playback::outputs::Mode::Detail).unwrap();
+        let (entries, r) = export_entries(&a, &AppSettings::default(), Path::new("no-bg")).unwrap();
+        assert!(r.outputs);
+        assert!(entries.iter().any(|e| e.name == "outputs.json"));
+        assert!(entries.iter().all(|e| !e.name.contains("mode")));
+        let b = Db::open_memory("backup_outputs_b").unwrap();
+        let before = serde_json::json!({"version": 1, "slots": [null, null, null], "master": {"normal": 1.0, "detail": 1.0}, "remembered": []});
+        db::settings::set(&b, OUTPUTS_KEY, &before).unwrap();
+        let imp = import_entries(&b, &entries, Path::new("no-bg")).unwrap();
+        assert!(imp.report.outputs);
+        let o = imp.outputs.unwrap();
+        assert!(o.slots.iter().flatten().all(|s| !s.on));
+        let s1 = o.slot(1).unwrap();
+        assert_eq!(s1.device.id.as_deref(), Some("wasapi:{test-out-b}"));
+        assert_eq!((s1.delay_ms, s1.icon.as_deref(), s1.follow_master), (300, Some("speaker"), false));
+        assert_eq!(o.master.detail, 0.4);
+        assert_eq!(o.remembered.len(), 1);
+        // DB へ書くのは司令塔（一時停止してから）。backup は書かない
+        assert_eq!(db::settings::get(&b, OUTPUTS_KEY).unwrap().unwrap(), before);
+        // 表示のモードは読み込まない
+        assert!(db::settings::get(&b, crate::playback::outputs::MODE_KEY).unwrap().is_none());
+    }
+
+    /// v3.8.0：outputs.json の無い zip（3.7.0 まで）は出力に触らない
+    #[test]
+    fn old_zip_without_outputs_leaves_outputs_alone() {
+        let b = Db::open_memory("backup_outputs_old").unwrap();
+        let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: br#"{"theme":"light"}"#.to_vec() }];
+        let imp = import_entries(&b, &entries, Path::new("no-bg")).unwrap();
+        assert!(imp.outputs.is_none());
+        assert!(!imp.report.outputs);
+        assert_eq!(imp.settings.theme, "light");
+        // 書き出しも、DB に出力先の設定が無ければ入れない
+        let (entries, r) = export_entries(&b, &AppSettings::default(), Path::new("no-bg")).unwrap();
+        assert!(!r.outputs && entries.iter().all(|e| e.name != "outputs.json"));
+    }
+
+    /// v3.8.0：outputs.json の値が1つでも外れていたら、zip 全体を断る。何も書かない（ライブラリのフォルダ・プレイリスト・設定）
+    #[test]
+    fn broken_outputs_rejects_the_whole_zip() {
+        let good_lib = zip::Entry { name: "library.json".into(), data: br#"[{"path":"C:\\Music","recursive":true}]"#.to_vec() };
+        let good_pl = zip::Entry { name: "playlists.json".into(), data: br#"[{"name":"p","paths":[]}]"#.to_vec() };
+        let cases: Vec<(&str, Vec<u8>)> = vec![
+            ("delay", serde_json::to_vec(&outputs_json(true, 5000)).unwrap()),
+            ("json", b"{\"slots\": [".to_vec()),
+            ("slots", {
+                let mut v = outputs_json(false, 0);
+                v["slots"] = serde_json::json!([null, null, null, null]);
+                serde_json::to_vec(&v).unwrap()
+            }),
+            ("dup", {
+                let mut v = outputs_json(false, 0);
+                v["slots"][2] = v["slots"][1].clone();
+                serde_json::to_vec(&v).unwrap()
+            }),
+        ];
+        for (name, data) in cases {
+            let db = Db::open_memory(&format!("backup_outputs_bad_{name}")).unwrap();
+            let entries = vec![
+                manifest(),
+                zip::Entry { name: "settings.json".into(), data: br#"{"theme":"light"}"#.to_vec() },
+                good_lib.clone(),
+                good_pl.clone(),
+                zip::Entry { name: "outputs.json".into(), data },
+            ];
+            let e = import_entries(&db, &entries, Path::new("no-bg")).err().unwrap_or_else(|| panic!("{name}: imported"));
+            assert_eq!(e.kind, ErrorKind::UnsupportedFormat, "{name}");
+            assert!(e.detail.contains("outputs.json"), "{name}: {}", e.detail);
+            assert!(import::library_folders(&db).is_empty(), "{name}: folders added");
+            assert!(db::playlists::list(&db).unwrap().is_empty(), "{name}: playlists added");
+            assert!(db::settings::get(&db, "app").unwrap().is_none(), "{name}: settings saved");
+        }
+        // zip から取り出す名前に outputs.json が入っている
+        assert!(wanted("outputs.json"));
     }
 }

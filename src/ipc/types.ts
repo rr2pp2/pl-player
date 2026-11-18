@@ -46,6 +46,7 @@ export type ErrorCode =
   | "library_import_busy"
   // タグの編集画面の保存（v3.6.0）
   | "track_removed_before_save"
+  | "output_invalid"
   | "other";
 
 /** v3.3.0：曲をごみ箱へ移した結果。移せなかった曲は、ファイルもライブラリもそのまま */
@@ -180,6 +181,138 @@ export interface DeviceInfo {
   id: string;
   name: string;
   isDefault: boolean;
+  /** v3.8.0：Windows が教える機器の種類から決めた自動のアイコン */
+  kind: OutputIcon;
+}
+
+// ---- 同時再生（v3.8.0）。形は Rust の playback\output_control.rs・playback\outputs.rs と同じ ----
+
+/** 表示のモード（コンパクトは表示の設定の側なので、ここでは通常と同じ） */
+export type ViewMode = "normal" | "detail";
+
+/** 出力先のアイコン（選び直せるもの。仕様 4.3） */
+export type OutputIcon = "headphones" | "speaker" | "stream" | "monitor";
+
+/** 出力先の状態（仕様 6.4） */
+export type OutputStatus = "off" | "ok" | "disconnected" | "unavailable" | "duplicate";
+
+/** 「開けません」の理由：形式が使えない／ほかのアプリが独り占め／それ以外 */
+export type OutputUnavailableReason = "format" | "busy" | "other";
+
+/** 通常用・詳細用の2組 */
+export interface PerMode {
+  normal: number;
+  detail: number;
+}
+
+export interface OutputSlotView {
+  /** 枠の番号（0〜2。ショートカットの「出力1〜3」は 0〜2） */
+  slot: number;
+  /** null なら既定のデバイス（Windows に従う） */
+  deviceId: string | null;
+  /** 保存してある名前（切断中の行に出す。3.7.0 から引き継いだ行は空＝「前に使っていたデバイス」） */
+  savedName: string;
+  /** 実際のデバイスの名前（開けた・一覧で見つかったとき。既定のデバイスなら今の既定の名前） */
+  deviceName: string | null;
+  on: boolean;
+  delayMs: number;
+  /** 選び直したアイコン（null なら autoIcon） */
+  icon: OutputIcon | null;
+  autoIcon: OutputIcon;
+  /** 今のモードの出力ごとの音量（0〜1） */
+  volume: number;
+  volumes: PerMode;
+  /** 全体の音量に従う（詳細でだけ効く。通常ではいつも従う） */
+  followMaster: boolean;
+  status: OutputStatus;
+  reason: OutputUnavailableReason | null;
+}
+
+/** pl://outputs と outputsGet（変わるたびに全部） */
+export interface OutputsView {
+  mode: ViewMode;
+  /** 今のモードの全体の音量 */
+  master: number;
+  masters: PerMode;
+  muted: boolean;
+  /** 枠3つ（空の枠は null） */
+  slots: (OutputSlotView | null)[];
+}
+
+/**
+ * 遅れを測る（v3.8.0 段3）。録る所：その出力のループバック（Windows がその出力へ渡した音）か、録音デバイス（仮想ケーブルの出口など）
+ */
+export type CaptureSource = { kind: "loopback" } | { kind: "input"; id: string };
+
+/** 測れなかった理由（文は src\layout\latency.ts） */
+export type LatencyFail =
+  | "output_missing"
+  | "output_busy"
+  | "output_format"
+  | "output_open"
+  | "capture_missing"
+  | "capture_busy"
+  | "capture_format"
+  | "capture_open"
+  | "capture_denied"
+  | "open_timeout"
+  | "clock"
+  | "no_timing"
+  | "capture_silent"
+  | "stream_error"
+  | "late"
+  | "gap"
+  | "no_signal"
+  | "weak"
+  | "noisy"
+  | "unstable";
+
+/** 全体をやめた・始めなかった理由 */
+export type LatencyAbort = "playing" | "cancelled" | "busy" | "not_enough" | "failed";
+
+/** 小窓を開いたときの様子（latency_setup） */
+export interface LatencySetup {
+  rows: {
+    slot: number;
+    name: string;
+    status: OutputStatus;
+    /** 測る（オンで鳴らせる）か */
+    measurable: boolean;
+    /** 名前から選んだ録る所 */
+    autoCapture: CaptureSource;
+    delayMs: number;
+  }[];
+  /** 録る所の候補（録音デバイス） */
+  inputs: { id: string; name: string }[];
+}
+
+export interface LatencyRow {
+  slot: number;
+  /** 測ったときのデバイスの設定（入れるときに同じかを確かめる） */
+  deviceId: string | null;
+  name: string;
+  status: OutputStatus;
+  measured: boolean;
+  capture: CaptureSource | null;
+  /** 届くまでの遅れ（ms） */
+  arrivalMs: number | null;
+  spreadMs: number | null;
+  hits: number;
+  /** 入れる値（ms）。測れなかった・揃える相手がいないときは null */
+  fillMs: number | null;
+  /** 測ったときの遅らせ量 */
+  delayMs: number;
+  fail: LatencyFail | null;
+}
+
+export interface LatencyReport {
+  abort: LatencyAbort | null;
+  rows: LatencyRow[];
+}
+
+/** メーター（約 33ms ごと）。枠3つの [左, 右] の最大（音量を掛けたあと・切り詰める前。1.0 がフルスケール）。dB への換算は画面側 */
+export interface MeterFrame {
+  peaks: [number, number][];
 }
 
 export interface ImportProgress {
@@ -294,6 +427,8 @@ export interface BackupReport {
   foldersRejected: number;
   /** v3.1.1：zip の背景が画像として読めなかったので入れなかった */
   backgroundRejected: boolean;
+  /** v3.8.0：出力先の設定を書き出した・読み込んだ（読み込んだときは一時停止して全部オフ） */
+  outputs: boolean;
 }
 
 export interface AppInfo {

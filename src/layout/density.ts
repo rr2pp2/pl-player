@@ -117,27 +117,49 @@ export function sidebarIconPx(ui: DensityUiLike | null | undefined): number {
 // - 自動でコンパクトになっているときは、上の帯もコンパクトを出す（窓を広げ直したら通常へ戻る。設定は書き換えない）
 // - 自動でコンパクトになっているときに「通常」を押したら、その場で通常に戻し、「窓が狭いときは自動でコンパクトにする」をオフにする
 // - 自動でコンパクトになっているときに「コンパクト」を押したら、設定は「いつも」になる
-// 「配信」（段2）と「ミニ」（あとで）は、VIEW_MODES に足して、pressViewMode・currentViewMode に分岐を足す作り
-// （配信モード中の通常／コンパクトの扱い・入る前の表示の保存は段2）。Node のテストから読むので、このファイルに置く（ほかのファイルを読み込まない）。
+// v3.8.0 段2-2：「詳細」（仕様の「配信モード」。6章の頭の注）を足した。詳細かどうかは Rust（再生の司令塔）が持ち（13.5 の11）、
+// 表示の設定（通常／コンパクト）とは別の値。だから詳細を抜けると、入る前の通常／コンパクトがそのまま出る（新しく保存しない）。
+// - 「詳細」を押す：詳細に入る（表示の設定は変えない）
+// - 詳細のときに「通常」「コンパクト」を押す：押したほうになる（設定もその値に）。設定を決める幅は「詳細を抜けたあとの曲一覧の側の幅」
+//   （ミキサーのぶん狭くなった今の幅で決めると、自動の設定が意図せずオフになるため。13.5 の11）
+// 「ミニ」（あとで）は VIEW_MODES に足して、pressMode・currentViewMode に分岐を足す作り。
+// Node のテストから読むので、このファイルに置く（ほかのファイルを読み込まない）。
 
 /** 並びは上の帯に出す順（label は文字・吹き出し・読み上げの名前のどれにも使う） */
 export const VIEW_MODES = [
   { id: "normal", label: "通常" },
   { id: "compact", label: "コンパクト" },
+  { id: "detail", label: "詳細" },
 ] as const;
 
 export type ViewMode = (typeof VIEW_MODES)[number]["id"];
 
-/** 上の帯で選ばれて見えるモード（自動でコンパクトになっているときもコンパクト） */
-export function currentViewMode(ui: DensityUiLike | null | undefined, listWidth: number): ViewMode {
+/** 上の帯で選ばれて見えるモード（詳細なら詳細。そうでなければ、自動でコンパクトになっているときもコンパクト） */
+export function currentViewMode(ui: DensityUiLike | null | undefined, listWidth: number, detail = false): ViewMode {
+  if (detail) return "detail";
   return compactListOn(ui, listWidth) ? "compact" : "normal";
 }
 
-/** 押したときの設定の値（ui の compactList・compactAuto だけ。ほかの値は呼ぶ側がそのまま残す） */
+/**
+ * 上の帯のモード切替を押したとき（仕様 5章）。settings は表示の設定に書く値（null なら変えない）、detail は押したあと詳細か。
+ * listWidth は今の曲一覧の側の幅、exitWidth は詳細を抜けたあとの曲一覧の側の幅（ミキサーを引かない幅。詳細でなければ listWidth と同じ）
+ */
+export function pressMode(
+  ui: DensityUiLike | null | undefined,
+  listWidth: number,
+  exitWidth: number,
+  detail: boolean,
+  mode: ViewMode,
+): { settings: { compactList: "off" | "always"; compactAuto: boolean } | null; detail: boolean } {
+  if (mode === "detail") return { settings: null, detail: true };
+  return { settings: pressViewMode(ui, detail ? exitWidth : listWidth, mode), detail: false };
+}
+
+/** 「通常」「コンパクト」を押したときの設定の値（ui の compactList・compactAuto だけ。ほかの値は呼ぶ側がそのまま残す） */
 export function pressViewMode(
   ui: DensityUiLike | null | undefined,
   listWidth: number,
-  mode: ViewMode,
+  mode: Exclude<ViewMode, "detail">,
 ): { compactList: "off" | "always"; compactAuto: boolean } {
   const auto = compactAutoOn(ui);
   if (mode === "compact") return { compactList: "always", compactAuto: auto };
@@ -156,15 +178,15 @@ export function pressViewMode(
  * 幅は base.css の値から出す（スキンは文字を ±2px まで大きくできるので、文字は 16px で数える。日本語は1字が文字の大きさと同じ幅）：
  * - 上の帯：一覧の側の枠 1×2・左右の余白 14×2・検索欄との間 10
  * - 右端の並び（.topbar-actions。間 6）：ファイル・フォルダ（.btn）は余白 12×2・枠 1×2・アイコン 16・間 6・文字4字 → 112 ずつ
- * - 切替（.seg.view-mode）：枠 1×2、1つのボタンは余白 10×2・アイコン 16・間 6・文字（通常 2字・コンパクト 5字）。アイコンだけなら 36 ずつ
+ * - 切替（.seg.view-mode）：枠 1×2、1つのボタンは余白 10×2・アイコン 16・間 6・文字（通常 2字・コンパクト 5字・詳細 2字）。アイコンだけなら 36 ずつ
  */
 export const TOPBAR = {
   frame: 2 + 28,
   gap: 10,
   actionsGap: 6,
   fileFolderLabeled: 112 + 6 + 112,
-  switchLabeled: 2 + (20 + 16 + 6 + 2 * 16) + (20 + 16 + 6 + 5 * 16),
-  switchIcons: 2 + 2 * 36,
+  switchLabeled: 2 + (20 + 16 + 6 + 2 * 16) + (20 + 16 + 6 + 5 * 16) + (20 + 16 + 6 + 2 * 16),
+  switchIcons: 2 + 3 * 36,
   searchKeep: 200,
 } as const;
 

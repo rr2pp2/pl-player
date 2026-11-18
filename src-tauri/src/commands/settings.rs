@@ -110,6 +110,8 @@ pub async fn settings_export(app: AppHandle, state: State<'_, AppState>) -> AppR
     } else {
         dest
     };
+    // v3.8.0：出力先の設定は Rust が DB に持つ。つまみを動かしている途中の値も入るよう、書き出す前に保存し直す
+    state.controller.save_outputs();
     Ok(Some(backup::export(&state.db, &state.settings(), &state.paths.bg_dir, &dest)?))
 }
 
@@ -125,7 +127,11 @@ pub async fn settings_import(app: AppHandle, state: State<'_, AppState>) -> AppR
     let Some(src) = picked.and_then(|f| f.into_path().ok()) else {
         return Ok(None);
     };
-    let (settings, report, folders) = backup::import(&state.db, &src, &state.paths.bg_dir)?;
+    let backup::Imported { settings, report, folders, outputs } = backup::import_full(&state.db, &src, &state.paths.bg_dir)?;
+    // v3.8.0：zip に出力先の設定があれば、一時停止して全部オフで入れる（自動では再開しない）。無ければ出力に触らない
+    if let Some(doc) = outputs {
+        state.controller.import_outputs(doc);
+    }
     *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = settings.clone();
     let statuses = hotkeys::apply(&app, &settings.hotkeys);
     let _ = app.emit(ev::HOTKEYS, &statuses);

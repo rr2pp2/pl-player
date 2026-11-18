@@ -1,5 +1,8 @@
 // 骨組み：背景の層の上に、サイドバー・上の検索・一覧・下の再生バーを置く。
 // v3.8.0：一覧の側（.main）の幅を測って listPaneWidth に入れる（曲一覧と上の帯が使う）。再生バーの形は PlayerBar が自分の幅で決める。
+// v3.8.0 段2-2：詳細（仕様の「配信モード」）では、ミキサー（Mixer.tsx）を .app の格子に足す。左右か上下か・ミキサーの幅と高さ・
+//   流れる歌詞の列を自動で隠すかは src\layout\detailLayout.ts が窓の大きさで決める（決まった窓の幅では区切らない）。
+//   詳細を抜けたあとの曲一覧の側の幅（listPaneExitWidth）も入れる（上の帯の「通常」「コンパクト」を押したときに使う）
 // 画面内のドラッグ（曲 → プレイリスト／キュー、並び替え）はここでまとめて受ける。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
@@ -8,10 +11,13 @@ import { navigate, playlists, route } from "../stores/library";
 import { notify } from "../stores/notices";
 import { lyricsRowOn, settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
-import { listPaneWidth, useLayoutSize } from "../components/useLayoutSize";
+import { listPaneExitWidth, listPaneWidth, useLayoutSize } from "../components/useLayoutSize";
 import { CharacterLayer } from "../components/CharacterLayer";
 import { characterLayout, characterStage } from "../skins/character";
 import { fallbackView } from "./visibility";
+import { centerWidth } from "./detailLayout";
+import { useDetailLayout } from "./useDetailLayout";
+import { Mixer } from "./Mixer";
 import { playingNow, reducedMotion, useSkin } from "../stores/skin";
 import type { DragData } from "../components/TrackTable";
 import { addToPlaylist } from "../components/trackActions";
@@ -43,9 +49,15 @@ export function AppShell() {
   const size = useLayoutSize();
   const s = useStore(settings);
   const collapsed = s.ui.sidebarCollapsed || size.sidebarAuto;
-  // 流れる歌詞の列（v3.0.2）：設定がオンで、歌詞画面を開いていないときだけ出す（閉じたら設定どおりに戻る）
+  // 流れる歌詞の列（v3.0.2）：設定がオンなら出す。v3.8.0 から歌詞画面を開いている間も出す
+  // （3.7.0 までは歌詞画面で隠していた。作者「歌詞を全画面表示中にも再生曲の下に歌詞を出したい」2026-11-18）
   const view = useStore(route).view;
-  const showRow = lyricsRowOn(s) && view !== "lyrics";
+  const rowWanted = lyricsRowOn(s);
+  // v3.8.0 段2-2：詳細の配置（詳細でなければ null）。詳細で曲一覧が2行を切るときは、流れる歌詞の列を自動で隠す（設定は書き換えない。窓を広げたら戻る）
+  const D = useDetailLayout(size, s, collapsed, rowWanted);
+  const showRow = rowWanted && !(D?.hideLyricsRow ?? false);
+  const exitW = centerWidth(size.width, collapsed);
+  useLayoutEffect(() => listPaneExitWidth.set(exitW), [exitW]);
   // 着せ替えの立ち絵（v3.2.0）：出さないとき（既定のスキンも）は、画面の作りを今のまま変えない
   const skin = useSkin();
   const playing = useStore(playingNow);
@@ -55,7 +67,8 @@ export function AppShell() {
     visible: s.skin?.characterVisible ?? true,
     scale: s.skin?.characterScale ?? 1,
     view,
-    windowWidth: size.width,
+    // v3.8.0 段2-2：詳細でミキサーを左右に並べたときは、曲一覧の側がミキサーのぶん狭いので、その幅で決める（隠す幅はスキンが窓の幅で書いたもの）
+    windowWidth: D?.side ? size.width - (D.centerW - D.listW) : size.width,
     playing,
     reducedMotion: reduce,
   };
@@ -121,7 +134,12 @@ export function AppShell() {
     <>
       <BackgroundLayer />
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragLabel(null)} autoScroll>
-        <div className={"app" + (collapsed ? " sidebar-collapsed" : "") + (showRow ? " lyrics-row-on" : "")}>
+        <div
+          className={
+            "app" + (collapsed ? " sidebar-collapsed" : "") + (showRow ? " lyrics-row-on" : "") + (D ? (D.side ? " detail detail-side" : " detail detail-stack") : "")
+          }
+          style={D ? ({ ["--mixer-w" as any]: `${D.mixerW}px`, ["--mixer-h" as any]: `${D.mixerH}px` } as any) : undefined}
+        >
           <Sidebar
             sidebarAuto={size.sidebarAuto}
             collapsed={collapsed}
@@ -139,6 +157,7 @@ export function AppShell() {
             <Content />
             {stage ? <CharacterLayer stage={stage} /> : null}
           </main>
+          {D ? <Mixer scrolls={D.mixerScrolls} /> : null}
           <PlayerBar />
           {showRow ? <LyricsRow /> : null}
         </div>

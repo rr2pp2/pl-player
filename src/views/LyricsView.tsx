@@ -1,6 +1,6 @@
 // 歌詞画面（v3）。中央の画面を切り替えて出す（曲一覧などと同じ扱い）。
 // 広いとき：左の列にジャケット・曲情報・出どころ・形式・補正、右に歌詞のカード。
-// 狭いとき（600px 未満）：1列。曲情報は横1行、補正は見出しの下に1行。
+// 狭いとき（600px 未満。v3.8.0 段2-2：詳細でミキサーと並べて曲一覧の側が 518px 未満のときも）：1列。曲情報は横1行、補正は見出しの下に1行。
 import { useEffect, useRef, type PointerEvent } from "react";
 import { lyricsSourceLabel, lyricsWarning } from "../messages/ja";
 import {
@@ -20,7 +20,9 @@ import { IconBack, IconEdit } from "../components/Icons";
 import { LyricsDelay } from "../components/LyricsDelay";
 import { LyricsFailed, LyricsNone, LyricsNoTrack } from "../components/LyricsEmpty";
 import { LyricsLines } from "../components/LyricsLines";
-import { useLayoutSize } from "../components/useLayoutSize";
+import { listPaneWidth, useLayoutSize } from "../components/useLayoutSize";
+import { isDetail, outputs } from "../stores/outputs";
+import { LIST_BELOW } from "../layout/density";
 
 const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End"]);
 // 一部の時刻が読めない警告はカードの上に出す。ほかの警告は小さく添える
@@ -36,7 +38,11 @@ export function LyricsView() {
   const active = useStore(activeLine);
   const fl = useStore(follow);
   const size = useLayoutSize();
-  const narrow = size.width < 600;
+  // v3.8.0 段2-2：詳細でミキサーと左右に並べると、窓が広くても歌詞の画面だけ狭くなる。詳細のときは曲一覧の側の幅でも狭い形にする
+  // （境目は、窓の幅 600px 未満のときの曲一覧の側の幅と同じ 518px。density.ts の LIST_BELOW.row）。詳細でなければ 3.7.0 と同じく窓の幅だけで決める
+  const listW = useStore(listPaneWidth);
+  const detail = isDetail(useStore(outputs));
+  const narrow = size.width < 600 || (detail && listW < LIST_BELOW.row);
   const scrollRef = useRef<HTMLDivElement>(null);
   const t = pb.track;
   const p = st.payload && t && st.payload.trackId === t.id ? st.payload : null;

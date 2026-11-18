@@ -34,6 +34,11 @@ pub async fn playback_action(state: State<'_, AppState>, action: String) -> AppR
         "volumeDown" => c.volume_step(-0.05),
         "seekForward" => c.seek_relative(5_000),
         "seekBackward" => c.seek_relative(-5_000),
+        // v3.8.0（13.5 の11）：詳細表示の切替・出力 1〜3 のオン/オフ（hotkeys の dispatch と同じ関数）
+        "toggleDetail" => c.toggle_detail(),
+        "toggleOutput1" => c.toggle_output(0),
+        "toggleOutput2" => c.toggle_output(1),
+        "toggleOutput3" => c.toggle_output(2),
         _ => {}
     }
     Ok(())
@@ -53,7 +58,8 @@ pub async fn playback_set_volume(state: State<'_, AppState>, volume: f32) -> App
 
 #[tauri::command]
 pub async fn playback_commit_volume(state: State<'_, AppState>) -> AppResult<()> {
-    state.controller.save_state();
+    // v3.8.0：全体の音量は出力先の設定（通常用・詳細用の2組）にも入る
+    state.controller.commit_volume();
     Ok(())
 }
 

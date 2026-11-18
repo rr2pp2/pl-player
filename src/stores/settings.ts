@@ -20,6 +20,11 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   toggleLyrics: "Ctrl+L",
   // v3.0.2：流れる歌詞の列を出す／隠す（アプリ内だけ）
   toggleLyricsRow: "Ctrl+Shift+L",
+  // v3.8.0：詳細表示の切替・出力 1〜3 のオン/オフ（既定のキーは空。Rust の default_shortcuts と同じ）
+  toggleDetail: "",
+  toggleOutput1: "",
+  toggleOutput2: "",
+  toggleOutput3: "",
 };
 
 export const settings = createStore<AppSettings>({

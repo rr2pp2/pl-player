@@ -57,6 +57,8 @@ export const errorText: Record<ErrorCode, string> = {
   library_import_busy: "曲の取り込み・再走査の途中なので、古い文字コードのタグの読み直しを始めませんでした。終わってから、もう一度お試しください。",
   // タグの編集画面の保存（v3.6.0）
   track_removed_before_save: "この曲はライブラリから外されたので、保存しませんでした（曲ファイルは変えていません）。",
+  // 同時再生（v3.8.0）。断ったときは何も変えていない
+  output_invalid: "出力先を変えられませんでした（出力先は3つまで・同じデバイスは1つの出力先にだけ入れられます）。",
   other: "処理を完了できませんでした。",
 };
 
@@ -73,11 +75,17 @@ export function noticeText(n: Notice): { text: string; detail: string } {
     return { text: errorText[n.code as ErrorCode] ?? errorText.other, detail: n.detail };
   }
   switch (n.code) {
-    case "device_fallback":
-      return {
-        text: `${n.from ?? "再生デバイス"}が切断されたので、${n.to ?? "既定のデバイス"}で再生を続けます。`,
-        detail: "",
-      };
+    // v3.8.0：3.7.0 までの「切断されたので既定のデバイスで続けます」（device_fallback）は無くした。
+    // 切断された出力先は「切断中」になり、戻ったら output_returned で知らせる（既定のデバイスへは移らない。仕様 2.5）
+    // 同時再生（v3.8.0）
+    case "output_returned":
+      return { text: `${n.from || "出力先"}が戻りました。`, detail: "" };
+    case "outputs_all_lost":
+      return { text: "オンの出力先が全部使えなくなったので、一時停止しました。戻っても自動では再生しません。", detail: "" };
+    case "sync_unavailable":
+      return { text: "この PC では出力どうしの時刻をそろえられないので、ずれの自動の直しを止めました（音は出ます）。", detail: "" };
+    case "outputs_imported":
+      return { text: "出力先の設定を読み込みました。一時停止して、出力先は全部オフにしています。", detail: "" };
     case "import_busy":
       return { text: "取り込みの途中です。終わってから、もう一度お試しください。", detail: "" };
     case "import_refused_legacy_reread":
@@ -100,6 +108,10 @@ export const actionLabel: Record<string, string> = {
   repeat: "リピート",
   toggleLyrics: "歌詞を開く／閉じる",
   toggleLyricsRow: "流れる歌詞の列を出す／隠す",
+  toggleDetail: "詳細表示の切替",
+  toggleOutput1: "出力1 のオン／オフ",
+  toggleOutput2: "出力2 のオン／オフ",
+  toggleOutput3: "出力3 のオン／オフ",
 };
 
 export const hotkeyErrorText = (err: string | null): string => {

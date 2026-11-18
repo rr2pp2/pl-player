@@ -6,9 +6,11 @@
 // - 3列：真ん中の列（再生バーの幅の 40%、240〜560px）と、左右の列の最低幅が入るなら3列。左右の列は同じ幅（1fr ずつ）なので、
 //   再生ボタンは真ん中の列の中央＝再生バーの中央に固定され、右の列の中身で動かない
 // - 入りきらないボタン：シャッフル・リピートは真ん中の列に入らなければ、右の列の「···」へ。歌詞のボタン（流れる歌詞の列・歌詞）も
-//   右の列に入らなければ「···」へ。設定で隠したボタンは「···」にも出さない
+//   右の列に入らなければ「···」へ。v3.8.0 段2-2：それでも入らなければ全体の音量も「···」へ（1段にする前に3列を保つ。作者の決定）。
+//   設定で隠したボタンは「···」にも出さない
 // - 1段：シークバーは上の縁の細い線、左はジャケット・曲名・今の時間 / 長さ、中は前・再生/一時停止・次、右は「···」（全体の音量など）
-// 出力ボタン（4.3。段2）は、右の列の全体の音量の左に固定幅で入る。その幅を outputW に渡せば、最低幅と並びに入る（今は 0）。
+// 出力ボタン（4.3。段2-2）は、右の列の全体の音量の左に固定幅で入る（3列 PLAYER.output3・1段 PLAYER.output1）。
+// PlayerBar は出していれば outputW に PLAYER.output3 を渡す（3列の最低幅に入る）。1段のときの幅は PLAYER.output1。
 
 /** 寸法（px）。CSS（base.css の再生バーの節と tokens.css の --player-center-w）と同じ値。合っていることは scripts\ui-layout.test.mts で確かめる */
 export const PLAYER = {
@@ -44,6 +46,17 @@ export const PLAYER = {
   /** 高さ：3列は --player-h の 80px、1段は 76px（3.7.0 の 719px 以下と同じ値） */
   h3: 80,
   h1: 76,
+  /**
+   * v3.8.0 段2-2：出力ボタン（仕様 4.3。--player-output-w）。中身で幅が変わらない固定の幅。高さは 40px（ほかのボタンの 36px より大きく、押しやすく）。
+   * 3列：112px ＝ 枠 1×2 ＋ 余白 8×2 ＋ アイコン 20 ＋ 間 6 ＋ 名前 68（14px の字で全角4字ほど。長い名前は「…」で切り、全部は吹き出しと読み上げに出す）。
+   *   右の列に入らないときは全体の音量を「···」へ移して3列を保つ（作者の決定）。3列は段1 と同じ再生バーの幅 728px から、
+   *   全体の音量が右の列に並ぶのは 1068px から（scripts\ui-detail.test.mts）
+   * 1段：80px。中身は 枠 1×2 ＋ 余白 6×2 ＋ アイコン 20 を3つ ＋ 間 2×2 ＝ 78（オンの出力先が3つでも入る幅。1つのときも同じ幅で、アイコンは真ん中に）。
+   *   480px の窓で、曲名と時間の文字に 120px 以上が残る幅（scripts\ui-layout.test.mts の「480×480」）
+   */
+  output3: 112,
+  output1: 80,
+  outputH: 40,
 } as const;
 
 /** 再生バーのうち、置き場所が動くボタン（設定で隠せるもの。visibility.ts の PLAYER_BUTTONS と同じ名前） */
@@ -62,6 +75,8 @@ export interface PlayerLayout {
   right: MovableButton[];
   /** 「···」の中に入れるもの（上から。空なら「···」を出さない） */
   more: MovableButton[];
+  /** 出力ボタンの幅（出さないときは 0。3列は渡された outputW、1段は PLAYER.output1） */
+  output: number;
 }
 
 /** 真ん中の列の幅（innerW は再生バーの中の幅＝枠と左右の余白を引いた幅。CSS の clamp(240px, 40%, 560px) と同じ） */
@@ -73,9 +88,17 @@ export function playerLeftMin(): number {
   return PLAYER.art3 + PLAYER.artGap + PLAYER.titleMin;
 }
 
-/** 右の列の最低幅：出力ボタン（段2。今は 0）＋全体の音量＋「···」 */
+/** 右の列に全体の音量まで置くのに要る幅：出力ボタン（出さないときは 0）＋全体の音量＋「···」 */
 export function playerRightMin(outputW = 0): number {
   return (outputW > 0 ? outputW + PLAYER.btnGap : 0) + PLAYER.volume + PLAYER.btnGap + PLAYER.more;
+}
+
+/**
+ * v3.8.0 段2-2（作者の決定）：3列にするための右の列の最低幅。全体の音量も「···」へ移せるので、出力ボタン＋「···」。
+ * 出力ボタン 112px でも 152px で、左の列の最低幅（192px）より小さい。だから3列が始まる幅は、出力ボタンがあっても段1 と同じ（再生バーの幅 728px）
+ */
+export function playerRightMinCompact(outputW = 0): number {
+  return (outputW > 0 ? outputW + PLAYER.btnGap : 0) + PLAYER.more;
 }
 
 /** 真ん中の列に、両脇のシャッフル・リピートまで入る幅（36×4 ＋ 44 ＋ 間 4×4 ＝ 204px） */
@@ -98,11 +121,11 @@ export function playerLayout(barW: number, shown: (b: MovableButton) => boolean,
   const inner3 = barW - PLAYER.border - PLAYER.pad3 * 2;
   const centerW = playerCenterWidth(inner3);
   const sideW = (inner3 - centerW - PLAYER.gap3 * 2) / 2;
-  const three = sideW >= Math.max(playerLeftMin(), playerRightMin(outputW));
+  const three = sideW >= Math.max(playerLeftMin(), playerRightMinCompact(outputW));
   if (!three) {
     // 1段：全体の音量・シャッフル・リピート・歌詞のボタンは全部「···」へ（出しているものだけ）
     const more = (["volume", "shuffle", "repeat", "lyricsRow", "lyrics"] as const).filter(shown);
-    return { mode: "one", centerW: 0, sideW: 0, centerShuffle: false, centerRepeat: false, right: [], more };
+    return { mode: "one", centerW: 0, sideW: 0, centerShuffle: false, centerRepeat: false, right: [], more, output: outputW > 0 ? PLAYER.output1 : 0 };
   }
   const centerFits = centerW >= CENTER_FULL_W;
   const more: MovableButton[] = [];
@@ -110,15 +133,28 @@ export function playerLayout(barW: number, shown: (b: MovableButton) => boolean,
   const centerRepeat = shown("repeat") && centerFits;
   if (shown("shuffle") && !centerFits) more.push("shuffle");
   if (shown("repeat") && !centerFits) more.push("repeat");
-  // 右の列：全体の音量はいつも右の列（最低幅に入れてある）。歌詞のボタン（流れる歌詞の列のオン・オフと歌詞）は、
-  // 出しているものが全部右の列に入れば並べ、入らなければまとめて「···」へ移す。
-  // 「歌詞だけを右に残す」途中の段は作らない：両方を出しているとき、流れる歌詞の列のボタン（36px）を「···」（36px）に
-  // 置き換えるだけで幅が同じになり、その段が来る幅が無いため（検査1回目の指摘1）。
-  // 「···」へ移したとき（音量＋「···」＝右の列の最低幅）は、3列にした条件で必ず入る
+  // 右の列（出力ボタンの右）：入れる順は 全体の音量 → 歌詞のボタン（流れる歌詞の列のオン・オフと歌詞）。
+  // 1. 出しているものが全部入れば並べる
+  // 2. 入らなければ、歌詞のボタンをまとめて「···」へ（全体の音量＋「···」は右に残す）
+  //    「歌詞だけを右に残す」途中の段は作らない：両方を出しているとき、流れる歌詞の列のボタン（36px）を「···」（36px）に
+  //    置き換えるだけで幅が同じになり、その段が来る幅が無いため（段1 の検査1回目の指摘1）
+  // 3. それでも入らなければ、全体の音量も「···」へ（v3.8.0 段2-2・作者の決定。1段にする前に3列を保つ。仕様 4.1 の「···」へ直接移す流儀）。
+  //    「···」の中では全体の音量を先頭に置く（1段のときと同じ並び）。歌詞のボタンだけが右に残る段は作らない（音量を先に右へ置く）
+  //    出力ボタン＋「···」は、3列にした条件（playerRightMinCompact）で必ず入る
   const base: MovableButton[] = shown("volume") ? ["volume"] : [];
   const lyricsWanted = (["lyricsRow", "lyrics"] as const).filter(shown);
-  const allFit = rowWidth([...base, ...lyricsWanted, ...(more.length > 0 ? (["more"] as const) : [])], outputW) <= sideW;
-  const right: MovableButton[] = allFit ? [...base, ...lyricsWanted] : base;
-  if (!allFit) more.push(...lyricsWanted);
-  return { mode: "three", centerW, sideW, centerShuffle, centerRepeat, right, more };
+  const fits = (items: MovableButton[], withMore: boolean) =>
+    rowWidth([...items, ...(withMore ? (["more"] as const) : [])], outputW) <= sideW;
+  let right: MovableButton[];
+  if (fits([...base, ...lyricsWanted], more.length > 0)) {
+    right = [...base, ...lyricsWanted];
+  } else if (fits(base, true)) {
+    right = base;
+    more.push(...lyricsWanted);
+  } else {
+    right = [];
+    more.unshift(...base);
+    more.push(...lyricsWanted);
+  }
+  return { mode: "three", centerW, sideW, centerShuffle, centerRepeat, right, more, output: outputW };
 }

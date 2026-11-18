@@ -17,7 +17,8 @@ impl Controller {
                 muted: i.muted,
                 shuffle: i.shuffle,
                 repeat_mode: i.repeat.as_str().into(),
-                device_id: i.device_id.clone(),
+                // v3.8.0：出力先1のデバイス（3.7.0 に戻したときに、その版が使う値。出力先の設定の本体は `outputs`）
+                device_id: i.outputs.slot(0).and_then(|s| s.device.id.clone()),
                 context: i.context.clone(),
                 context_index: i.order.get(i.order_pos).copied().unwrap_or(0) as i64,
             }
@@ -27,9 +28,10 @@ impl Controller {
         }
     }
 
-    /// 終了時：状態とキューを全部書く
+    /// 終了時：状態とキューを全部書く（v3.8.0：出力先の設定も）
     pub fn save_all(&self) {
         self.save_state();
+        self.save_outputs();
         let ids = self.queue_ids();
         let _ = db::queue::save(&self.db, &ids);
     }

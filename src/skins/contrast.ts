@@ -60,7 +60,7 @@ export function scenes(dim = DEFAULT_DIM, ui = DEFAULT_UI): Scene[] {
 
 export type Check = { name: string; fg: RGB; bg: RGB; min: number };
 
-/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 28 通り。v3.7.0 で輪郭2・お気に入りの星3を足した） */
+/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 44 通り。v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 段2-2 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、段3 で遅れを測る小窓の文字3を足した） */
 export function checks(t: Record<string, string>, s: Scene): Check[] {
   const bgColor = color(t["--c-bg"]).rgb;
   const base = s.image ?? bgColor;
@@ -105,6 +105,29 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "--c-favorite（星）／オンのボタンの面", fg: text("--c-favorite"), bg: favOn(panel), min: 3 });
   out.push({ name: "--c-favorite（星）／選んだ行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(selected), min: 3 });
   out.push({ name: "--c-favorite（星）／指を乗せた行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(hover), min: 3 });
+  // v3.8.0 段2-2：メーターの帯（図 3:1）。緑 --c-ok・黄 --c-favorite・赤 --c-danger を、ミキサー（パネル）と出力のプルダウン（メニュー）の面で
+  for (const [label, bottom] of [
+    ["パネル", panel],
+    ["メニュー（0.92）", menu],
+  ] as const) {
+    out.push({ name: `メーター 緑の帯 --c-ok／${label}`, fg: text("--c-ok"), bg: bottom, min: 3 });
+    out.push({ name: `メーター 黄の帯 --c-favorite／${label}`, fg: text("--c-favorite"), bg: bottom, min: 3 });
+    out.push({ name: `メーター 赤の帯 --c-danger／${label}`, fg: text("--c-danger"), bg: bottom, min: 3 });
+  }
+  // 直前の最大の線（--c-primary）とその縁（パネルの色・不透明）。出力ボタンの危険の色の縁
+  const edge = panelRgb;
+  out.push({ name: "メーター 最大の線 --c-primary／溝の中（パネル）", fg: text("--c-primary"), bg: panel, min: 3 });
+  out.push({ name: "メーター 最大の線 --c-primary／線の縁（パネルの色）", fg: text("--c-primary"), bg: edge, min: 3 });
+  out.push({ name: "メーター 最大の線の縁／緑の帯 --c-ok", fg: edge, bg: text("--c-ok"), min: 3 });
+  out.push({ name: "メーター 最大の線の縁／黄の帯 --c-favorite", fg: edge, bg: text("--c-favorite"), min: 3 });
+  out.push({ name: "メーター 最大の線の縁／赤の帯 --c-danger", fg: edge, bg: text("--c-danger"), min: 3 });
+  out.push({ name: "線 --c-danger（出力ボタンの縁）／パネル", fg: text("--c-danger"), bg: panel, min: 3 });
+  out.push({ name: "出力ボタンの「!」 --c-primary／印の地（パネルの色）", fg: text("--c-primary"), bg: panelRgb, min: 4.5 });
+  // v3.8.0 段3：遅れを測る小窓（.modal：パネルの色を 0.97。下は .modal-backdrop の黒 0.45）
+  const modal = over(over(overlay, [0, 0, 0], 0.45), panelRgb, 0.97);
+  out.push({ name: "--c-primary／小窓（0.97）", fg: text("--c-primary"), bg: modal, min: 4.5 });
+  out.push({ name: "--c-secondary／小窓（0.97）", fg: text("--c-secondary"), bg: modal, min: 4.5 });
+  out.push({ name: "--c-danger／小窓（0.97）", fg: text("--c-danger"), bg: modal, min: 4.5 });
   return out;
 }
 

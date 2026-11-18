@@ -1342,7 +1342,7 @@ fn list_input_devices() -> Vec<DeviceInfo> {
     if let Ok(devs) = host.input_devices() {
         for d in devs {
             let Some(id) = devices::device_id(&d) else { continue };
-            out.push(DeviceInfo { is_default: Some(&id) == default_id.as_ref(), name: devices::device_name(&d), id });
+            out.push(DeviceInfo { is_default: Some(&id) == default_id.as_ref(), name: devices::device_name(&d), kind: devices::device_kind(&d), id });
         }
     }
     out
@@ -3132,7 +3132,7 @@ fn slip_probe() {
 // ======================================================================
 
 fn dev(id: &str, name: &str, is_default: bool) -> DeviceInfo {
-    DeviceInfo { id: id.into(), name: name.into(), is_default }
+    DeviceInfo { id: id.into(), name: name.into(), is_default, kind: "speaker" }
 }
 
 #[test]

@@ -99,6 +99,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         lyrics_fetch: Default::default(),
         skin: Default::default(),
         legacy_reread: Default::default(),
+        meter: Default::default(),
+        latency: Default::default(),
     });
 
     // タスクトレイ
@@ -263,6 +265,23 @@ pub fn run() {
             commands::settings::settings_import,
             commands::devices::devices_list,
             commands::devices::device_set,
+            commands::outputs::outputs_get,
+            commands::outputs::output_add,
+            commands::outputs::output_remove,
+            commands::outputs::output_set_on,
+            commands::outputs::output_set_volume,
+            commands::outputs::output_commit_volume,
+            commands::outputs::output_set_delay,
+            commands::outputs::output_set_follow,
+            commands::outputs::output_set_icon,
+            commands::outputs::output_set_device,
+            commands::outputs::view_mode_set,
+            commands::outputs::meter_start,
+            commands::outputs::meter_stop,
+            commands::latency::latency_setup,
+            commands::latency::latency_measure,
+            commands::latency::latency_cancel,
+            commands::latency::latency_apply,
             commands::lyrics::get_lyrics,
             commands::lyrics::preview_lyrics,
             commands::lyrics::save_manual_lyrics,
@@ -358,6 +377,9 @@ mod tests {
     /// - `getCurrentWebview().onDragDropEvent`（ドラッグ＆ドロップ）：中で同じ `listen` を4つ（drag-enter・over・drop・leave）
     /// - `convertFileSrc`（画像の表示）：URL を作るだけで IPC を呼ばない。読めるかは assetProtocol.scope が決める
     /// - 通知（トースト）は pl://notice の listen。トレイ・ウィンドウ・ファイル選択・ホットキーは Rust 側だけ
+    /// - `Channel`（v3.8.0 のメーター）：作るときは JS の中でコールバックを登録するだけ（IPC を呼ばない）。Rust からの送り物は
+    ///   小さい JSON（8192 バイト未満）なので WebView へ直接書き込まれ、`plugin:__TAURI_CHANNEL__|fetch` を通らない
+    ///   （tauri 2.12.1 の `ipc/channel.rs`）。権限は増やさない
     ///
     /// 画面に新しい API を足したら、このテストが落ちる（権限を見直す合図）
     #[test]
@@ -376,6 +398,7 @@ mod tests {
         let allowed: BTreeSet<(String, String)> = [
             ("@tauri-apps/api/core", "invoke"),
             ("@tauri-apps/api/core", "convertFileSrc"),
+            ("@tauri-apps/api/core", "Channel"),
             ("@tauri-apps/api/event", "listen"),
             ("@tauri-apps/api/event", "UnlistenFn"),
             ("@tauri-apps/api/webview", "getCurrentWebview"),

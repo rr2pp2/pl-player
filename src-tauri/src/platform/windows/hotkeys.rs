@@ -38,6 +38,12 @@ pub fn dispatch(app: &AppHandle, action: &str) {
         "mute" => c.toggle_mute(),
         "shuffle" => c.toggle_shuffle(),
         "repeat" => c.cycle_repeat(),
+        // v3.8.0（13.5 の11）：詳細表示の切替は Rust（司令塔）が持つので、窓が隠れていてもグローバルにできる。
+        // 画面へは pl://outputs で知らせる。出力 1〜3 のオン/オフ（空の枠・切断中の枠は何もしない）
+        "toggleDetail" => c.toggle_detail(),
+        "toggleOutput1" => c.toggle_output(0),
+        "toggleOutput2" => c.toggle_output(1),
+        "toggleOutput3" => c.toggle_output(2),
         _ => {}
     }
 }

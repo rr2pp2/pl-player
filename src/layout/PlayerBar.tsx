@@ -5,7 +5,8 @@
 //   3列：左＝ジャケット・曲名・アーティスト（・今の歌詞の1行）／中＝操作のボタンとシークバー（再生ボタンは中央に固定）／右＝全体の音量・歌詞のボタン・「···」
 //   1段：上の縁にシークバーの細い線／左＝ジャケット・曲名・今の時間 / 長さ／中＝前・再生・次／右＝「···」（全体の音量・シャッフル・リピート・歌詞のボタン）
 //   入りきらないボタンは「···」へ。設定で隠したボタンは「···」にも出さない。
-//   出力ボタン（段2）は右の列の全体の音量の左に、固定幅で入れる（playerLayout の outputW）。
+//   出力ボタン（v3.8.0 段2-2。OutputButton.tsx）は右の列の全体の音量の左に、固定幅で入れる（playerLayout の outputW。1段ではアイコンだけ）。
+//   設定の「再生バーのボタン」で隠せる（visibility.ts の outputs）。隠したら幅も取らない。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../ipc/commands";
@@ -25,7 +26,8 @@ import { LyricParts } from "../components/LyricParts";
 import { openMenu } from "../components/ContextMenu";
 import { trackMenu } from "../components/trackActions";
 import { playerButtonShown } from "./visibility";
-import { playerLayout, type MovableButton } from "./playerLayout";
+import { PLAYER, playerLayout, type MovableButton } from "./playerLayout";
+import { OutputButton } from "./OutputButton";
 
 const REPEAT_LABEL = { off: "リピート：切", all: "リピート：全曲", one: "リピート：1曲" } as const;
 
@@ -178,7 +180,8 @@ export function PlayerBar() {
   const shown = (id: string) => playerButtonShown(st.ui, id);
   const ref = useRef<HTMLElement>(null);
   const barW = useBarWidth(ref);
-  const L = playerLayout(barW, shown);
+  const outputsOn = shown("outputs");
+  const L = playerLayout(barW, shown, outputsOn ? PLAYER.output3 : 0);
   const one = L.mode === "one";
 
   // 置き場所が動くボタン。inMenu は「···」の中（文字つきの行）
@@ -285,7 +288,8 @@ export function PlayerBar() {
         {one ? null : <SeekBar disabled={!t} />}
       </div>
       <div className="player-right">
-        {/* 段2：出力ボタン（固定幅）は、ここ（全体の音量の左）に入れる。幅は playerLayout の outputW にも渡す */}
+        {/* 出力ボタン（固定幅）：全体の音量の左。幅は playerLayout の outputW にも渡している */}
+        {L.output > 0 ? <OutputButton one={one} /> : null}
         {L.right.map((b) => (
           <Fragment key={b}>{movable(b, false)}</Fragment>
         ))}

@@ -297,7 +297,7 @@ test("コントラストの計算は scripts/theme-contrast.mts と同じ（Ligh
   for (const f of [light, dark]) {
     const a = evaluateFile(f);
     const b = evaluate(readTheme(f), {});
-    assert.equal(a.length, 84); // 場面3つ × 28 通り（v3.7.0 で輪郭2・お気に入りの星3を足した）
+    assert.equal(a.length, 132); // 場面3つ × 44 通り（v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 段2-2 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、段3 で小窓の文字3を足した）
     assert.deepEqual(
       b.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
       a.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
