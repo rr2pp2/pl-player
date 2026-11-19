@@ -74,6 +74,20 @@ pub enum ErrorKind {
     SkinApplyFailed,
     /// 着せ替え：取り込みの確認が古い（別の zip を選んだ・取り消した）
     SkinImportExpired,
+    /// 立ち絵（v3.9.0。画像から追加する立ち絵）：PNG・WebP・GIF でない（拡張子で見る。中身は画像の確かめで見る）
+    AvatarImageFormat,
+    /// 立ち絵：画像のファイルが大きすぎる（1つ 15MB まで。スキンの画像と同じ上限）
+    AvatarTooLarge,
+    /// 立ち絵：名前が決まりに合わない（1〜40 文字。スキンの名前と同じ文字の決まり）
+    AvatarNameInvalid,
+    /// 立ち絵：登録できる数（30）を超える。何も作っていない
+    AvatarLimit,
+    /// 立ち絵：その立ち絵が無い（消した・フォルダが無い）・その取り込んだスキンが無いか立ち絵を持たない
+    AvatarNotFound,
+    /// 立ち絵：フォルダはあるが読めない（avatar.json が壊れた・画像が消えた・リンク）
+    AvatarBroken,
+    /// 立ち絵：選んだ画像の確認が古い（選び直した・取り消した）
+    AvatarPickExpired,
     /// 曲をごみ箱へ移す（v3.3.0）：その曲はライブラリに無い（もう外した・一覧が古い）。何も動かしていない
     TrackNotInLibrary,
     /// 曲をごみ箱へ移す：ライブラリの曲ファイルとして確かめられない（音声ファイルの拡張子でない・フォルダ・リンク）。何も動かしていない
@@ -194,6 +208,13 @@ mod tests {
             ErrorKind::SkinBuiltinReadonly,
             ErrorKind::SkinApplyFailed,
             ErrorKind::SkinImportExpired,
+            ErrorKind::AvatarImageFormat,
+            ErrorKind::AvatarTooLarge,
+            ErrorKind::AvatarNameInvalid,
+            ErrorKind::AvatarLimit,
+            ErrorKind::AvatarNotFound,
+            ErrorKind::AvatarBroken,
+            ErrorKind::AvatarPickExpired,
             ErrorKind::TrackNotInLibrary,
             ErrorKind::TrashNotAllowed,
             ErrorKind::TrashUnavailable,

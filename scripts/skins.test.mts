@@ -1,4 +1,5 @@
 // 着せ替え（v3.2.0）の画面側の決まりを確かめる：色と文字の値の確かめ・状態ごとのアイコンの選び方・立ち絵を出す／隠す条件・コントラストの計算。
+// v3.9.0：立ち絵の欄の並び・使う立ち絵の値（Rust と同じ形）・画面が出す立ち絵は Rust が解いたもの。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
@@ -20,9 +21,32 @@ import {
   validRgbTriple,
 } from "../src/skins/tokens.ts";
 import { pickIconPath, repeatState, shuffleState, starState, volumeState } from "../src/skins/icons.ts";
-import { characterFrameKey, characterLayout, characterStage, clampScale, MIN_WINDOW_FOR_CHARACTER } from "../src/skins/character.ts";
+import {
+  characterFits,
+  characterFitState,
+  characterFrameKey,
+  characterImageStyle,
+  characterLayout,
+  characterStage,
+  characterThresholds,
+  characterWindowNote,
+  clampScale,
+  idealRailWidth,
+  listSideWidth,
+  MIN_LIST_SIDE_PX,
+  RAIL_MAX_PX,
+  RAIL_MIN_PX,
+  RAIL_PADDING,
+  RAIL_WINDOW_RATIO,
+  railWidthFor,
+  SCALE_MAX,
+  SCALE_MIN,
+} from "../src/skins/character.ts";
+import { APP, centerWidth, DETAIL, detailLayout, type DetailInput } from "../src/layout/detailLayout.ts";
+import { LIST_BELOW, listLayoutFor } from "../src/layout/density.ts";
 import { contrastWarnings, evaluate, ratio } from "../src/skins/contrast.ts";
 import { warningRows } from "../src/skins/warnings.ts";
+import { AVATAR_NAME_MAX, avatarChoice, avatarNameOk, avatarNameReady, avatarRows, canCreateAvatar, cardClickSwitches, cardKeySwitches, CHOICE_NONE, CHOICE_SKIN, skinCharacterChoice } from "../src/skins/avatars.ts";
 import { evaluate as evaluateFile, readTheme } from "./theme-contrast.mts";
 
 const light = fileURLToPath(new URL("../src/theme/light.css", import.meta.url));
@@ -165,7 +189,7 @@ test("アイコンの画像の選び方：状態 → default → 無し、テー
   assert.equal(pickIconPath(icons, "IconVolume", "muted", "dark", true), "m-d");
 });
 
-test("立ち絵を出す・隠す：スキン・設定・歌詞画面・ウィンドウの幅。大きさは 75〜125%", () => {
+test("立ち絵を出す・隠す：スキン・設定・歌詞画面・曲一覧の側の幅。大きさは 75〜200%（v3.9.0。3.8.1 までは 125%）。専用の幅は窓の幅で決める（直し5回目）", () => {
   const ch = {
     playing: { path: "playing.webp", still: "playing.first.png" },
     stopped: { path: "stopped.png", still: null },
@@ -173,9 +197,11 @@ test("立ち絵を出す・隠す：スキン・設定・歌詞画面・ウィ�
     maxHeightPx: 420,
     minWindowWidthPx: 920,
   };
-  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, playing: false, reducedMotion: false };
+  const pane = centerWidth(1200, false); // 934
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, paneWidth: pane, playing: false, reducedMotion: false };
   const l = characterLayout(base)!;
-  assert.deepEqual(l, { state: "stopped", src: "stopped.png", widthPx: 180, maxHeightPx: 420, railPx: 192 });
+  // 窓 1200 × 18% = 216
+  assert.deepEqual(l, { state: "stopped", src: "stopped.png", widthPx: 216, maxHeightPx: 420, railPx: 228 });
   assert.equal(characterLayout({ ...base, playing: true })!.src, "playing.webp");
   // 動きを減らす：最初の1コマ。設定を途中で変えても、次の描画でそのまま反映される（入力だけで決まる）
   assert.equal(characterLayout({ ...base, playing: true, reducedMotion: true })!.src, "playing.first.png");
@@ -183,16 +209,20 @@ test("立ち絵を出す・隠す：スキン・設定・歌詞画面・ウィ�
   assert.equal(characterLayout({ ...base, character: null }), null);
   assert.equal(characterLayout({ ...base, visible: false }), null);
   assert.equal(characterLayout({ ...base, view: "lyrics" }), null);
-  assert.equal(characterLayout({ ...base, windowWidth: 919 }), null);
-  assert.ok(characterLayout({ ...base, windowWidth: 920 }));
-  // スキンが 760 未満を指定しても、760 未満では出さない
-  assert.equal(characterLayout({ ...base, character: { ...ch, minWindowWidthPx: 700 }, windowWidth: MIN_WINDOW_FOR_CHARACTER - 1 }), null);
+  // 曲一覧の側が足りないときは、隠す前にまず縮める（直し8回目）。140px まで縮めても残す幅を割るときだけ隠す
+  assert.equal(characterLayout({ ...base, paneWidth: 228 + MIN_LIST_SIDE_PX - 1 })!.widthPx, 215);
+  assert.equal(characterLayout({ ...base, paneWidth: 152 + MIN_LIST_SIDE_PX })!.widthPx, 140);
+  assert.equal(characterLayout({ ...base, paneWidth: 152 + MIN_LIST_SIDE_PX - 1 }), null);
+  // スキンの minWindowWidthPx は使わない（大きくても小さくても同じ）
+  for (const m of [760, 920, 1200, 5000]) assert.deepEqual(characterLayout({ ...base, character: { ...ch, minWindowWidthPx: m } }), l);
   // 設定画面などでは出す
   assert.ok(characterLayout({ ...base, view: "settings" }));
-  // 大きさ
-  assert.equal(characterLayout({ ...base, scale: 1.25 })!.widthPx, 225);
-  assert.equal(characterLayout({ ...base, scale: 3 })!.widthPx, 225);
-  assert.equal(characterLayout({ ...base, scale: 0.1 })!.maxHeightPx, 315);
+  // 大きさ（窓を広くして、隠れない形で見る）
+  const wide = { ...base, windowWidth: 2000, paneWidth: centerWidth(2000, false) };
+  assert.equal(characterLayout({ ...wide, scale: 1.25 })!.widthPx, 450);
+  assert.equal(characterLayout({ ...wide, scale: 3 })!.widthPx, RAIL_MAX_PX);
+  assert.equal(characterLayout({ ...wide, scale: 2 })!.railPx, RAIL_MAX_PX + 12);
+  assert.equal(characterLayout({ ...wide, scale: 0.1 })!.maxHeightPx, 315);
   assert.equal(clampScale(Number.NaN), 1);
 });
 
@@ -204,7 +234,7 @@ test("立ち絵（v3.3.0）：再生中と停止中の2枚を読み込んだま�
     maxHeightPx: 420,
     minWindowWidthPx: 920,
   };
-  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, playing: false, reducedMotion: false };
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, paneWidth: centerWidth(1200, false), playing: false, reducedMotion: false };
   const stopped = characterStage(base)!;
   const playing = characterStage({ ...base, playing: true })!;
   // 2枚とも同じ src で置き（並びも同じ）、見せる方だけが変わる＝要素も src も変わらない
@@ -215,7 +245,7 @@ test("立ち絵（v3.3.0）：再生中と停止中の2枚を読み込んだま�
   assert.deepEqual(playing.frames.map((f) => f.shown), [false, true]);
   assert.ok(stopped.layout && playing.layout);
   // 歌詞画面・狭い幅：読み込んだまま見えなくする（幅は取らない）。戻ったときも同じ要素・同じ src
-  for (const hidden of [{ view: "lyrics" }, { windowWidth: 800 }]) {
+  for (const hidden of [{ view: "lyrics" }, { windowWidth: 800, paneWidth: centerWidth(800, false) }]) {
     const h = characterStage({ ...base, ...hidden, playing: true })!;
     assert.equal(h.layout, null);
     assert.deepEqual(key(h), key(stopped));
@@ -240,7 +270,7 @@ test("立ち絵（v3.3.0）：再生中と停止中の2枚を読み込んだま�
   assert.equal(same.frames.length, 1);
   assert.equal(same.frames[0].shown, true);
   // 大きさは出していないときも決まる（戻ったときにずれない）
-  assert.equal(characterStage({ ...base, view: "lyrics", scale: 1.25 })!.widthPx, 225);
+  assert.equal(characterStage({ ...base, view: "lyrics", scale: 1.25 })!.widthPx, idealRailWidth(1200, 1.25));
 });
 
 test("立ち絵（v3.3.0）：画面の要素の key は再生・一時停止で変わらない（同じ画像の1枚・2枚・動きを減らす）", () => {
@@ -251,7 +281,7 @@ test("立ち絵（v3.3.0）：画面の要素の key は再生・一時停止で
     maxHeightPx: 420,
     minWindowWidthPx: 920,
   };
-  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, playing: false, reducedMotion: false };
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, paneWidth: centerWidth(1200, false), playing: false, reducedMotion: false };
   // CharacterLayer.tsx が <img key> に使う値（React は key が変われば要素を作り直す＝動く画像が頭に戻る）
   const keys = (i: typeof base) => characterStage(i)!.frames.map((f) => f.key);
   const toggles = (i: typeof base) => {
@@ -274,7 +304,7 @@ test("立ち絵（v3.3.0）：画面の要素の key は再生・一時停止で
   assert.equal(new Set(s2).size, 2);
   // 一時的に隠す（歌詞画面・狭い幅）間も同じ key（戻ったときに作り直さない）
   assert.deepEqual(keys({ ...base, view: "lyrics", playing: true }), s2);
-  assert.deepEqual(keys({ ...base, windowWidth: 800 }), s2);
+  assert.deepEqual(keys({ ...base, windowWidth: 800, paneWidth: centerWidth(800, false) }), s2);
   // 動きを減らす：止まった絵が同じなら同じ key。違う絵なら変わる（別の画像なので作り直してよい）
   const sameStill = { ...ch, playing: { path: "a.webp", still: "first.png" }, stopped: { path: "b.gif", still: "first.png" } };
   const [r1, r2] = toggles({ ...base, character: sameStill, reducedMotion: true });
@@ -370,4 +400,553 @@ test("取り込みの警告：種類ごとにまとめて出た順に並べ、�
   // 数だけ届いた種類も、行を出す
   assert.deepEqual(warningRows([], [{ code: "unknown_field", count: 2 }]), [w("unknown_field", "ほか 2 件")]);
   assert.deepEqual(warningRows([], []), []);
+});
+
+// ---------------- v3.9.0：立ち絵（スキンから切り離した立ち絵） ----------------
+
+const rustAvatars = readFileSync(fileURLToPath(new URL("../src-tauri/src/skins/avatars.rs", import.meta.url)), "utf8");
+
+test("立ち絵：使う立ち絵の値の形と名前の長さ・数の上限が Rust（skins::avatars）と同じ", () => {
+  assert.ok(rustAvatars.includes(`pub const CHOICE_SKIN: &str = "${CHOICE_SKIN}";`));
+  assert.ok(rustAvatars.includes(`pub const CHOICE_NONE: &str = "${CHOICE_NONE}";`));
+  assert.ok(rustAvatars.includes(`const AVATAR_PREFIX: &str = "avatar:";`));
+  assert.ok(rustAvatars.includes(`const SKIN_PREFIX: &str = "skin:";`));
+  assert.equal(avatarChoice("0123456789abcdef"), "avatar:0123456789abcdef");
+  assert.equal(skinCharacterChoice("quiet-paper"), "skin:quiet-paper");
+  assert.ok(rustAvatars.includes(`pub const NAME_MAX: usize = ${AVATAR_NAME_MAX};`));
+  assert.ok(rustAvatars.includes("pub const MAX_AVATARS: usize = 30;"));
+  // 置き方は、スキンの立ち絵の既定の値（幅 180・高さの上限 420・出す窓の幅 920）
+  for (const line of ["pub const WIDTH_PX: u32 = 180;", "pub const MAX_HEIGHT_PX: u32 = 420;", "pub const MIN_WINDOW_WIDTH_PX: u32 = 920;"]) {
+    assert.ok(rustAvatars.includes(line), line);
+  }
+});
+
+test("立ち絵の欄：頭に「スキンの立ち絵」「出さない」、続けて取り込んだスキンの立ち絵、登録した立ち絵", () => {
+  const list = {
+    skins: [{ skinId: "quiet-paper", name: "Quiet Paper", preview: "s/stopped.png", animated: false }],
+    avatars: [
+      { id: "0123456789abcdef", name: "Pose", preview: "a/stopped.png", hasStopped: true, animated: true, broken: null },
+      { id: "fedcba9876543210", name: "One", preview: "b/playing.png", hasStopped: false, animated: false, broken: null },
+      { id: "00000000000000aa", name: "", preview: null, hasStopped: false, animated: false, broken: "avatar_broken" as const },
+    ],
+    max: 30,
+  };
+  const rows = avatarRows(list, "Quiet Paper", true);
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.choice]),
+    [
+      ["skin", "skin"],
+      ["none", "none"],
+      ["skinCharacter", "skin:quiet-paper"],
+      ["avatar", "avatar:0123456789abcdef"],
+      ["avatar", "avatar:fedcba9876543210"],
+      ["avatar", "avatar:00000000000000aa"],
+    ],
+  );
+  assert.equal(rows[0].name, "スキンの立ち絵");
+  assert.equal(rows[1].name, "出さない");
+  assert.match(rows[0].note, /Quiet Paper/);
+  assert.equal(rows[2].preview, "s/stopped.png");
+  assert.equal(rows[3].avatarId, "0123456789abcdef");
+  // 停止中の絵が無い立ち絵は、そう書く
+  assert.match(rows[4].note, /停止中も同じ絵/);
+  // 読めない立ち絵：使えない（見本も出さない）。名前を変える・削除のために id は持つ
+  assert.equal(rows[5].broken, "avatar_broken");
+  assert.equal(rows[5].preview, null);
+  assert.equal(rows[5].avatarId, "00000000000000aa");
+  // 一覧を読む前・スキンに立ち絵が無いときも、頭の2つは出す
+  const empty = avatarRows(null, null, false);
+  assert.deepEqual(empty.map((r) => r.choice), ["skin", "none"]);
+  assert.match(empty[0].note, /いまは無し/);
+});
+
+test("立ち絵：作れる数（30 体まで。読めないものも数える）と名前の長さ（前後の空白を外して 1〜40 文字）", () => {
+  const avatars = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i).padStart(16, "0"), name: "x", preview: null, hasStopped: false, animated: false, broken: null }));
+  assert.equal(canCreateAvatar(null), false);
+  assert.equal(canCreateAvatar({ skins: [], avatars: avatars(29), max: 30 }), true);
+  assert.equal(canCreateAvatar({ skins: [], avatars: avatars(30), max: 30 }), false);
+  assert.equal(avatarNameReady(""), false);
+  assert.equal(avatarNameReady("   "), false);
+  assert.equal(avatarNameReady(" a "), true);
+  assert.equal(avatarNameReady("あ".repeat(40)), true);
+  assert.equal(avatarNameReady("あ".repeat(41)), false);
+  // 文字の数え方は Rust と同じ（サロゲートペアの絵文字は1文字）
+  assert.equal(avatarNameReady("😀".repeat(40)), true);
+  assert.equal(avatarNameReady("😀".repeat(41)), false);
+});
+
+test("立ち絵：画面が出す絵は Rust が「使う立ち絵」から解いたもの（スキンの character を直接出さない）。停止中の無い立ち絵は1枚だけ読む", () => {
+  const shell = readFileSync(fileURLToPath(new URL("../src/layout/AppShell.tsx", import.meta.url)), "utf8");
+  assert.ok(shell.includes("useCharacter()"));
+  assert.doesNotMatch(shell, /skin\?\.character(?![A-Za-z])/);
+  // 「立ち絵を出す」のチェックは無くした（「出さない」は一覧で選び、Rust が character を null にする）
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  assert.ok(!view.includes("characterVisible"));
+  const skinsView = readFileSync(fileURLToPath(new URL("../src/views/SettingsSkins.tsx", import.meta.url)), "utf8");
+  assert.ok(!skinsView.includes("characterVisible") && skinsView.includes("<AvatarsField />"));
+  // 登録した立ち絵（停止中なし）は Rust が再生中の絵を両方に入れて渡す → 1枚だけ読み、再生・一時停止で key が変わらない
+  const one = { path: "avatars/x/playing.gif", still: "avatars/x/derived/playing.png" };
+  const ch = { playing: one, stopped: one, widthPx: 180, maxHeightPx: 420, minWindowWidthPx: 920 };
+  const base = { character: ch, visible: true, scale: 1, view: "all", windowWidth: 1200, paneWidth: centerWidth(1200, false), playing: false, reducedMotion: false };
+  const a = characterStage(base)!;
+  const b = characterStage({ ...base, playing: true })!;
+  assert.equal(a.frames.length, 1);
+  assert.deepEqual(a.frames.map((f) => f.key), b.frames.map((f) => f.key));
+  // 曲一覧の側に MIN_LIST_SIDE_PX 残らなければ隠す
+  assert.equal(characterLayout({ ...base, paneWidth: RAIL_MIN_PX + RAIL_PADDING + MIN_LIST_SIDE_PX - 1 }), null);
+  assert.ok(characterLayout({ ...base, paneWidth: RAIL_MIN_PX + RAIL_PADDING + MIN_LIST_SIDE_PX }));
+  assert.equal(characterStage({ ...base, character: null }), null);
+});
+
+test("立ち絵（直し1回目）：「既定の見た目に戻す」の隣に「立ち絵を出さない」。立ち絵は残ることを書く。小窓を閉じたら選んだ画像を捨てる", () => {
+  const skinsView = readFileSync(fileURLToPath(new URL("../src/views/SettingsSkins.tsx", import.meta.url)), "utf8");
+  const reset = skinsView.indexOf("既定の見た目に戻す\n");
+  const hide = skinsView.indexOf("立ち絵を出さない\n");
+  assert.ok(reset > 0 && hide > reset, "the hide button sits right after the reset button");
+  // 間に別の欄を挟まない（同じ行の中）
+  assert.ok(!skinsView.slice(reset, hide).includes('className="field"'));
+  assert.ok(skinsView.includes("onClick={() => void hideAvatar()}"));
+  assert.match(skinsView, /「既定の見た目に戻す」はスキンだけを戻し、立ち絵は残ります/);
+  assert.match(skinsView, /同じメニューの「立ち絵を出さない」/);
+  const store = readFileSync(fileURLToPath(new URL("../src/stores/skin.ts", import.meta.url)), "utf8");
+  assert.ok(store.includes("receive(await api.avatarsHide())"));
+  const cmds = readFileSync(fileURLToPath(new URL("../src/ipc/commands.ts", import.meta.url)), "utf8");
+  assert.ok(cmds.includes('invoke<SkinState>("avatars_hide")'));
+  // Rust の窓口に登録してある
+  const lib = readFileSync(fileURLToPath(new URL("../src-tauri/src/lib.rs", import.meta.url)), "utf8");
+  assert.ok(lib.includes("commands::avatars::avatars_hide,"));
+  // 小窓は、閉じるとき（作った・やめた・画面を離れた）に Rust が持つ選んだ画像を捨てる
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  assert.ok(view.includes("useEffect(() => () => void cancelAvatarPick(), [])"));
+});
+
+// ---------------- v3.9.0 直し2回目 ----------------
+
+test("直し2回目：大きさの上限 200%（下限 75%）。Rust の CHARACTER_SCALE_MIN・MAX と同じ値", () => {
+  assert.equal(SCALE_MIN, 0.75);
+  assert.equal(SCALE_MAX, 2);
+  assert.equal(clampScale(2.5), 2);
+  assert.equal(clampScale(1.6), 1.6);
+  assert.equal(clampScale(0.5), 0.75);
+  const store = readFileSync(fileURLToPath(new URL("../src-tauri/src/settings/store.rs", import.meta.url)), "utf8");
+  assert.ok(store.includes(`pub const CHARACTER_SCALE_MIN: f32 = ${SCALE_MIN};`));
+  assert.ok(store.includes(`pub const CHARACTER_SCALE_MAX: f32 = ${SCALE_MAX.toFixed(1)};`));
+  // つまみは SCALE_MIN〜SCALE_MAX を 5% 刻み
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  assert.ok(view.includes("min={SCALE_MIN}") && view.includes("max={SCALE_MAX}") && view.includes("step={0.05}"));
+});
+
+
+test("直し2回目：立ち絵は高さに合わせて出し、横長の左右は欄で切る（幅で縮めない）。スキンの立ち絵も同じ", () => {
+  assert.deepEqual(characterImageStyle(420), { height: "min(420px, 100%)", width: "auto", maxWidth: "none", flex: "none" });
+  assert.equal(characterImageStyle(840).height, "min(840px, 100%)");
+  const layer = readFileSync(fileURLToPath(new URL("../src/components/CharacterLayer.tsx", import.meta.url)), "utf8");
+  assert.ok(layer.includes("style={characterImageStyle(st.maxHeightPx)}"));
+  assert.ok(!layer.includes("maxWidth: st.widthPx"));
+  // 欄は中央揃え・下揃えで、はみ出しを切る（.character-rail）。画像は縮まない（flex: none）
+  const css = readFileSync(fileURLToPath(new URL("../src/theme/base.css", import.meta.url)), "utf8");
+  const rail = css.slice(css.indexOf(".character-rail {"), css.indexOf("}", css.indexOf(".character-rail {")));
+  for (const d of ["overflow: hidden", "justify-content: center", "align-items: flex-end"]) assert.ok(rail.includes(d), d);
+  const img = css.slice(css.indexOf(".character-img {"), css.indexOf("}", css.indexOf(".character-img {")));
+  assert.ok(img.includes("flex: none"));
+});
+
+test("直し2回目：カード全体を押すと切り替わる。中のボタン（使う・変更・削除）からは二重に走らない。キーボードは Enter・Space", () => {
+  const row = { broken: null };
+  // クリック
+  assert.equal(cardClickSwitches(row, false, false), true);
+  assert.equal(cardClickSwitches(row, false, true), false); // 中のボタン：ボタンが処理する
+  assert.equal(cardClickSwitches(row, true, false), false); // 使用中
+  assert.equal(cardClickSwitches({ broken: "avatar_broken" }, false, false), false);
+  // キー
+  assert.equal(cardKeySwitches("Enter", row, false, true), true);
+  assert.equal(cardKeySwitches(" ", row, false, true), true);
+  assert.equal(cardKeySwitches("Enter", row, false, false), false); // 中のボタンでの Enter
+  assert.equal(cardKeySwitches("a", row, false, true), false);
+  assert.equal(cardKeySwitches("Enter", row, true, true), false);
+  assert.equal(cardKeySwitches("Enter", { broken: "avatar_broken" }, false, true), false);
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  // カードは押せる部品（キーボードで移れる）で、この2つの決まりを通す
+  assert.ok(view.includes('role="button"') && view.includes("tabIndex={pickable ? 0 : -1}"));
+  assert.ok(view.includes('cardClickSwitches(r, on, !!(e.target as HTMLElement).closest("button"))'));
+  assert.ok(view.includes("cardKeySwitches(e.key, r, on, e.target === e.currentTarget)"));
+  // ボタンは「使う」「変更」「削除」（「名前を変える」は「変更」の小窓へまとめた）
+  for (const b of ["使う", "変更", "削除"]) assert.match(view, new RegExp(`>\\s*${b}\\s*</button>`), b);
+  assert.doesNotMatch(view, />\s*名前を変える\s*<\/button>/);
+  // 小窓はカードの外（小窓の中のクリックがカードへ伝わらない）
+  const grid = view.indexOf('className="skin-grid"');
+  const gridEnd = view.indexOf("立ち絵を足す");
+  assert.ok(view.indexOf("<EditDialog") > gridEnd && view.indexOf("<CreateDialog") > gridEnd && grid < gridEnd);
+});
+
+test("直し2回目：「＋ 立ち絵を追加…」と小窓「立ち絵を追加」。名前は空でよい（Rust がファイル名から作る）。「変更」の小窓", () => {
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  assert.ok(view.includes("＋ 立ち絵を追加…"));
+  assert.ok(view.includes('title="立ち絵を追加"') && view.includes('title="立ち絵を変更"'));
+  for (const old of ["画像から作る", "アップロード"]) assert.ok(!view.includes(old), old);
+  // 名前：空でも押せる・入れたなら 1〜40 文字
+  assert.equal(avatarNameOk(""), true);
+  assert.equal(avatarNameOk("   "), true);
+  assert.equal(avatarNameOk("Pose"), true);
+  assert.equal(avatarNameOk("あ".repeat(41)), false);
+  // 「変更」：差し替え（追加と同じ pick）・停止中を外す・名前。保存は avatars_update
+  for (const t of ["差し替える…", "外す", "元に戻す", "保存"]) assert.ok(view.includes(t), t);
+  assert.ok(view.includes("updateAvatar(a.id, name.trim(), playing?.token ?? null, stopped?.token ?? null, removeStopped && !stopped)"));
+  const cmds = readFileSync(fileURLToPath(new URL("../src/ipc/commands.ts", import.meta.url)), "utf8");
+  assert.ok(cmds.includes('invoke<AvatarSummary>("avatars_update", { id, name, playing, stopped, removeStopped })'));
+  assert.ok(!cmds.includes("avatars_rename"));
+  const lib = readFileSync(fileURLToPath(new URL("../src-tauri/src/lib.rs", import.meta.url)), "utf8");
+  assert.ok(lib.includes("commands::avatars::avatars_update,") && !lib.includes("avatars_rename"));
+  // 追加と変更は同じ選び方（閉じたら選んだ画像を捨てる）
+  assert.ok(view.includes("function usePick()") && (view.match(/usePick\(\)/g) ?? []).length === 3);
+  // 名前の既定の決まりは Rust（name_from_file）。「立ち絵」が最後の既定
+  assert.ok(rustAvatars.includes('pub const DEFAULT_NAME: &str = "立ち絵";'));
+});
+
+// ---------------- v3.9.0 直し3回目 ----------------
+
+
+test("直し3回目：古い呼び名と上限が残っていない（画面・型）", () => {
+  const skinsView = readFileSync(fileURLToPath(new URL("../src/views/SettingsSkins.tsx", import.meta.url)), "utf8");
+  assert.ok(!skinsView.includes("画像から作る"));
+  assert.ok(skinsView.includes("「＋ 立ち絵を追加…」"));
+  const types = readFileSync(fileURLToPath(new URL("../src/ipc/types.ts", import.meta.url)), "utf8");
+  assert.ok(!types.includes("/** 0.75〜1.25 */"));
+  assert.ok(types.includes("0.75〜2"));
+  for (const f of ["../src/views/SettingsAvatars.tsx", "../src/stores/skin.ts", "../src/skins/avatars.ts", "../src/messages/ja.ts"]) {
+    assert.ok(!readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8").includes("画像から作る"), f);
+  }
+});
+
+// ---------------- v3.9.0 直し4回目：専用の幅は絵に左右されない ----------------
+
+
+test("直し4回目：欄の幅を決める CSS は固定値だけ（中身の幅に頼らない）。曲一覧の側は同じ値で空ける", () => {
+  const css = readFileSync(fileURLToPath(new URL("../src/theme/base.css", import.meta.url)), "utf8");
+  const block = (sel: string) => {
+    const i = css.indexOf(`${sel} {`);
+    assert.ok(i >= 0, sel);
+    return css.slice(i, css.indexOf("}", i));
+  };
+  const rail = block(".character-rail");
+  // 流れの外（周りの大きさに効かない）・幅は3つとも同じ値・中身で大きさが変わらない（contain: strict）・はみ出しは切る
+  for (const d of [
+    "position: absolute",
+    "width: var(--character-rail-w)",
+    "min-width: var(--character-rail-w)",
+    "max-width: var(--character-rail-w)",
+    "contain: strict",
+    "overflow: hidden",
+    "justify-content: center",
+    "align-items: flex-end",
+  ]) {
+    assert.ok(rail.includes(d), d);
+  }
+  // 幅を中身で決める書き方をしていない
+  for (const bad of ["min-width: auto", "fit-content", "max-content", "min-content", "width: auto"]) assert.ok(!rail.includes(bad), bad);
+  // 曲一覧などは同じ値で右を空ける（中身の幅は見ない）
+  assert.ok(block(".main.has-character-rail > :not(.topbar):not(.character-rail)").includes("margin-right: var(--character-rail-w)"));
+  // 中央の画面の列は、格子で中身に押し広げられない（minmax(0, 1fr)・min-width: 0）
+  assert.ok(block(".app").includes("grid-template-columns: var(--sidebar-w) minmax(0, 1fr)"));
+  const main = block(".main");
+  assert.ok(main.includes("min-width: 0") && main.includes("overflow: hidden"));
+  // AppShell が入れる値は characterLayout の railPx だけ（絵の大きさは渡していない）
+  const shell = readFileSync(fileURLToPath(new URL("../src/layout/AppShell.tsx", import.meta.url)), "utf8");
+  assert.ok(shell.includes('["--character-rail-w" as any]: `${character.railPx}px`'));
+  assert.equal((shell.match(/--character-rail-w/g) ?? []).length, 1);
+});
+
+// ---------------- v3.9.0 直し5〜8回目：右の専用の幅（2026-11-19 作者の決定。値は暫定） ----------------
+// 直し5回目：窓の幅で決める（立ち絵ごとの幅を使わない）。直し6回目：詳細でも出す（残す幅 360）。
+// 直し7回目：曲一覧の列は引いた後の幅で決める。直し8回目：足りないときは隠す前にまず縮める
+
+const SKIN_WIDTHS = [96, 140, 180, 220, 280]; // スキンの widthPx の範囲（96〜280）と、追加した立ち絵の 180
+const imgOf = (tag: string) => ({ path: `${tag}.png`, still: null });
+const chOf = (widthPx: number, minWindowWidthPx = 920, maxHeightPx = 420) => ({ playing: imgOf(`p${widthPx}`), stopped: imgOf(`s${widthPx}`), widthPx, maxHeightPx, minWindowWidthPx });
+const PAD = RAIL_PADDING;
+
+/** 詳細の配置（AppShell と同じ形。行の高さ・再生バーの高さは、曲一覧の幅で変わる値の代わりに決まった値を渡す） */
+const detailOf = (winW: number, winH: number, slots: number, collapsed: boolean, lyricsRow: boolean, rowH = 60, playerH = 80) => {
+  const inp: DetailInput = { winW, winH, sidebarCollapsed: collapsed || winW < APP.sidebarAutoBelow, slots, lyricsRow, rowHeight: () => rowH, playerH };
+  return detailLayout(inp);
+};
+
+/** 表示の形ごとの「窓の幅 → 曲一覧の側（引く前）」と残す幅（AppShell・useDetailLayout と同じ） */
+const shapes = () => {
+  const out: { key: string; paneFor: (w: number) => number; minList: number; detail: boolean; winH: number; slots: number; collapsed: boolean }[] = [];
+  for (const collapsed of [false, true]) {
+    out.push({ key: `normal collapsed=${collapsed}`, paneFor: (w) => centerWidth(w, collapsed), minList: MIN_LIST_SIDE_PX, detail: false, winH: 900, slots: 0, collapsed });
+    for (const winH of [480, 760, 1080, 1440]) {
+      for (const slots of [0, 1, 2, 3]) {
+        out.push({ key: `detail H=${winH} slots=${slots} collapsed=${collapsed}`, paneFor: (w) => detailOf(w, winH, slots, collapsed, true).listW, minList: DETAIL.listMin, detail: true, winH, slots, collapsed });
+      }
+    }
+  }
+  return out;
+};
+
+test("直し5〜8回目：定数（18%・140〜480px・暫定）と残す幅（ふだん 634＝3.8.1 の窓 920 で残っていた幅、詳細 360＝DETAIL.listMin。character.ts に写さない）", () => {
+  assert.equal(RAIL_WINDOW_RATIO, 0.18);
+  assert.equal(RAIL_MIN_PX, 140);
+  assert.equal(RAIL_MAX_PX, 480);
+  assert.equal(PAD, 12);
+  assert.equal(MIN_LIST_SIDE_PX, centerWidth(920, true) - (180 + 12));
+  assert.equal(MIN_LIST_SIDE_PX, 634);
+  assert.equal(DETAIL.listMin, 360);
+  const src = readFileSync(fileURLToPath(new URL("../src/skins/character.ts", import.meta.url)), "utf8");
+  assert.ok(src.includes("2026-11-19 作者の決定。値は暫定"));
+  assert.doesNotMatch(src.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, ""), /\b360\b/);
+  const hook = readFileSync(fileURLToPath(new URL("../src/layout/useDetailLayout.ts", import.meta.url)), "utf8");
+  assert.ok(hook.includes("return D ? DETAIL.listMin : MIN_LIST_SIDE_PX;"));
+  assert.ok(hook.includes("return D ? D.listW : centerWidth(winW, collapsed);"));
+  const shell = readFileSync(fileURLToPath(new URL("../src/layout/AppShell.tsx", import.meta.url)), "utf8");
+  assert.ok(shell.includes("windowWidth: size.width,"));
+  assert.ok(shell.includes("paneWidth: characterPaneOf(size.width, D, collapsed),"));
+  assert.ok(shell.includes("minListPx: characterMinListOf(D),"));
+});
+
+test("直し8回目：専用の幅＝clamp(140, min(窓 × 18% × 大きさ, 曲一覧の側 − 残す幅 − 12), 480)。140 まで縮めても残す幅を割るときだけ隠す", () => {
+  for (const minList of [MIN_LIST_SIDE_PX, DETAIL.listMin]) {
+    for (let pane = 300; pane <= 2600; pane += 7) {
+      for (let w = 480; w <= 2560; w += 53) {
+        for (let pct = 75; pct <= 200; pct += 5) {
+          const sc = pct / 100;
+          const r = railWidthFor(w, sc, pane, minList);
+          const ideal = Math.round(Math.min(480, Math.max(140, w * 0.18 * sc)));
+          assert.equal(idealRailWidth(w, sc), ideal);
+          if (pane - (140 + PAD) < minList) {
+            assert.equal(r, null);
+            assert.equal(characterFits(pane, minList), false);
+            assert.equal(characterFitState(w, sc, pane, minList), "hidden");
+          } else {
+            assert.equal(r, Math.min(ideal, Math.floor(pane - minList - PAD)));
+            assert.ok(r! >= 140 && r! <= 480);
+            // 出すときは残す幅が守られる
+            assert.ok(pane - (r! + PAD) >= minList);
+            assert.equal(characterFits(pane, minList), true);
+            assert.equal(characterFitState(w, sc, pane, minList), r! < ideal ? "shrunk" : "full");
+          }
+        }
+      }
+    }
+  }
+});
+
+test("直し8回目：(1) 窓を1pxずつ広げたとき、ふだんの表示では一度出たら隠れない。詳細で隠れ直すのは、曲一覧の側そのものが狭くなる所（詳細の配置・サイドバー・外の余白）だけ", () => {
+  const found = new Set<string>();
+  for (const sh of shapes()) {
+    let seen = false;
+    let start = 0;
+    let maxPaneSoFar = 0;
+    for (let w = 480; w <= 2560; w++) {
+      const pane = sh.paneFor(w);
+      const shown = characterFits(pane, sh.minList);
+      if (shown) {
+        if (start) found.add(`${sh.detail ? "detail" : "normal"} collapsed=${sh.collapsed} ${start}-${w - 1}`);
+        start = 0;
+        seen = true;
+      } else if (seen && !start) start = w;
+      if (seen && !shown) {
+        // 隠れ直すのは、それより狭い窓のときより曲一覧の側が狭くなったときだけ（立ち絵の決め方が谷を作っていない）
+        assert.ok(pane < maxPaneSoFar, `${sh.key} ${w}: pane ${pane} max ${maxPaneSoFar}`);
+      }
+      // 大きさに関係しない（出す・隠すは引く前の幅だけで決まる）
+      for (const sc of [0.75, 1, 2]) assert.equal(characterFitState(w, sc, pane, sh.minList) !== "hidden", shown);
+      maxPaneSoFar = Math.max(maxPaneSoFar, pane);
+    }
+    if (start) found.add(`${sh.detail ? "detail" : "normal"} collapsed=${sh.collapsed} ${start}-2560`);
+  }
+  // ふだんの表示：谷は無い。詳細：谷はこの3つだけ（どれも曲一覧の側が狭くなる所）
+  //   600〜605px（6px）：外の余白と間が 6px → 10px に増え、曲一覧の側（ミキサーは下）が 512px を切る
+  //   844〜995px（152px）：窓が横長のとき、詳細がミキサーを横に並べ、曲一覧の側が 360px から始まる（140 + 12 を足せない）
+  //   1100〜1167px（68px）：サイドバーを開く設定で、窓 1100px でサイドバーが開き、曲一覧の側が 172px 狭くなる
+  assert.deepEqual([...found].sort(), [
+    "detail collapsed=false 1100-1167",
+    "detail collapsed=false 600-605",
+    "detail collapsed=false 844-995",
+    "detail collapsed=true 600-605",
+    "detail collapsed=true 844-995",
+  ]);
+});
+
+test("直し8回目：前に隠れていた形（窓 約1220px・サイドバーを開いた詳細／約1060px・たたんだ詳細）と、窓 1400px・100%・詳細の左右で出る", () => {
+  for (const [w, collapsed] of [[1220, false], [1060, true], [1400, false]] as const) {
+    for (const slots of [0, 1, 2, 3]) {
+      const D = detailOf(w, 800, slots, collapsed, true);
+      assert.equal(D.side, true, `${w}`);
+      const l = characterLayout({ character: chOf(220), visible: true, scale: 1, view: "all", windowWidth: w, paneWidth: D.listW, minListPx: DETAIL.listMin, playing: false, reducedMotion: false });
+      assert.ok(l, `${w} slots=${slots}`);
+      assert.ok(D.listW - l!.railPx >= DETAIL.listMin);
+    }
+  }
+  // 1220px・開いた詳細：直し7回目までは隠れていた（窓だけで決めた幅 220 + 12 では 360 残らない）。今は縮めて出す
+  const D = detailOf(1220, 800, 2, false, true);
+  assert.ok(D.listW - (idealRailWidth(1220, 1) + PAD) < DETAIL.listMin);
+  assert.equal(characterFitState(1220, 1, D.listW, DETAIL.listMin), "shrunk");
+});
+
+test("直し6・8回目：(2)(3) 詳細の左右・上下 × 窓 480〜2560px × 大きさ 75〜200% × 出力先の数で、出すときは曲一覧に 360px 残り、曲一覧・ミキサー・立ち絵が重ならない", () => {
+  let shownSide = 0;
+  let shownStack = 0;
+  for (let winW = 480; winW <= 2560; winW += 20) {
+    for (const winH of [480, 760, 1080, 1440, 2600]) {
+      for (const slots of [0, 1, 2, 3]) {
+        for (const collapsed of [false, true]) {
+          for (const lyricsRow of [false, true]) {
+            const D = detailOf(winW, winH, slots, collapsed, lyricsRow);
+            const { pad, gap } = winW < APP.narrowBelow ? { pad: APP.padNarrow, gap: APP.gapNarrow } : { pad: APP.pad, gap: APP.gap };
+            const sideW = collapsed || winW < APP.sidebarAutoBelow ? APP.sidebarCollapsedW : APP.sidebarW;
+            const x0 = pad + sideW + gap; // 中央の画面（.main）の左
+            for (let pct = 75; pct <= 200; pct += 25) {
+              const sc = pct / 100;
+              const l = characterLayout({ character: chOf(220), visible: true, scale: sc, view: "all", windowWidth: winW, paneWidth: D.listW, minListPx: DETAIL.listMin, playing: false, reducedMotion: false });
+              const key = `${winW}x${winH} slots=${slots} collapsed=${collapsed} lyrics=${lyricsRow} ${pct}%`;
+              assert.equal(!!l, D.listW - (RAIL_MIN_PX + PAD) >= DETAIL.listMin, key);
+              if (!l) continue;
+              const railL = x0 + D.listW - l.railPx;
+              const railR = x0 + D.listW;
+              assert.ok(railL - x0 >= DETAIL.listMin, key);
+              assert.ok(l.widthPx >= RAIL_MIN_PX && l.widthPx <= RAIL_MAX_PX, key);
+              if (D.side) {
+                shownSide++;
+                const mixerL = x0 + D.listW + gap;
+                assert.ok(railR < mixerL, key);
+                assert.equal(mixerL + D.mixerW, x0 + D.centerW, key);
+              } else {
+                shownStack++;
+                assert.equal(D.listW, D.centerW, key);
+                const mainBottom = pad + D.listH;
+                assert.ok(mainBottom < mainBottom + gap && D.mixerH > 0, key);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(shownSide > 100 && shownStack > 100, `${shownSide} ${shownStack}`);
+  // ふだんの表示も、出すときは 634px 残る
+  for (let w = 480; w <= 2560; w += 3) {
+    for (const collapsed of [false, true]) {
+      for (const sc of [0.75, 1, 2]) {
+        const pane = centerWidth(w, collapsed);
+        const l = characterLayout({ character: chOf(180), visible: true, scale: sc, view: "all", windowWidth: w, paneWidth: pane, playing: false, reducedMotion: false });
+        if (l) assert.ok(pane - l.railPx >= MIN_LIST_SIDE_PX, `${w}`);
+      }
+    }
+  }
+  const css = readFileSync(fileURLToPath(new URL("../src/theme/base.css", import.meta.url)), "utf8");
+  const i = css.indexOf(".main.has-character-rail {");
+  assert.ok(css.slice(i, css.indexOf("}", i)).includes("position: relative"));
+  const shell = readFileSync(fileURLToPath(new URL("../src/layout/AppShell.tsx", import.meta.url)), "utf8");
+  assert.ok(shell.indexOf("<CharacterLayer") < shell.indexOf("</main>") && shell.indexOf("</main>") < shell.indexOf("<Mixer"));
+});
+
+test("直し5・7・8回目：(4) 同じ窓・同じ大きさなら、どの立ち絵（スキンの幅 96〜280・高さ・窓の下限がばらばら）でも、専用の幅も曲一覧の列も同じ", () => {
+  for (const sh of shapes().filter((x) => x.slots <= 1 && (x.winH === 760 || !x.detail))) {
+    for (let w = 480; w <= 2560; w += 20) {
+      const pane = sh.paneFor(w);
+      for (let pct = 75; pct <= 200; pct += 25) {
+        const sc = pct / 100;
+        const seen = new Set<string>();
+        for (const wp of SKIN_WIDTHS) {
+          for (const mw of [760, 920, 1200]) {
+            const l = characterLayout({ character: chOf(wp, mw, 160 + wp), visible: true, scale: sc, view: "all", windowWidth: w, paneWidth: pane, minListPx: sh.minList, playing: false, reducedMotion: false });
+            seen.add(`${l ? `${l.railPx}/${l.widthPx}` : "hidden"} ${JSON.stringify(listLayoutFor(listSideWidth(pane, l)))}`);
+          }
+        }
+        assert.equal(seen.size, 1, `${sh.key} ${w} ${pct}%`);
+      }
+    }
+  }
+});
+
+test("直し7・8回目：曲一覧の列は引いた後の幅（.main − 専用の幅）で決め、出す判断と幅は引く前の幅で決める（引きずり合わない）", () => {
+  let shown = 0;
+  for (const sh of shapes().filter((x) => x.slots === 2 && (x.winH === 760 || !x.detail))) {
+    for (let w = 480; w <= 2560; w += 10) {
+      const pane = sh.paneFor(w);
+      for (const sc of [0.75, 1, 1.5, 2]) {
+        const input = { character: chOf(180), visible: true, scale: sc, view: "all", windowWidth: w, paneWidth: pane, minListPx: sh.minList, playing: false, reducedMotion: false };
+        const l = characterLayout(input);
+        const listW = listSideWidth(pane, l);
+        if (l) {
+          shown++;
+          assert.equal(listW, pane - l.railPx);
+          assert.ok(listW >= sh.minList);
+          const lay = listLayoutFor(listW);
+          assert.equal(lay.hideGenre, listW < LIST_BELOW.genre);
+          assert.equal(lay.hideAlbum, listW < LIST_BELOW.album);
+          assert.equal(lay.rowH, listW < LIST_BELOW.row ? 48 : 60);
+        } else assert.equal(listW, pane);
+        // 引いた後の幅は、出す判断・幅の入力に入らない（入力は引く前の幅だけ。同じ入力なら同じ答え）
+        assert.deepEqual(characterLayout(input), l);
+      }
+    }
+  }
+  assert.ok(shown > 1000);
+  // 画面で確かめた形（窓 1600px・詳細の左右・150%・100%）：アルバムとジャンルを隠す
+  const D = detailOf(1600, 1000, 2, false, true);
+  for (const sc of [1.5, 1]) {
+    const l = characterLayout({ character: chOf(220), visible: true, scale: sc, view: "all", windowWidth: 1600, paneWidth: D.listW, minListPx: DETAIL.listMin, playing: false, reducedMotion: false })!;
+    const listW = listSideWidth(D.listW, l);
+    assert.ok(listW >= DETAIL.listMin && listW < LIST_BELOW.album, `${sc}: ${listW}`);
+    assert.equal(listLayoutFor(listW).hideGenre, true);
+  }
+  const shell = readFileSync(fileURLToPath(new URL("../src/layout/AppShell.tsx", import.meta.url)), "utf8");
+  const input = shell.slice(shell.indexOf("const characterInput = {"), shell.indexOf("const character = characterLayout(characterInput);"));
+  assert.ok(input.length > 0 && !input.includes("listPaneWidth") && !input.includes("mainPaneWidth"));
+  assert.ok(shell.indexOf("const character = characterLayout(characterInput);") < shell.indexOf("listPaneWidth.set(listSideWidth(w, railRef.current))"));
+  assert.ok(shell.includes("mainPaneWidth.set(w);") && shell.includes("}, [railPx]);"));
+  const top = readFileSync(fileURLToPath(new URL("../src/layout/TopBar.tsx", import.meta.url)), "utf8");
+  assert.ok(top.includes("const narrow = listLayoutFor(mainW).topbarNarrow;"));
+  assert.ok(top.includes("<ViewModeSwitch width={listW} labels={viewModeLabelsFit(mainW, narrow)} />"));
+  const sizeSrc = readFileSync(fileURLToPath(new URL("../src/components/useLayoutSize.ts", import.meta.url)), "utf8");
+  assert.ok(sizeSrc.includes("return listLayoutFor(useStore(listPaneWidth));"));
+});
+
+test("直し8回目：(5) 大きさのつまみの下の案内は、実際の出し方（いちばん大きく・縮めて・隠す）と食い違わない", () => {
+  for (const sh of shapes().filter((x) => x.slots === 1 || !x.detail)) {
+    for (const pct of [75, 100, 150, 200]) {
+      const sc = pct / 100;
+      const th = characterThresholds(sc, sh.paneFor, sh.minList);
+      assert.ok(th.showFrom !== null && th.fullFrom !== null, sh.key);
+      assert.ok(th.fullFrom! >= th.showFrom!);
+      for (let w = 480; w <= 2560; w += 3) {
+        const pane = sh.paneFor(w);
+        const st = characterFitState(w, sc, pane, sh.minList);
+        if (w >= th.fullFrom!) assert.equal(st, "full", `${sh.key} ${pct}% ${w}`);
+        if (w >= th.showFrom!) assert.notEqual(st, "hidden", `${sh.key} ${pct}% ${w}`);
+        if (th.fullOnlyAbove && w < th.fullFrom!) assert.notEqual(st, "full", `${sh.key} ${pct}% ${w}`);
+        if (th.hiddenBelow && w < th.showFrom!) assert.equal(st, "hidden", `${sh.key} ${pct}% ${w}`);
+        if (w % 51 !== 0) continue;
+        const n = characterWindowNote(true, sc, w, pane, sh.paneFor, sh.minList, sh.detail)!;
+        const l = characterLayout({ character: chOf(96), visible: true, scale: sc, view: "all", windowWidth: w, paneWidth: pane, minListPx: sh.minList, playing: false, reducedMotion: false });
+        assert.equal(n.fits, !!l);
+        assert.equal(n.state, st);
+        assert.ok(n.text.startsWith(sh.detail ? "詳細の表示で、" : "この大きさ"), n.text);
+        assert.ok(n.text.includes(`窓の幅がおよそ ${th.fullFrom}px 以上でいちばん大きく出ます。`), n.text);
+        if (th.fullFrom! > th.showFrom!) {
+          assert.ok(n.text.includes(th.fullOnlyAbove ? "それより狭いと縮めて出し、" : "それより狭いと縮めることがあり、"));
+          assert.ok(n.text.includes(th.hiddenBelow ? `およそ ${th.showFrom}px より狭いと隠します。` : `およそ ${th.showFrom}px より狭いと隠すことがあります。`));
+        } else {
+          assert.ok(n.text.includes(th.hiddenBelow ? "それより狭いと隠します。" : "それより狭いと隠すことがあります。"));
+        }
+        assert.ok(n.text.includes({ full: "いちばん大きく出ています。", shrunk: "縮めて出しています。", hidden: "立ち絵を隠しています。" }[st]), n.text);
+      }
+    }
+  }
+  // 例：ふだんの表示・サイドバーを開く設定・100%
+  const open = (w: number) => centerWidth(w, false);
+  const th = characterThresholds(1, open, MIN_LIST_SIDE_PX);
+  assert.deepEqual([th.showFrom, th.hiddenBelow], [880, true]);
+  // 出す立ち絵が無いときは案内を出さない
+  assert.equal(characterWindowNote(false, 1, 1200, open(1200), open), null);
+  // 画面：AppShell と同じ詳細の配置・残す幅で計算する。隠しているときは【隠しています】を付ける
+  const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
+  assert.ok(view.includes("characterWindowNote(!!st?.character, s.skin?.characterScale ?? 1, size.width, pane, paneFor, characterMinListOf(D), !!D)"));
+  assert.ok(view.includes("useDetailLayout(size, s, s.ui.sidebarCollapsed || size.sidebarAuto, lyricsRowOn(s))"));
+  assert.ok(view.includes("useCharacterPaneFor(size, s, lyricsRowOn(s))"));
+  assert.ok(view.indexOf("<ScaleSlider />") < view.indexOf("<WindowNote />"));
+  assert.ok(view.includes("【隠しています】"));
 });

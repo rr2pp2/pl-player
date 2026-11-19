@@ -43,6 +43,8 @@ pub(crate) fn from_screen(s: AppSettings, before: &AppSettings, bg_dir: &Path) -
     let mut s = keep_background_inside(s, before, bg_dir);
     // v3.2.0：使うスキンは skins_apply（確かめてから当てる）だけが変える。画面から来た値は使わない
     s.skin.active_skin_id = before.skin.active_skin_id.clone();
+    // v3.9.0：使う立ち絵も同じ（変えるのは avatars_use・削除だけ）。「立ち絵を出す」の値は sanitize がこれに合わせる
+    s.skin.avatar = before.skin.avatar.clone();
     s
 }
 
@@ -138,6 +140,8 @@ pub async fn settings_import(app: AppHandle, state: State<'_, AppState>) -> AppR
     let _ = app.emit(ev::SETTINGS, &settings);
     let _ = app.emit(ev::PLAYLISTS, ());
     let _ = app.emit(ev::LIBRARY, ());
+    // v3.9.0：zip の「使う立ち絵」がこの PC に無い立ち絵・スキンなら「スキンの立ち絵」に戻し、画面の立ち絵を当て直す
+    crate::skins::runtime::after_settings_import(&app);
     // 読み込んだライブラリのフォルダを取り込む（この PC にあるものだけ）。
     // v3.1.1：ネットワーク上の場所は backup::import が入れない。在るかの確かめは取り込みのスレッドの中で行う
     let folders: Vec<PathBuf> = folders.into_iter().map(|(p, _)| PathBuf::from(p)).collect();
@@ -189,8 +193,21 @@ mod tests {
         from.skin.character_scale = 0.8;
         from.skin.safe_mode_next_start = true;
         from.theme = "light".into();
-        let s = from_screen(from, &before, bg);
+        let s = from_screen(from.clone(), &before, bg);
         assert_eq!(s.skin.active_skin_id, "quiet-paper");
+        // v3.9.0：使う立ち絵も、画面から来た値では変わらない（変えるのは avatars_use・削除だけ）
+        let mut b2 = before.clone();
+        b2.skin.set_avatar("avatar:0123456789abcdef");
+        let mut f2 = from.clone();
+        f2.skin.avatar = "skin:never-checked".into();
+        let s2 = from_screen(f2, &b2, bg).sanitize();
+        assert_eq!(s2.skin.avatar, "avatar:0123456789abcdef");
+        // 「立ち絵を出す」は使う立ち絵に合わせる（画面から false が来ても、出さないにはならない）
+        assert!(s2.skin.character_visible);
+        let mut b3 = before.clone();
+        b3.skin.set_avatar("none");
+        let s3 = from_screen(from.clone(), &b3, bg).sanitize();
+        assert_eq!((s3.skin.avatar.as_str(), s3.skin.character_visible), ("none", false));
         assert!(!s.skin.character_visible && s.skin.safe_mode_next_start);
         assert!((s.skin.character_scale - 0.8).abs() < 1e-6);
         assert_eq!(s.theme, "light");

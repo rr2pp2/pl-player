@@ -164,15 +164,27 @@ impl Default for UiSettings {
     }
 }
 
+/// 立ち絵の大きさの範囲（v3.9.0：上限を 1.25 → 2.0。画面の src\skins\character.ts の SCALE_MIN・SCALE_MAX と同じ）
+pub const CHARACTER_SCALE_MIN: f32 = 0.75;
+pub const CHARACTER_SCALE_MAX: f32 = 2.0;
+
 /// 着せ替え（v3.2.0）。古い設定に無ければ既定のスキン・立ち絵は出す・大きさ 100%
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SkinSettings {
     /// 使っているスキン（`builtin:default` か、skins\ の下のフォルダの名前）。変えるのは skins::runtime の適用だけ
     pub active_skin_id: String,
-    /// 立ち絵を出すか
+    /// 立ち絵を出すか。v3.9.0 からは `avatar` が決める（`avatar` が `none` でなければ true。`sanitize` が合わせる）。
+    /// 3.8.1 までの版へ戻したときにも同じ見た目になるよう、値は残して書く
     pub character_visible: bool,
-    /// 立ち絵の大きさ 0.75〜1.25
+    /// v3.9.0：使う立ち絵（`skins::avatars::Choice`）。`skin`（スキンの立ち絵。既定）・`none`（出さない）・
+    /// `avatar:<id>`（登録した立ち絵）・`skin:<id>`（取り込んだスキンの立ち絵）。変えるのは skins::runtime の「使う」・削除だけ
+    /// （画面から来た設定の保存では変わらない）。3.8.1 までの設定には無い：`sanitize` が「立ち絵を出す」の値から決める
+    /// （出す → `skin`、出さない → `none`。見た目を変えない）。値があって壊れている（形の違う文字・空の文字・文字でない値）は `skin`
+    /// （この値だけ。設定全体は既定に戻さない）。「値が無い」は空のまま読み（`de_avatar`）、「値が壊れている」と分ける
+    #[serde(default, deserialize_with = "de_avatar")]
+    pub avatar: String,
+    /// 立ち絵の大きさ 0.75〜2.0（v3.9.0 で上限を 1.25 → 2.0 に。3.8.1 までの値はそのまま読める）
     pub character_scale: f32,
     /// 次の起動だけ既定の見た目にする（起動したら消える）
     pub safe_mode_next_start: bool,
@@ -183,9 +195,26 @@ impl Default for SkinSettings {
         Self {
             active_skin_id: crate::skins::names::BUILTIN_ID.into(),
             character_visible: true,
+            avatar: crate::skins::avatars::CHOICE_SKIN.into(),
             character_scale: 1.0,
             safe_mode_next_start: false,
         }
+    }
+}
+
+/// v3.9.0：使う立ち絵の値。文字ならそのまま受け（形は `sanitize` で確かめる）、文字でない値と空の文字は `skin`（値が壊れている）。
+/// 項目が無いとき（3.8.1 までの設定・zip）だけ空のまま残す（この関数は呼ばれず、`#[serde(default)]` の空）。
+/// 設定は `sanitize` が「立ち絵を出す」の値から決め、設定の zip の読み込みはこの PC の値を変えない（settings::backup）
+fn de_avatar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_str().filter(|s| !s.is_empty()).map(|s| s.to_string()).unwrap_or_else(|| crate::skins::avatars::CHOICE_SKIN.into()))
+}
+
+impl SkinSettings {
+    /// 使う立ち絵を変える（形をそろえ、「立ち絵を出す」の値も合わせる）
+    pub fn set_avatar(&mut self, choice: &str) {
+        self.avatar = crate::skins::avatars::normalize_choice(choice);
+        self.character_visible = self.avatar != crate::skins::avatars::CHOICE_NONE;
     }
 }
 
@@ -294,10 +323,17 @@ impl AppSettings {
         self.ui.sidebar_icon_px = clamp_icon_px(self.ui.sidebar_icon_px as f64);
         // v3.2.0：着せ替え
         let sk = &mut self.skin;
-        sk.character_scale = if sk.character_scale.is_finite() { sk.character_scale.clamp(0.75, 1.25) } else { 1.0 };
+        sk.character_scale = if sk.character_scale.is_finite() { sk.character_scale.clamp(CHARACTER_SCALE_MIN, CHARACTER_SCALE_MAX) } else { 1.0 };
         if sk.active_skin_id != crate::skins::names::BUILTIN_ID && !crate::skins::names::valid_id(&sk.active_skin_id) {
             sk.active_skin_id = crate::skins::names::BUILTIN_ID.into();
         }
+        // v3.9.0：使う立ち絵。3.8.1 までの設定（値が無い）は「立ち絵を出す」の値から決める（見た目を変えない）
+        let avatar = if sk.avatar.is_empty() {
+            if sk.character_visible { crate::skins::avatars::CHOICE_SKIN } else { crate::skins::avatars::CHOICE_NONE }.to_string()
+        } else {
+            sk.avatar.clone()
+        };
+        sk.set_avatar(&avatar);
         self
     }
 }
@@ -404,12 +440,68 @@ mod tests {
         let sk: AppSettings = serde_json::from_str(r#"{"skin":{"activeSkinId":"../x","characterScale":9}}"#).unwrap();
         let sk = sk.sanitize();
         assert_eq!(sk.skin.active_skin_id, "builtin:default");
-        assert_eq!(sk.skin.character_scale, 1.25);
+        assert_eq!(sk.skin.character_scale, 2.0);
         assert!(sk.skin.character_visible);
         let ok: AppSettings = serde_json::from_str(r#"{"skin":{"activeSkinId":"shape-test","characterScale":0.5}}"#).unwrap();
         let ok = ok.sanitize();
         assert_eq!(ok.skin.active_skin_id, "shape-test");
         assert_eq!(ok.skin.character_scale, 0.75);
+        // v3.9.0：上限 2.0。3.8.1 までの 1.25 の値はそのまま・その間の値もそのまま
+        for (v, want) in [(1.25f32, 1.25f32), (1.6, 1.6), (2.0, 2.0), (2.05, 2.0), (0.7, 0.75)] {
+            let x: AppSettings = serde_json::from_str(&format!(r#"{{"skin":{{"characterScale":{v}}}}}"#)).unwrap();
+            assert!((x.sanitize().skin.character_scale - want).abs() < 1e-6, "{v}");
+        }
+        let nan = AppSettings { skin: SkinSettings { character_scale: f32::NAN, ..Default::default() }, ..Default::default() };
+        assert_eq!(nan.sanitize().skin.character_scale, 1.0);
+    }
+
+    /// v3.9.0：使う立ち絵。3.8.1 からの引き継ぎ（値が無い：「立ち絵を出す」がオンならスキンの立ち絵、オフなら出さない＝見た目を変えない）・
+    /// 形の違う値はその値だけスキンの立ち絵・「立ち絵を出す」の値は使う立ち絵に合わせる・DB に保存して読み直す
+    #[test]
+    fn avatar_choice_and_upgrade_from_3_8_1() {
+        let read = |j: &str| serde_json::from_str::<AppSettings>(j).unwrap().sanitize().skin;
+        // 既定・skin の無い古い設定
+        assert_eq!(AppSettings::default().skin.avatar, "skin");
+        assert_eq!(read("{}").avatar, "skin");
+        // 3.8.1 の設定（avatar が無い）
+        let on = read(r#"{"skin":{"activeSkinId":"shape-test","characterVisible":true,"characterScale":1.1,"safeModeNextStart":false}}"#);
+        assert_eq!((on.avatar.as_str(), on.character_visible, on.active_skin_id.as_str()), ("skin", true, "shape-test"));
+        assert!((on.character_scale - 1.1).abs() < 1e-6);
+        let off = read(r#"{"skin":{"activeSkinId":"shape-test","characterVisible":false}}"#);
+        assert_eq!((off.avatar.as_str(), off.character_visible), ("none", false));
+        // 3.9.0 の値
+        for v in ["skin", "none", "avatar:0123456789abcdef", "skin:quiet-paper"] {
+            let s = read(&format!(r#"{{"skin":{{"avatar":"{v}","characterVisible":true}}}}"#));
+            assert_eq!(s.avatar, v);
+            // 「立ち絵を出す」は使う立ち絵に合わせる（3.8.1 へ戻しても同じ見た目）
+            assert_eq!(s.character_visible, v != "none", "{v}");
+        }
+        let s = read(r#"{"skin":{"avatar":"avatar:0123456789abcdef","characterVisible":false}}"#);
+        assert!(s.character_visible);
+        // 形の違う値・文字でない値は、その値だけスキンの立ち絵（ほかの設定は残す）
+        for bad in [r#""avatar:../x""#, r#""skin:builtin:default""#, r#""""#, "5", "null", "true", r#"{"a":1}"#, r#""Skin""#] {
+            let all = serde_json::from_str::<AppSettings>(&format!(r#"{{"theme":"light","skin":{{"avatar":{bad},"characterScale":0.8}}}}"#)).unwrap().sanitize();
+            assert_eq!(all.theme, "light", "{bad}");
+            assert!((all.skin.character_scale - 0.8).abs() < 1e-6);
+            assert_eq!(all.skin.avatar, "skin", "{bad}");
+        }
+        // 「値が無い」と「値が壊れている」を分ける：空の文字は壊れた値（「立ち絵を出す」がオフでも、出さないにはしない）
+        let empty = read(r#"{"skin":{"avatar":"","characterVisible":false}}"#);
+        assert_eq!((empty.avatar.as_str(), empty.character_visible), ("skin", true));
+        let missing = read(r#"{"skin":{"characterVisible":false}}"#);
+        assert_eq!(missing.avatar, "none");
+        // 保存して読み直す
+        let db = Db::open_memory("store_avatar").unwrap();
+        let mut s = AppSettings::default();
+        s.skin.set_avatar("avatar:0123456789abcdef");
+        save(&db, &s).unwrap();
+        assert_eq!(load(&db).skin.avatar, "avatar:0123456789abcdef");
+        s.skin.set_avatar("none");
+        assert!(!s.skin.character_visible);
+        save(&db, &s).unwrap();
+        let back = load(&db).skin;
+        assert_eq!((back.avatar.as_str(), back.character_visible), ("none", false));
+        assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains(r#""avatar":"skin""#));
     }
 
     /// v3.3.0：再生バーのボタンとサイドバーの項目を隠す設定。古い設定（値が無い）では全部出す。

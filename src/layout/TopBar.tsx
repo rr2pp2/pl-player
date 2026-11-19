@@ -14,7 +14,7 @@ import { importProgress, navigate, route, search } from "../stores/library";
 import { notify } from "../stores/notices";
 import { settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
-import { listPaneExitWidth, listPaneWidth } from "../components/useLayoutSize";
+import { listPaneExitWidth, listPaneWidth, mainPaneWidth } from "../components/useLayoutSize";
 import { isDetail, outputs } from "../stores/outputs";
 import { Tip } from "../components/Tip";
 import { IconFilePlus, IconFolderPlus, IconSearch, IconViewCompact, IconViewDetail, IconViewNormal, IconX } from "../components/Icons";
@@ -61,8 +61,10 @@ function ViewModeSwitch(props: { width: number; labels: boolean }) {
 export function TopBar() {
   const r = useStore(route);
   const prog = useStore(importProgress);
+  // v3.9.0 直し7回目：曲一覧の実際の幅（立ち絵の専用の幅を引いたもの）は自動のコンパクトに、上の帯の文字は .main の幅（上の帯は立ち絵の上にもかかる）で決める
   const listW = useStore(listPaneWidth);
-  const narrow = listLayoutFor(listW).topbarNarrow;
+  const mainW = useStore(mainPaneWidth);
+  const narrow = listLayoutFor(mainW).topbarNarrow;
   const [text, setText] = useState(search.get());
   const timer = useRef<number | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -159,7 +161,7 @@ export function TopBar() {
           <IconFolderPlus />
           <span className="hide-narrow">フォルダ</span>
         </button>
-        <ViewModeSwitch width={listW} labels={viewModeLabelsFit(listW, narrow)} />
+        <ViewModeSwitch width={listW} labels={viewModeLabelsFit(mainW, narrow)} />
       </div>
     </header>
   );

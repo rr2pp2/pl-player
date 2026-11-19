@@ -8,6 +8,8 @@
 //! デバイスの名前が入るので、人に渡すときは注意。README）。FORMAT_VERSION は上げない（古い版は知らない名前を読まない）。
 //! 読み込むときは全部を確かめてから書き、出力先は全部オフで入れる（一時停止は呼び出し側）。`outputs.json` の無い zip
 //! （3.7.0 まで）では出力に触らない。表示のモード（DB の `mode`）は入れない
+//!
+//! v3.9.0：着せ替えの設定のうち、使う立ち絵の選択（`skin.avatar`）だけは読み込む（立ち絵の画像は入らない）
 
 use std::fs;
 use std::path::Path;
@@ -174,6 +176,16 @@ fn json_entry<T: serde::de::DeserializeOwned>(entries: &[zip::Entry], name: &str
     }
 }
 
+/// v3.9.0：zip の settings.json に、使う立ち絵の項目（`skin.avatar`）があるか（値が壊れていても、項目があれば true）
+fn avatar_in_zip(entries: &[zip::Entry]) -> bool {
+    entries
+        .iter()
+        .find(|e| e.name == "settings.json")
+        .and_then(|e| serde_json::from_slice::<serde_json::Value>(&e.data).ok())
+        .map(|v| v.get("skin").and_then(|s| s.get("avatar")).is_some())
+        .unwrap_or(false)
+}
+
 /// 読み込み。設定は戻り値で返し、呼び出し側が保存・反映する。
 /// ライブラリのフォルダは記録だけ足す（取り込み直しは呼び出し側が行う）。
 ///
@@ -204,6 +216,9 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     }
     let mut settings: AppSettings = json_entry(entries, "settings.json")?
         .ok_or_else(|| AppError::new(ErrorKind::UnsupportedFormat, "settings.json missing"))?;
+    // v3.9.0：使う立ち絵の選択は zip の値を使う（整える前の値。値があって壊れていれば `skin`。store::de_avatar）。
+    // 値が無い（3.8.1 までの zip。`skin` の項目ごと無い zip も）は None。有る無しは JSON の項目で見る（読んだ形では既定の値と見分けられないため）
+    let zip_avatar = avatar_in_zip(entries).then(|| settings.skin.avatar.clone());
     let folders: Vec<FolderOut> = json_entry(entries, "library.json")?.unwrap_or_default();
     let favs: Vec<String> = json_entry(entries, "favorites.json")?.unwrap_or_default();
     let pls: Vec<PlaylistOut> = json_entry(entries, "playlists.json")?.unwrap_or_default();
@@ -277,8 +292,16 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
         db::playlists::add_tracks(db, id, &ids)?;
         report.playlists += 1;
     }
-    // v3.2.0：着せ替えの設定は読み込まない（スキンそのものは zip に入らず、別の PC には無いことがあるため）
-    settings.skin = store::load(db).skin;
+    // v3.2.0：着せ替えの設定は読み込まない（スキンそのものは zip に入らず、別の PC には無いことがあるため）。
+    // v3.9.0：ただし使う立ち絵の選択は zip の値にする（立ち絵の画像は zip に入らない）。
+    // - 値が無い（3.8.1 までの zip）：この PC の今の選択を変えない（作者の決定。3.8.1 で「立ち絵を出す」を切っていた人に出てしまわないように）
+    // - 値があって壊れている（形の違う文字・文字でない値）：「スキンの立ち絵」（store::de_avatar と normalize_choice）
+    // - この PC に無い立ち絵・スキンを指していたら、呼び出し側（skins::runtime::after_settings_import）が「スキンの立ち絵」に戻す（ここではファイルを見ない）
+    let mut skin = store::load(db).skin;
+    if let Some(v) = zip_avatar {
+        skin.set_avatar(&v);
+    }
+    settings.skin = skin;
     store::save(db, &settings)?;
     let folder_list = folders.into_iter().map(|f| (f.path, f.recursive)).collect();
     report.outputs = outputs.is_some();
@@ -609,6 +632,79 @@ mod tests {
         // 着せ替えは、読み込む前のこの PC の値のまま（返す値も、保存した値も）
         assert_eq!(s2.skin, mine.skin);
         assert_eq!(store::load(&b).skin, mine.skin);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.9.0：使う立ち絵の選択は zip の値を使う（ほかの着せ替えの設定はこの PC の値のまま）。値が無い zip（3.8.1 まで）は
+    /// この PC の今の選択を変えない（直し1回目の作者の決定）。値があって壊れていれば「スキンの立ち絵」。立ち絵の画像は zip に入らない
+    /// （この PC に無い立ち絵を指していたときに戻すのは skins::runtime::after_settings_import。決まりは skins::avatars::resolve のテスト）
+    #[test]
+    fn import_takes_avatar_choice_from_zip() {
+        let tmp = tmp_dir("avatar");
+        let mine_db = |tag: &str| {
+            let b = Db::open_memory(tag).unwrap();
+            let mut mine = AppSettings::default();
+            mine.skin.active_skin_id = "quiet-paper".into();
+            // v3.9.0：大きさの上限は 2.0。125% を超える値も、この PC の値のまま残る
+            mine.skin.character_scale = 1.8;
+            mine.skin.set_avatar("none");
+            store::save(&b, &mine).unwrap();
+            (b, mine)
+        };
+        // 3.9.0 の zip：選択が入る
+        for v in ["avatar:0123456789abcdef", "skin:from-other-pc", "none", "skin"] {
+            let a = Db::open_memory(&format!("backup_avatar_a_{v}")).unwrap();
+            let mut s = AppSettings::default();
+            s.skin.active_skin_id = "from-other-pc".into();
+            s.skin.character_scale = 1.25;
+            s.skin.set_avatar(v);
+            let (entries, _) = export_entries(&a, &s, &tmp.join("no-bg")).unwrap();
+            let settings_json: serde_json::Value = serde_json::from_slice(&entries.iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
+            assert_eq!(settings_json["skin"]["avatar"], v);
+            // 画像は入らない（設定の zip に入るのは決まった名前だけ）
+            assert!(entries.iter().all(|e| !e.name.starts_with("avatars")));
+            let (b, mine) = mine_db(&format!("backup_avatar_b_{v}"));
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+            assert_eq!(r.settings.skin.avatar, v);
+            assert_eq!(r.settings.skin.character_visible, v != "none");
+            assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
+            assert!((r.settings.skin.character_scale - 1.8).abs() < 1e-6);
+            assert!((store::load(&b).skin.character_scale - 1.8).abs() < 1e-6);
+            assert_eq!(store::load(&b).skin.avatar, v);
+        }
+        // 値が無い zip（3.8.1 まで）：この PC の今の選択を変えない（作者の決定）。この PC が「出さない」でも「作った立ち絵」でも、そのまま
+        let old = br#"{"theme":"light","skin":{"activeSkinId":"from-other-pc","characterVisible":true,"characterScale":1.2,"safeModeNextStart":false}}"#;
+        let no_skin_at_all = br#"{"theme":"light"}"#;
+        for (i, json) in [&old[..], &no_skin_at_all[..]].into_iter().enumerate() {
+            for mine_choice in ["none", "avatar:0123456789abcdef", "skin:quiet-paper", "skin"] {
+                let (b, mine) = mine_db(&format!("backup_avatar_old_{i}_{mine_choice}"));
+                let mut m = mine.clone();
+                m.skin.set_avatar(mine_choice);
+                store::save(&b, &m).unwrap();
+                let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+                let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+                assert_eq!(r.settings.theme, "light");
+                assert_eq!(r.settings.skin.avatar, mine_choice, "{i}");
+                assert_eq!(r.settings.skin.character_visible, mine_choice != "none");
+                assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
+                assert_eq!(store::load(&b).skin, m.skin);
+            }
+        }
+        // 値があって壊れている（形の違う文字・空の文字・文字でない値）→ スキンの立ち絵（この PC が「出さない」でも）
+        let bad = br#"{"theme":"light","skin":{"avatar":"avatar:../../x"}}"#;
+        let empty = br#"{"theme":"light","skin":{"avatar":""}}"#;
+        let not_text = br#"{"theme":"light","skin":{"avatar":42}}"#;
+        let null = br#"{"theme":"light","skin":{"avatar":null}}"#;
+        for (i, json) in [&bad[..], &empty[..], &not_text[..], &null[..]].into_iter().enumerate() {
+            let (b, mine) = mine_db(&format!("backup_avatar_bad_{i}"));
+            let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+            assert_eq!(r.settings.theme, "light");
+            assert_eq!(r.settings.skin.avatar, "skin", "{i}");
+            assert!(r.settings.skin.character_visible);
+            assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
+            assert_eq!(store::load(&b).skin.avatar, "skin");
+        }
         let _ = fs::remove_dir_all(&tmp);
     }
 

@@ -1,5 +1,6 @@
 //! 画面との窓口。薄く保ち、判断を持たない（判断は playback / library / settings が持つ）。
 
+pub mod avatars;
 pub mod devices;
 pub mod latency;
 pub mod library;

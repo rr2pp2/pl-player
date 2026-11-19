@@ -6,10 +6,12 @@
 //! - names：id とパスの決まり ／ json：重複キーと深さを断る JSON の読み方 ／ tokens：色と文字の値
 //! - manifest：skin.json の読み方 ／ grapheme_base：名前の見える文字の判定に使う Unicode の表 ／ images：画像の確かめと最初の1コマ
 //! - package：取り込み（一時の場所 → 確認 → 正式の場所）・読み込み・一覧・削除・書き出し
-//! - runtime：画面・トレイ・ウィンドウとのやり取り（適用・既定に戻す・セーフモード・アイコンの差し替え）
+//! - runtime：画面・トレイ・ウィンドウとのやり取り（適用・既定に戻す・セーフモード・アイコンの差し替え・使う立ち絵）
+//! - avatars：登録した立ち絵（v3.9.0。画像を選ぶだけで作る。画面の呼び名は「立ち絵」）と、使う立ち絵の選び方
 //!
 //! 仕様の全文は docs\着せ替え_仕様.md。
 
+pub mod avatars;
 pub mod grapheme_base;
 pub mod images;
 pub mod json;
@@ -53,10 +55,19 @@ pub struct Dirs {
     pub skins: PathBuf,
     /// 確認待ちの一時の場所（画面からは読めない）
     pub staging: PathBuf,
+    /// v3.9.0：登録した立ち絵（画面が asset で読める）
+    pub avatars: PathBuf,
+    /// v3.9.0：立ち絵を作っている途中の一時の場所（画面からは読めない。起動のときに消す）
+    pub avatar_staging: PathBuf,
 }
 
 impl Dirs {
     pub fn new(data_dir: &Path) -> Self {
-        Self { skins: data_dir.join("skins"), staging: data_dir.join("skins-staging") }
+        Self {
+            skins: data_dir.join("skins"),
+            staging: data_dir.join("skins-staging"),
+            avatars: data_dir.join("avatars"),
+            avatar_staging: data_dir.join("avatars-staging"),
+        }
     }
 }

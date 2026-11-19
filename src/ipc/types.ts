@@ -35,6 +35,14 @@ export type ErrorCode =
   | "skin_builtin_readonly"
   | "skin_apply_failed"
   | "skin_import_expired"
+  // 立ち絵（v3.9.0。画像から追加する立ち絵）
+  | "avatar_image_format"
+  | "avatar_too_large"
+  | "avatar_name_invalid"
+  | "avatar_limit"
+  | "avatar_not_found"
+  | "avatar_broken"
+  | "avatar_pick_expired"
   // 曲をごみ箱へ移す（v3.3.0）
   | "track_not_in_library"
   | "trash_not_allowed"
@@ -399,8 +407,14 @@ export interface AppSettings {
 
 export interface SkinSettings {
   activeSkinId: string;
+  /** v3.9.0 からは avatar が決める（avatar が "none" でなければ true。Rust の sanitize が合わせる。画面からは変えない） */
   characterVisible: boolean;
-  /** 0.75〜1.25 */
+  /**
+   * v3.9.0：使う立ち絵。"skin"（スキンの立ち絵。既定）・"none"（出さない）・"avatar:<id>"（登録した立ち絵）・"skin:<id>"（取り込んだスキンの立ち絵）。
+   * 変えるのは avatars_use・削除だけ（設定の保存では変わらない）
+   */
+  avatar: string;
+  /** 0.75〜2（v3.9.0。3.8.1 までは 0.75〜1.25） */
   characterScale: number;
   /** 次の起動だけ既定の見た目にする */
   safeModeNextStart: boolean;
@@ -606,7 +620,7 @@ export interface ResolvedSkin {
 }
 
 export interface SkinNotice {
-  /** broken_fallback / safe_mode / safe_mode_second */
+  /** broken_fallback / safe_mode / safe_mode_second / avatar_fallback（v3.9.0） */
   code: string;
   id: string | null;
   error: ErrorCode | null;
@@ -618,6 +632,56 @@ export interface SkinState {
   safeMode: boolean;
   skin: ResolvedSkin | null;
   notice: SkinNotice | null;
+  /** v3.9.0：使う立ち絵（設定の skin.avatar と同じ値） */
+  avatar: string;
+  /** v3.9.0：いま画面に出す立ち絵（使う立ち絵を解いたもの。出さないときは null）。画面はスキンの character ではなくこちらを出す */
+  character: SkinCharacter | null;
+}
+
+// ---- 立ち絵（v3.9.0）。Rust 側 skins/avatars.rs と同じ形 ----
+
+/** 登録した立ち絵。preview は Rust が確かめた avatars の下の静止画のパス */
+export interface AvatarSummary {
+  id: string;
+  name: string;
+  preview: string | null;
+  hasStopped: boolean;
+  /** 「変更」の小窓の見本（静止画のパス。停止中が無ければ stoppedPreview は null） */
+  playingPreview: string | null;
+  stoppedPreview: string | null;
+  animated: boolean;
+  /** 読めない立ち絵（消すことだけできる） */
+  broken: ErrorCode | null;
+}
+
+/** 取り込んだスキンのうち、立ち絵を持つもの（スキンの中の絵を指すだけ） */
+export interface SkinCharacterRow {
+  skinId: string;
+  name: string;
+  preview: string | null;
+  animated: boolean;
+}
+
+export interface AvatarList {
+  skins: SkinCharacterRow[];
+  avatars: AvatarSummary[];
+  /** 登録できる数（30） */
+  max: number;
+}
+
+/** 選んで確かめた画像（パスは返らない。作るときは token で指す） */
+export interface PickedImage {
+  token: string;
+  slot: "playing" | "stopped";
+  previewDataUrl: string | null;
+  /** 名前の既定（ファイル名から作った名前。決まりに合わなければ詰め、それでも空なら「立ち絵」。空にはならない）。名前を空のまま追加すると、再生中の絵のこの名前になる */
+  suggestedName: string;
+  width: number;
+  height: number;
+  frames: number;
+  durationMs: number;
+  animated: boolean;
+  bytes: number;
 }
 
 export interface SkinParts {

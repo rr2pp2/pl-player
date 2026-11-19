@@ -4,6 +4,8 @@ import type {
   AppInfo,
   AppSettings,
   ArtChange,
+  AvatarList,
+  AvatarSummary,
   BackupReport,
   CaptureSource,
   DeviceInfo,
@@ -23,6 +25,7 @@ import type {
   MetadataView,
   OutputIcon,
   OutputsView,
+  PickedImage,
   Playlist,
   PlaylistEntry,
   TrashReport,
@@ -209,4 +212,18 @@ export const api = {
   skinsExitSafeMode: () => invoke<SkinState>("skins_exit_safe_mode"),
   skinsDelete: (id: string) => invoke<SkinState>("skins_delete", { id }),
   skinsExport: (id: string) => invoke<SkinExportReport | null>("skins_export", { id }),
+
+  // 立ち絵（v3.9.0）。画面からパスは渡さない・受け取らない（画像は Rust がファイルを選ぶ画面を出し、確かめた結果を印 token で返す。立ち絵は id で指す）
+  avatarsList: () => invoke<AvatarList>("avatars_list"),
+  avatarsPickImage: (slot: "playing" | "stopped") => invoke<PickedImage | null>("avatars_pick_image", { slot }),
+  avatarsCancelPick: () => invoke<void>("avatars_cancel_pick"),
+  avatarsCreate: (name: string, playing: string, stopped: string | null) => invoke<AvatarSummary>("avatars_create", { name, playing, stopped }),
+  /** 作った立ち絵を変える（v3.9.0 直し2回目）。playing・stopped は差し替える画像の印（null ならそのまま）、removeStopped なら停止中を外す。名前が空なら今の名前のまま */
+  avatarsUpdate: (id: string, name: string, playing: string | null, stopped: string | null, removeStopped: boolean) =>
+    invoke<AvatarSummary>("avatars_update", { id, name, playing, stopped, removeStopped }),
+  avatarsDelete: (id: string) => invoke<SkinState>("avatars_delete", { id }),
+  /** "skin"・"none"・"avatar:<id>"・"skin:<id>" */
+  avatarsUse: (choice: string) => invoke<SkinState>("avatars_use", { choice }),
+  /** 立ち絵を出さない（avatars_use の "none" と同じ。設定の「既定の見た目に戻す」の隣のボタン） */
+  avatarsHide: () => invoke<SkinState>("avatars_hide"),
 };

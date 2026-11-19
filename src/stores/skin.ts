@@ -3,7 +3,7 @@
 // - 「動きを減らす」（prefers-reduced-motion）を見張り、変わったらすぐ反映する（動く画像の代わりに最初の1コマを読む）
 import { api } from "../ipc/commands";
 import { fileUrl, on } from "../ipc/events";
-import type { ResolvedSkin, SkinInspection, SkinState } from "../ipc/types";
+import type { AvatarList, PickedImage, ResolvedSkin, SkinCharacter, SkinInspection, SkinState } from "../ipc/types";
 import { skinNoticeText } from "../messages/ja";
 import { applyCssVars, skinCssVars } from "../skins/tokens";
 import { pickIconPath } from "../skins/icons";
@@ -157,6 +157,89 @@ export async function commitSkinImport() {
 }
 
 export const useSkin = (): ResolvedSkin | null => useStore(skinState)?.skin ?? null;
+
+// ---------------- 立ち絵（v3.9.0） ----------------
+
+/** いま画面に出す立ち絵（Rust が使う立ち絵を解いたもの。出さないときは null） */
+export const useCharacter = (): SkinCharacter | null => useStore(skinState)?.character ?? null;
+
+/** 設定の「立ち絵」の欄の一覧 */
+export const avatarList = createStore<AvatarList | null>(null);
+
+export async function loadAvatars() {
+  try {
+    avatarList.set(await api.avatarsList());
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** 使う立ち絵を選ぶ（"skin"・"none"・"avatar:<id>"・"skin:<id>"） */
+export async function chooseAvatar(choice: string) {
+  try {
+    receive(await api.avatarsUse(choice));
+  } catch (e) {
+    fail(e);
+    void loadAvatars();
+  }
+}
+
+/** 立ち絵を出さない（v3.9.0 直し1回目。avatars_use の "none" と同じ道。作った立ち絵は消さない） */
+export async function hideAvatar() {
+  try {
+    receive(await api.avatarsHide());
+  } catch (e) {
+    fail(e);
+  }
+}
+
+export async function deleteAvatar(id: string) {
+  try {
+    receive(await api.avatarsDelete(id));
+  } catch (e) {
+    fail(e);
+  }
+  void loadAvatars();
+}
+
+/** 作った立ち絵を変える（v3.9.0 直し2回目。差し替え・停止中を外す・名前）。使っている立ち絵なら、Rust が画面の絵も当て直す。断られたら理由を出して false */
+export async function updateAvatar(id: string, name: string, playing: string | null, stopped: string | null, removeStopped: boolean): Promise<boolean> {
+  try {
+    await api.avatarsUpdate(id, name, playing, stopped, removeStopped);
+    void loadAvatars();
+    return true;
+  } catch (e) {
+    fail(e);
+    return false;
+  }
+}
+
+/** 画像を選ばせて確かめる（選ばなければ null。断られたら理由を出して null） */
+export async function pickAvatarImage(slot: "playing" | "stopped"): Promise<PickedImage | null> {
+  try {
+    return await api.avatarsPickImage(slot);
+  } catch (e) {
+    fail(e);
+    return null;
+  }
+}
+
+export async function cancelAvatarPick() {
+  await api.avatarsCancelPick().catch(() => {});
+}
+
+/** 立ち絵を作る（使う立ち絵は変えない）。断られたら理由を出して false */
+export async function createAvatar(name: string, playing: string, stopped: string | null): Promise<boolean> {
+  try {
+    const a = await api.avatarsCreate(name, playing, stopped);
+    notify({ level: "info", text: `立ち絵「${a.name}」を追加しました。出すときは一覧のカードか「使う」を押してください。` });
+    void loadAvatars();
+    return true;
+  } catch (e) {
+    fail(e);
+    return false;
+  }
+}
 
 /** アイコンの画像の URL（スキンに無ければ null。呼び出し側は今の SVG を出す） */
 export function useSkinIcon(name: string, state: string): string | null {

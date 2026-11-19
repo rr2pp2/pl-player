@@ -196,7 +196,7 @@ fn too_large(s: impl AsRef<str>) -> AppError {
 }
 
 /// ファイルを上限＋1 バイトまでだけ読む
-fn read_capped(path: &Path, max: u64) -> AppResult<Vec<u8>> {
+pub(crate) fn read_capped(path: &Path, max: u64) -> AppResult<Vec<u8>> {
     let f = fs::File::open(path).map_err(|e| AppError::from_io(&e, path))?;
     let mut v = Vec::new();
     f.take(max + 1).read_to_end(&mut v).map_err(|e| AppError::from_io(&e, path))?;
@@ -207,7 +207,7 @@ fn read_capped(path: &Path, max: u64) -> AppResult<Vec<u8>> {
 }
 
 /// 再解析点（シンボリックリンク・ジャンクション）か
-fn is_reparse(meta: &fs::Metadata) -> bool {
+pub(crate) fn is_reparse(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -220,7 +220,7 @@ fn is_reparse(meta: &fs::Metadata) -> bool {
 }
 
 /// スキンのフォルダの中のファイル。途中の段も含めて、リンクを辿らない（再解析点があれば断る）
-fn safe_file(dir: &Path, rel: &str) -> AppResult<PathBuf> {
+pub(crate) fn safe_file(dir: &Path, rel: &str) -> AppResult<PathBuf> {
     let mut p = dir.to_path_buf();
     let segs: Vec<&str> = rel.split('/').collect();
     for (i, s) in segs.iter().enumerate() {
@@ -267,7 +267,7 @@ fn parts_of(m: &Manifest, assets: &BTreeMap<String, AssetInfo>) -> Parts {
     }
 }
 
-fn new_token() -> String {
+pub(crate) fn new_token() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -545,7 +545,7 @@ pub(crate) fn inspect_bytes_unguarded(bytes: &[u8], dirs: &Dirs, app_version: &s
 }
 
 /// 一時の場所の中に、新しいファイルとして書く（既にあれば断る。途中のフォルダは作る）
-fn write_new(dir: &Path, rel: &str, data: &[u8]) -> AppResult<()> {
+pub(crate) fn write_new(dir: &Path, rel: &str, data: &[u8]) -> AppResult<()> {
     let mut p = dir.to_path_buf();
     for s in rel.split('/') {
         p.push(s);
@@ -642,7 +642,7 @@ fn load_unguarded(dirs: &Dirs, id: &str, app_version: &str) -> AppResult<Install
     Ok(Installed { dir, manifest: parsed.manifest, manifest_bytes, roles: parsed.assets, assets })
 }
 
-fn abs(dir: &Path, rel: &str) -> String {
+pub(crate) fn abs(dir: &Path, rel: &str) -> String {
     let mut p = dir.to_path_buf();
     for s in rel.split('/') {
         p.push(s);

@@ -1,12 +1,18 @@
 //! 着せ替えの適用・既定に戻す・セーフモード・アプリとトレイのアイコン（v3.2.0）。
 //! 画面・トレイ・二重起動の知らせから呼ばれる。ファイルの扱いは package.rs、設定の保存は settings::store。
+//! v3.9.0：使う立ち絵（登録した立ち絵・ほかのスキンの立ち絵・出さない）を解いて、画面へ渡す（`refresh_character`）。
+//! 立ち絵のファイルの扱いは avatars.rs。
+//!
+//! 鍵（`Runtime` の Mutex）を持ったまま、Tauri のメインスレッドを待つ呼び出し（ウィンドウ・トレイのアイコン・ダイアログ・
+//! 設定の保存と通知）をしない。どの関数も、鍵は値を出し入れする間だけ持つ（v3.8.0〜3.8.1 で2回、この形で固まったため）
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::manifest::{from_skin, skin_error};
 use super::names::BUILTIN_ID;
-use super::package::{self, Installed, Inspection, ResolvedSkin, SkinSummary, Staged};
+use super::avatars::{self, AvatarList, AvatarSummary, PickedImage, Slot};
+use super::package::{self, CharacterAssets, Installed, Inspection, ResolvedSkin, SkinSummary, Staged};
 use super::{images, Dirs};
 use crate::commands::{ev, AppState};
 use crate::error::{AppError, AppResult, ErrorKind};
@@ -25,13 +31,21 @@ pub struct Runtime {
     pub current: Option<ResolvedSkin>,
     /// 起動のときの確かめが済んだ（画面が先に状態を聞いてきたら、済むまで待たせる）
     pub started: bool,
+    /// v3.9.0：いま画面に出す立ち絵（使う立ち絵を解いたもの。出さないときは None）
+    pub character: Option<CharacterAssets>,
+    /// v3.9.0：立ち絵を作るために選んで確かめた画像（再生中・停止中の2枠。作る・取り消す・選び直すまで）
+    pub picks: [Option<avatars::Picked>; 2],
+    /// v3.9.0（直し1回目）：選んだ画像の世代。取り消す（`clear_picks`）たびに1つ進める。ファイルを選ぶ前に控えた世代と
+    /// 違えば、あとから届いた確かめの結果は置かずに捨てる（取り消したあとに画像がメモリに残らないように）
+    pub pick_gen: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkinNotice {
     /// `broken_fallback`（前に選んでいたスキンが壊れていたので既定に戻した）・`safe_mode`（既定の見た目で起動した）・
-    /// `safe_mode_second`（2つ目の起動の --safe-mode で既定の見た目にした）・`app_icon_failed`
+    /// `safe_mode_second`（2つ目の起動の --safe-mode で既定の見た目にした）・`app_icon_failed`・
+    /// `avatar_fallback`（v3.9.0：使う立ち絵に選んでいた立ち絵・スキンが無い・読めないので「スキンの立ち絵」に戻した）
     pub code: String,
     pub id: Option<String>,
     pub error: Option<ErrorKind>,
@@ -48,6 +62,11 @@ pub struct SkinState {
     pub safe_mode: bool,
     pub skin: Option<ResolvedSkin>,
     pub notice: Option<SkinNotice>,
+    /// v3.9.0：使う立ち絵（設定の `skin.avatar`）
+    pub avatar: String,
+    /// v3.9.0：いま画面に出す立ち絵（使う立ち絵を解いたもの。スキンの立ち絵を選んでいれば `skin.character` と同じ）。
+    /// 画面はスキンの `character` ではなく、こちらを出す
+    pub character: Option<CharacterAssets>,
 }
 
 pub fn dirs(state: &AppState) -> Dirs {
@@ -67,15 +86,17 @@ fn lock_rt(rt: &std::sync::Mutex<Runtime>) -> std::sync::MutexGuard<'_, Runtime>
 }
 
 fn snapshot(state: &AppState, take_notice: bool) -> SkinState {
-    let active_id = state.settings().skin.active_skin_id;
+    let sk = state.settings().skin;
     let mut rt = lock(state);
     let notice = if take_notice { rt.notice.take() } else { None };
     SkinState {
-        active_id,
+        active_id: sk.active_skin_id,
         effective_id: rt.current.as_ref().map(|c| c.id.clone()).unwrap_or_else(|| BUILTIN_ID.into()),
         safe_mode: rt.safe_mode,
         skin: rt.current.clone(),
         notice,
+        avatar: sk.avatar,
+        character: rt.character.clone(),
     }
 }
 
@@ -91,6 +112,47 @@ fn save_active(app: &AppHandle, state: &AppState, id: &str) -> AppResult<()> {
     }
     s.skin.active_skin_id = id.to_string();
     crate::commands::settings::store_and_emit(app, state, s).map(|_| ())
+}
+
+/// v3.9.0：使う立ち絵を変えて保存する（画面から来た設定ではここは変わらない。commands::settings::from_screen）
+fn save_avatar(app: &AppHandle, state: &AppState, choice: &str) -> AppResult<()> {
+    let mut s = state.settings();
+    if s.skin.avatar == choice {
+        return Ok(());
+    }
+    s.skin.set_avatar(choice);
+    crate::commands::settings::store_and_emit(app, state, s).map(|_| ())
+}
+
+/// v3.9.0：使う立ち絵を解いて、画面に出す立ち絵を決め直す（スキンを替えた・セーフモード・使う立ち絵を変えた・消した・設定の読み込み）。
+/// 選んでいた立ち絵・スキンが無い・読めなければ「スキンの立ち絵」に戻して保存する。`notify` なら知らせる（起動・設定の読み込み。
+/// 使う人が自分で消したときは知らせない）。鍵は値を出し入れする間だけ持つ（保存と通知は鍵の外）
+fn refresh_character(app: &AppHandle, state: &AppState, notify: bool) {
+    let choice = state.settings().skin.avatar;
+    let (current, safe) = {
+        let rt = lock(state);
+        (rt.current.clone(), rt.safe_mode)
+    };
+    let d = dirs(state);
+    let ver = app_version(app);
+    let r = avatars::resolve(
+        &choice,
+        current.as_ref(),
+        safe,
+        |id| avatars::load(&d, id).map(|a| a.character()),
+        |id| package::load(&d, id, &ver).map(|i| i.resolve().character),
+    );
+    if let Some(kind) = r.fallback {
+        tracing::warn!("avatar choice could not be used, back to the skin's character: {kind:?}");
+        let _ = save_avatar(app, state, avatars::CHOICE_SKIN);
+        if notify {
+            let mut rt = lock(state);
+            if rt.notice.is_none() {
+                rt.notice = Some(SkinNotice { code: "avatar_fallback".into(), id: None, error: Some(kind) });
+            }
+        }
+    }
+    lock(state).character = r.character;
 }
 
 /// ウィンドウ・タスクバー・トレイのアイコンを、スキンのもの（無ければ組み込みのもの）にする。
@@ -174,6 +236,9 @@ pub fn plan_startup(sk: &crate::settings::store::SkinSettings, safe_arg: bool, l
 pub fn startup(app: &AppHandle, safe_arg: bool) {
     let state = app.state::<AppState>();
     startup_inner(app, &state, safe_arg);
+    // v3.9.0：使う立ち絵（無い・読めなければ「スキンの立ち絵」に戻して知らせる）。作る途中で終わった一時の場所を消す
+    avatars::clean_staging(&dirs(&state));
+    refresh_character(app, &state, true);
     lock(&state).started = true;
 }
 
@@ -247,6 +312,7 @@ pub fn apply(app: &AppHandle, id: &str) -> AppResult<SkinState> {
         apply_app_icons(app, Some(&inst));
     }
     tracing::info!("skin applied: {id}");
+    refresh_character(app, &state, false);
     emit(app, &state);
     Ok(snapshot(&state, false))
 }
@@ -267,6 +333,7 @@ pub fn enter_safe_mode(app: &AppHandle) {
         rt.notice = Some(SkinNotice { code: "safe_mode_second".into(), id: None, error: None });
     }
     apply_app_icons(app, None);
+    refresh_character(app, &state, false);
     emit(app, &state);
 }
 
@@ -353,12 +420,238 @@ pub fn delete(app: &AppHandle, id: &str) -> AppResult<SkinState> {
     if in_use {
         reset(app)?;
     }
-    package::delete(&dirs(&state), id)?;
+    // v3.9.0：消すスキンの立ち絵を使う立ち絵に選んでいたら、消す前に「スキンの立ち絵」へ切り替える（画面がその絵を手放してから消す。
+    // 使う人が自分で消したので知らせない）。消せなかったら選択を元に戻す
+    let before = state.settings().skin.avatar;
+    let chosen = avatars::Choice::parse(&before) == Some(avatars::Choice::SkinCharacter(id.to_string()));
+    switch_then_delete(
+        chosen,
+        || switch_avatar(app, &state, avatars::CHOICE_SKIN),
+        || package::delete(&dirs(&state), id),
+        || switch_avatar(app, &state, &before),
+    )?;
+    refresh_character(app, &state, false);
     emit(app, &state);
     Ok(snapshot(&state, false))
+}
+
+/// v3.9.0（直し1回目）：使う立ち絵を変えて、画面の立ち絵を当て直す（消す前の切り替え・消せなかったときの戻し）
+fn switch_avatar(app: &AppHandle, state: &AppState, choice: &str) {
+    let _ = save_avatar(app, state, choice);
+    refresh_character(app, state, false);
+    emit(app, state);
+}
+
+/// v3.9.0（直し1回目）：使っている立ち絵（スキンの立ち絵を含む）を消すときの順番。使っていれば先に切り替え（画面が絵を手放す）、
+/// それから消す。消せなかったら切り替えを戻す。AppHandle を使わない部分（テストで順番を確かめる）
+pub(crate) fn switch_then_delete(
+    in_use: bool,
+    switch_away: impl FnOnce(),
+    delete: impl FnOnce() -> AppResult<()>,
+    restore: impl FnOnce(),
+) -> AppResult<()> {
+    if in_use {
+        switch_away();
+    }
+    match delete() {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            if in_use {
+                restore();
+            }
+            Err(e)
+        }
+    }
 }
 
 pub fn export(app: &AppHandle, id: &str, dest: &std::path::Path) -> AppResult<package::ExportReport> {
     let state = app.state::<AppState>();
     package::export(&dirs(&state), id, dest, &app_version(app))
+}
+
+// ---------------- v3.9.0：登録した立ち絵 ----------------
+
+/// 設定の「立ち絵」の欄の一覧（取り込んだスキンの立ち絵・登録した立ち絵）
+pub fn avatars_list(app: &AppHandle) -> AvatarList {
+    let state = app.state::<AppState>();
+    avatars::list_all(&dirs(&state), &app_version(app))
+}
+
+/// 選んだ画像を確かめて、その枠（再生中・停止中）に置く。前にその枠に置いていたものは捨てる。
+/// 確かめ（復号）は鍵の外で行い、置くときだけ鍵を持つ
+/// `generation` はファイルを選ぶ画面を出す前に `pick_generation` で控えた値。その間に取り消されていたら（小窓の「キャンセル」）、
+/// 確かめた画像は置かずに捨て、None を返す
+pub fn pick(app: &AppHandle, path: &std::path::Path, slot: Slot, generation: u64) -> AppResult<Option<PickedImage>> {
+    let state = app.state::<AppState>();
+    let (picked, shown) = avatars::pick_file(path, slot)?;
+    Ok(store_pick(&state.skin, generation, picked).then_some(shown))
+}
+
+/// 今の選んだ画像の世代（ファイルを選ぶ画面を出す前に控える）
+pub fn pick_generation(app: &AppHandle) -> u64 {
+    let state = app.state::<AppState>();
+    let g = lock(&state).pick_gen;
+    g
+}
+
+/// 選んだ画像を捨てる（作るのをやめた）。世代を進め、確かめている途中のものも、届いたときに捨てる
+pub fn cancel_picks(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    clear_picks(&state.skin);
+}
+
+/// 確かめた画像を枠に置く。控えた世代が今と違えば（その間に取り消された）置かずに false（画像はここで手放す）
+pub(crate) fn store_pick(rt: &std::sync::Mutex<Runtime>, generation: u64, picked: avatars::Picked) -> bool {
+    let mut r = lock_rt(rt);
+    if r.pick_gen != generation {
+        tracing::info!("avatar pick arrived after cancel; dropped");
+        return false;
+    }
+    let i = picked.slot.index();
+    r.picks[i] = Some(picked);
+    true
+}
+
+pub(crate) fn clear_picks(rt: &std::sync::Mutex<Runtime>) {
+    let mut r = lock_rt(rt);
+    r.picks = [None, None];
+    r.pick_gen = r.pick_gen.wrapping_add(1);
+}
+
+/// 選んだ画像の枠から、印の合うものを取り出す（合わなければ何も取り出さない）
+pub(crate) fn take_picks(
+    picks: &mut [Option<avatars::Picked>; 2],
+    playing: &str,
+    stopped: Option<&str>,
+) -> AppResult<(avatars::Picked, Option<avatars::Picked>)> {
+    let (p, s) = take_some(picks, Some(playing), stopped)?;
+    Ok((p.expect("checked in take_some"), s))
+}
+
+/// 選んだ画像の枠から、印で指したものだけを取り出す（指さない枠は残す）。どれかの印が合わなければ何も取り出さない
+pub(crate) fn take_some(
+    picks: &mut [Option<avatars::Picked>; 2],
+    playing: Option<&str>,
+    stopped: Option<&str>,
+) -> AppResult<(Option<avatars::Picked>, Option<avatars::Picked>)> {
+    let ok = |i: usize, t: Option<&str>| match t {
+        None => true,
+        Some(t) => picks[i].as_ref().map(|p| p.token == t).unwrap_or(false),
+    };
+    if !ok(0, playing) || !ok(1, stopped) {
+        return Err(skin_error(ErrorKind::AvatarPickExpired, "picked image"));
+    }
+    let p = if playing.is_some() { picks[0].take() } else { None };
+    let s = if stopped.is_some() { picks[1].take() } else { None };
+    Ok((p, s))
+}
+
+/// 枠に戻す（作る・変えるのを断ったとき。名前を直して、選び直さずにやり直せる）。その間に選び直された枠は上書きしない
+fn put_back(state: &AppState, p: Option<avatars::Picked>, s: Option<avatars::Picked>) {
+    let mut rt = lock(state);
+    for (i, x) in [(0, p), (1, s)] {
+        if let Some(x) = x {
+            if rt.picks[i].is_none() {
+                rt.picks[i] = Some(x);
+            }
+        }
+    }
+}
+
+/// 立ち絵を作る（使う立ち絵は変えない）。画像は選んだときの印で指す。断ったときは、選んだ画像を枠に戻す（名前を直して作り直せる）
+pub fn create(app: &AppHandle, name: &str, playing: &str, stopped: Option<&str>) -> AppResult<AvatarSummary> {
+    let state = app.state::<AppState>();
+    let taken = take_picks(&mut lock(&state).picks, playing, stopped);
+    let (p, s) = taken?;
+    match avatars::create(&dirs(&state), name, &p, s.as_ref()) {
+        Ok(sum) => {
+            tracing::info!("avatar created: {}", sum.id);
+            // 使わなかった停止中の枠（「なし」で作った）も捨てる
+            lock(&state).picks = [None, None];
+            Ok(sum)
+        }
+        Err(e) => {
+            put_back(&state, Some(p), s);
+            Err(e)
+        }
+    }
+}
+
+/// 作った立ち絵を変える（v3.9.0 直し2回目）。`playing`・`stopped` は差し替える画像の印（avatars_pick_image が返したもの。無ければそのまま）。
+/// `remove_stopped` なら停止中を外す（`stopped` と同時には指せない）。名前が空なら今の名前のまま。
+/// 使っている立ち絵なら、画面の絵を当て直す（差し替えた絵はファイル名が変わるので、動く画像も読み直される）
+pub fn update(app: &AppHandle, id: &str, name: &str, playing: Option<&str>, stopped: Option<&str>, remove_stopped: bool) -> AppResult<AvatarSummary> {
+    let state = app.state::<AppState>();
+    if remove_stopped && stopped.is_some() {
+        return Err(skin_error(ErrorKind::Other, "stopped image: replace or remove, not both"));
+    }
+    let taken = take_some(&mut lock(&state).picks, playing, stopped);
+    let (p, s) = taken?;
+    let change = match (&s, remove_stopped) {
+        (Some(x), _) => avatars::StoppedChange::Replace(x),
+        (None, true) => avatars::StoppedChange::Remove,
+        (None, false) => avatars::StoppedChange::Keep,
+    };
+    // 使っている立ち絵なら、avatar.json を置き換えた直後（古い絵を消す前）に解き直して通知する（直し3回目：画面が新しい絵へ移ってから古い絵を消す）
+    let in_use = avatars::Choice::parse(&state.settings().skin.avatar) == Some(avatars::Choice::Avatar(id.to_string()));
+    let after_commit = || {
+        if in_use {
+            refresh_character(app, &state, false);
+            emit(app, &state);
+        }
+    };
+    match avatars::update_then(&dirs(&state), id, name, p.as_ref(), change, after_commit) {
+        Ok(sum) => {
+            tracing::info!("avatar updated: {id}");
+            lock(&state).picks = [None, None];
+            Ok(sum)
+        }
+        Err(e) => {
+            put_back(&state, p, s);
+            Err(e)
+        }
+    }
+}
+
+/// 立ち絵を消す。使う立ち絵に選んでいたら、「スキンの立ち絵」に戻す
+pub fn delete_avatar(app: &AppHandle, id: &str) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    // 使っている立ち絵なら、消す前に「スキンの立ち絵」へ切り替える（画面がその絵を手放してから消す）。消せなかったら選択を元に戻す
+    let before = state.settings().skin.avatar;
+    let in_use = avatars::Choice::parse(&before) == Some(avatars::Choice::Avatar(id.to_string()));
+    switch_then_delete(
+        in_use,
+        || switch_avatar(app, &state, avatars::CHOICE_SKIN),
+        || avatars::delete(&dirs(&state), id),
+        || switch_avatar(app, &state, &before),
+    )?;
+    tracing::info!("avatar deleted: {id}");
+    refresh_character(app, &state, false);
+    emit(app, &state);
+    Ok(snapshot(&state, false))
+}
+
+/// v3.9.0（直し1回目）：立ち絵を出さない（設定の「立ち絵を出さない」・タスクトレイの「立ち絵を出さない」）。「使う」で「出さない」を選んだのと同じ。
+/// 作った立ち絵は消さない。画面（WebView）を通らず Rust だけで済む（立ち絵の画像で画面が崩れたときの逃げ道）。
+/// タスクトレイからはメインのスレッドで呼ばれるので、呼ぶ側（platform::windows::tray）が別のスレッドへ渡す
+pub fn hide_avatar(app: &AppHandle) -> AppResult<SkinState> {
+    use_avatar(app, avatars::CHOICE_NONE)
+}
+
+/// 使う立ち絵を選ぶ（`skin`・`none`・`avatar:<id>`・`skin:<id>`）。選べないもの（無い・読めない・立ち絵の無いスキン）なら何も変えずにエラー
+pub fn use_avatar(app: &AppHandle, choice: &str) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    let value = avatars::check_choice(&dirs(&state), choice, &app_version(app))?;
+    save_avatar(app, &state, &value)?;
+    tracing::info!("avatar choice: {value}");
+    refresh_character(app, &state, false);
+    emit(app, &state);
+    Ok(snapshot(&state, false))
+}
+
+/// 設定の読み込み（zip）のあと：zip の「使う立ち絵」がこの PC に無ければ「スキンの立ち絵」に戻して知らせ、画面の立ち絵を当て直す
+pub fn after_settings_import(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    refresh_character(app, &state, true);
+    emit(app, &state);
 }

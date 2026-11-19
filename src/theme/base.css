@@ -2037,12 +2037,18 @@ img.skin-icon {
 .main.has-character-rail > :not(.topbar):not(.character-rail) {
   margin-right: var(--character-rail-w);
 }
+/* 専用の幅は窓の幅で決まり（src\skins\character.ts の railWidthFor ＋ 12px。AppShell が --character-rail-w に入れる）、絵の縦横比・幅に左右されない。
+   v3.9.0 直し4回目：念のため幅を3つとも同じ値に固め、contain: strict で中身（高さに合わせた絵）が外の大きさに効かないようにした。
+   欄は流れの外（position: absolute）で、曲一覧などは同じ値の margin-right で空ける */
 .character-rail {
   position: absolute;
   top: var(--topbar-h);
   right: 0;
   bottom: 0;
   width: var(--character-rail-w);
+  min-width: var(--character-rail-w);
+  max-width: var(--character-rail-w);
+  contain: strict;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2052,6 +2058,8 @@ img.skin-icon {
 }
 .character-img {
   display: block;
+  /* v3.9.0：大きさは画面が決める（高さに合わせ、幅は縦横比のまま。横長の左右は欄で切れる。src\skins\character.ts の characterImageStyle） */
+  flex: none;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -2179,6 +2187,37 @@ img.skin-icon {
 .skin-callout ul {
   margin: 4px 0 0;
   padding-left: 18px;
+}
+/* 立ち絵の欄（v3.9.0。色は今の変数だけ） */
+.skin-subhead {
+  margin: 14px 0 2px;
+  font-size: var(--fs-settings);
+  font-weight: 700;
+}
+/* 直し2回目：カード全体を押すと切り替わる（キーボードでも。色は今の変数だけ） */
+.skin-card.pickable {
+  cursor: pointer;
+}
+.skin-card.pickable:not(.active):hover {
+  background: var(--c-hover);
+}
+.skin-card.pickable:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+/* 直し3回目：大きさで立ち絵が隠れているときの案内。色は本文と同じ（伝えるのは文と【隠しています】の印。色だけに頼らない） */
+.avatar-window-note.narrow {
+  color: var(--c-primary);
+}
+.avatar-preview-text {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+}
+.avatar-pick-preview {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 0;
 }
 /* 取り込みの確認画面 */
 .skin-steps {

@@ -293,6 +293,12 @@ fn text(v: Option<&Value>, path: &str, required: bool, min: usize, max: usize, n
     Ok(s.to_string())
 }
 
+/// v3.9.0：登録した立ち絵の名前。スキンの `name` と同じ文字の決まり（制御文字・見えない文字の置き場所と数・見える文字が無い名前）で、
+/// 長さだけ `max` 文字まで。断るときの種別は `SkinManifestInvalid`（呼び出し側が自分の種別に読み替える）。`detail` に名前そのものは入らない
+pub fn check_display_name(s: &str, max: usize) -> AppResult<String> {
+    text(Some(&Value::String(s.to_string())), "name", true, 1, max, false, true)
+}
+
 /// Unicode の Default_Ignorable_Code_Point（字形を持たない・見えない文字）。
 /// 出典：Unicode 18.0.0 の DerivedCoreProperties-18.0.0.txt（Date: 2026-08-07）
 /// https://www.unicode.org/Public/18.0.0/ucd/DerivedCoreProperties.txt の「Derived Property: Default_Ignorable_Code_Point」。

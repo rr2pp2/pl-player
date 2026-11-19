@@ -11,14 +11,14 @@ import { navigate, playlists, route } from "../stores/library";
 import { notify } from "../stores/notices";
 import { lyricsRowOn, settings, updateSettings } from "../stores/settings";
 import { useStore } from "../stores/store";
-import { listPaneExitWidth, listPaneWidth, useLayoutSize } from "../components/useLayoutSize";
+import { characterPaneWidth, listPaneExitWidth, listPaneWidth, mainPaneWidth, useLayoutSize } from "../components/useLayoutSize";
 import { CharacterLayer } from "../components/CharacterLayer";
-import { characterLayout, characterStage } from "../skins/character";
+import { characterLayout, characterStage, listSideWidth } from "../skins/character";
 import { fallbackView } from "./visibility";
 import { centerWidth } from "./detailLayout";
-import { useDetailLayout } from "./useDetailLayout";
+import { characterMinListOf, characterPaneOf, useDetailLayout } from "./useDetailLayout";
 import { Mixer } from "./Mixer";
-import { playingNow, reducedMotion, useSkin } from "../stores/skin";
+import { playingNow, reducedMotion, useCharacter } from "../stores/skin";
 import type { DragData } from "../components/TrackTable";
 import { addToPlaylist } from "../components/trackActions";
 import { BackgroundLayer } from "./BackgroundLayer";
@@ -58,21 +58,29 @@ export function AppShell() {
   const showRow = rowWanted && !(D?.hideLyricsRow ?? false);
   const exitW = centerWidth(size.width, collapsed);
   useLayoutEffect(() => listPaneExitWidth.set(exitW), [exitW]);
-  // 着せ替えの立ち絵（v3.2.0）：出さないとき（既定のスキンも）は、画面の作りを今のまま変えない
-  const skin = useSkin();
+  // 着せ替えの立ち絵（v3.2.0）：出さないとき（既定のスキンも）は、画面の作りを今のまま変えない。
+  // v3.9.0：出す絵は Rust が「使う立ち絵」（スキンの立ち絵・登録した立ち絵・ほかのスキンの立ち絵・出さない）から決めたもの
+  const character0 = useCharacter();
   const playing = useStore(playingNow);
   const reduce = useStore(reducedMotion);
   const characterInput = {
-    character: skin?.character,
-    visible: s.skin?.characterVisible ?? true,
+    character: character0,
+    // v3.9.0：「出さない」は Rust が character を null にして伝える（「立ち絵を出す」のチェックは「使う立ち絵」の一覧にまとめた）
+    visible: true,
     scale: s.skin?.characterScale ?? 1,
     view,
-    // v3.8.0 段2-2：詳細でミキサーを左右に並べたときは、曲一覧の側がミキサーのぶん狭いので、その幅で決める（隠す幅はスキンが窓の幅で書いたもの）
-    windowWidth: D?.side ? size.width - (D.centerW - D.listW) : size.width,
+    // v3.9.0 直し5回目：専用の幅は窓の幅で決める（clamp(140, 窓 × 18% × 大きさ, 480)。立ち絵ごとの幅は使わない）
+    windowWidth: size.width,
+    // 隠すかは、曲一覧の側（専用の幅を取る前）から専用の幅を引いた残りで決める。詳細でミキサーを左右に並べたときはその左の幅、
+    // 上下のときと詳細でないときは中央の幅（centerWidth）
+    paneWidth: characterPaneOf(size.width, D, collapsed),
+    // 残す幅：詳細なら 360（DETAIL.listMin。直し6回目。作者の決定「詳細でも出す」）、そうでなければ 634
+    minListPx: characterMinListOf(D),
     playing,
     reducedMotion: reduce,
   };
   const character = characterLayout(characterInput);
+  useLayoutEffect(() => characterPaneWidth.set(characterInput.paneWidth), [characterInput.paneWidth]);
   // v3.3.0：歌詞画面・狭い幅で一時的に隠すときも、立ち絵の画像は読み込んだままにする（出し直しで動く画像が頭に戻らないように）
   const stage = characterStage(characterInput);
   // v3.3.0：サイドバーの項目を隠したとき、その項目の画面を開いていれば、出している最初の項目へ移る（起動のときも同じ）
@@ -83,16 +91,25 @@ export function AppShell() {
   }, [sidebarItemsKey]);
   // v3.8.0：曲一覧の側の幅（.main の幅）を測る。曲一覧の列・ジャケット・行の高さ・自動のコンパクト・上の帯の文字は、この幅で決める
   // （ウィンドウの幅ではなく。配信モード（段2）で曲一覧の横にミキサーを並べたとき、曲一覧だけが狭くなるため）
+  // v3.9.0 直し7回目：立ち絵を出しているときは、曲一覧の列を決める幅から専用の幅（railPx。曲一覧の margin-right と同じ値）を引く。
+  // 出す・隠すは上の characterLayout が専用の幅を引く前の幅で決めてある。ここで引いた幅は出す判断に戻さない（引きずり合って切り替わらない）
   const mainRef = useRef<HTMLElement>(null);
+  const railRef = useRef<typeof character>(character);
+  railRef.current = character;
+  const railPx = character ? character.railPx : 0;
   useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    const put = () => listPaneWidth.set(el.getBoundingClientRect().width);
+    const put = () => {
+      const w = el.getBoundingClientRect().width;
+      mainPaneWidth.set(w);
+      listPaneWidth.set(listSideWidth(w, railRef.current));
+    };
     put();
     const ro = new ResizeObserver(put);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [railPx]);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   // 少し動かしてからドラッグ開始（クリック・ダブルクリックと区別する）
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
