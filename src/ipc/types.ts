@@ -163,8 +163,6 @@ export interface Snapshot {
   muted: boolean;
   shuffle: boolean;
   repeat: Repeat;
-  deviceId: string | null;
-  deviceName: string;
   queueLen: number;
   contextLen: number;
 }

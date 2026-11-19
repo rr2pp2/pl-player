@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use self::detect::HitMiss;
 use super::devices::DeviceInfo;
 
-pub use run::{diag_line, measure, measure_with, ClickDiag, TargetDiag};
+pub use run::{diag_line, measure_with, ClickDiag, TargetDiag};
 
 /// 測り方の値（ここ1か所にまとめる）
 pub mod tuning {

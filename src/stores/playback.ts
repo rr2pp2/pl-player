@@ -13,8 +13,6 @@ export const playback = createStore<Snapshot>({
   muted: false,
   shuffle: false,
   repeat: "off",
-  deviceId: null,
-  deviceName: "",
   queueLen: 0,
   contextLen: 0,
 });

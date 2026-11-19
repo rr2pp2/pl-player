@@ -128,9 +128,6 @@ impl Line {
     pub fn x_for(&self, y: f64) -> f64 {
         (y - self.intercept) / self.slope
     }
-    pub fn through(x: f64, y: f64, slope: f64) -> Self {
-        Self { slope, intercept: y - slope * x }
-    }
 }
 
 /// 最小二乗で直線を当てる（平均を引いてから計算する）。2点未満・x が全部同じなら None
@@ -221,10 +218,6 @@ impl FitWindow {
     pub fn jitter_ms(&self) -> Option<f64> {
         let line = self.fit()?;
         Some(residual_std(self.pts.iter().map(|&(x, y, _)| (x, y)), &line) / NS_PER_MS)
-    }
-    /// 窓の中のいちばん古い点の記録時刻
-    pub fn first_t(&self) -> Option<u64> {
-        self.pts.front().map(|p| p.2)
     }
     pub fn last_t(&self) -> Option<u64> {
         self.pts.back().map(|p| p.2)

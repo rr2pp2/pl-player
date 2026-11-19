@@ -264,7 +264,6 @@ pub fn run() {
             commands::settings::settings_export,
             commands::settings::settings_import,
             commands::devices::devices_list,
-            commands::devices::device_set,
             commands::outputs::outputs_get,
             commands::outputs::output_add,
             commands::outputs::output_remove,

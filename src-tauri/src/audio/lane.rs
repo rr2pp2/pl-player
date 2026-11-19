@@ -51,7 +51,6 @@ pub struct Lane {
     delay_frames: f64,
     /// 門を開いた時刻（QPC ns）。これより前は、まだ鳴っていない
     gate_t_ns: f64,
-    pub running_since_ns: u64,
     inbuf: Vec<f32>,
     outbuf: Vec<f32>,
     pushbuf: Vec<f32>,
@@ -74,7 +73,6 @@ impl Lane {
             last_control_ns: 0,
             delay_frames: 0.0,
             gate_t_ns: 0.0,
-            running_since_ns: 0,
             inbuf: Vec::new(),
             outbuf: Vec::new(),
             pushbuf: Vec::new(),
@@ -141,7 +139,6 @@ impl Lane {
         self.gate_t_ns = gate.t_start_ns;
         self.pi.reset();
         self.last_control_ns = now_ns;
-        self.running_since_ns = now_ns;
         self.stream.set_base(gate.k_start);
         self.phase = Phase::Running;
         true

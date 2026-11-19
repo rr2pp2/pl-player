@@ -13,12 +13,10 @@ function KeyBox(props: { value: string; bad?: boolean; onChange: (v: string) => 
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      // v3.8.1（作者の要望）：消せる枠（グローバルホットキー）では Esc で割り当てを消す（3.8.0 までは Delete・Backspace）。
+      // 消せない枠（アプリ内ショートカット）では、今までどおり Esc で受け付けをやめる。どちらも、枠の外を押せば何も変えずにやめる
       if (e.key === "Escape") {
-        setCapturing(false);
-        return;
-      }
-      if ((e.key === "Backspace" || e.key === "Delete") && props.allowClear) {
-        props.onChange("");
+        if (props.allowClear) props.onChange("");
         setCapturing(false);
         return;
       }
@@ -94,7 +92,7 @@ export function HotkeyEditor() {
       <p className="path-text" style={{ marginTop: 0 }}>
         アプリが裏にあっても効くキーです。既定では何も割り当てていません。ほかのアプリと重ならないよう、Ctrl・Alt・Shift と組み合わせてください。
         修飾キー無しのキーや Ctrl+C などを割り当てると、ほかのアプリでそのキーが効かなくなります。
-        消すときは、枠を押してから Delete キーを押します。
+        消すときは、枠を押して「キーを押してください…」と出ている間に Esc キーを押します（割り当てずにやめるときは、枠の外を押します）。
       </p>
       <div className="key-grid">
       {HOTKEY_ACTIONS.map((a) => {

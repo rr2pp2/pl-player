@@ -140,8 +140,6 @@ export const api = {
 
   // デバイス
   devices: () => invoke<DeviceInfo[]>("devices_list"),
-  /** 出力先1のデバイスを差し替える（3.7.0 の設定画面の「再生デバイス」） */
-  setDevice: (id: string | null) => invoke<void>("device_set", { id }),
 
   // 同時再生（v3.8.0）。出力先の設定を書くのは Rust だけ。変わるたびに pl://outputs で全部が来る
   outputsGet: () => invoke<OutputsView>("outputs_get"),

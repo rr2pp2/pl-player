@@ -36,8 +36,6 @@ pub struct Snapshot {
     pub muted: bool,
     pub shuffle: bool,
     pub repeat: Repeat,
-    pub device_id: Option<String>,
-    pub device_name: String,
     pub queue_len: usize,
     pub context_len: usize,
 }
@@ -230,13 +228,6 @@ impl Controller {
             muted: inner.muted,
             shuffle: inner.shuffle,
             repeat: inner.repeat,
-            // v3.8.0：出力先1（3.7.0 の設定画面の「再生デバイス」が見る値）
-            device_id: inner.outputs.slot(0).and_then(|s| s.device.id.clone()),
-            device_name: inner.out_rt[0]
-                .name
-                .clone()
-                .or_else(|| inner.outputs.slot(0).map(|s| s.device.name.clone()))
-                .unwrap_or_default(),
             queue_len: inner.queue.len(),
             context_len: inner.context.len(),
         }
@@ -538,31 +529,6 @@ impl Controller {
     pub fn cycle_repeat(&self) {
         let r = self.lock().repeat;
         self.set_repeat(r.cycle());
-    }
-
-    /// 3.7.0 の「再生デバイス」の選び方（設定画面）：出力先1のデバイスを差し替える。出力先1が空なら足してオンにする
-    /// `name` は一覧の名前（切断中の行に出すためだけ）
-    pub fn set_device(&self, id: Option<String>, name: String) {
-        let r = self.update_outputs(|d| {
-            let dev = outputs::DeviceRef { id: id.clone(), name };
-            if d.slot(0).is_some() {
-                d.replace_device(0, dev, db::now_ms())
-            } else {
-                // 空の出力先1：ほかの枠で使っていれば断る（同じデバイスは1つまで）
-                let key = dev.key();
-                if d.slots.iter().flatten().any(|s| s.device.key() == key) {
-                    return Err(outputs::OpError::Duplicate);
-                }
-                let mut s = outputs::Slot::fresh(dev);
-                s.on = true;
-                d.slots[0] = Some(s);
-                Ok(())
-            }
-        });
-        if let Err(e) = r {
-            self.notice(Notice::error(&e));
-        }
-        self.save_state();
     }
 
     pub fn notify_devices_changed(&self) {

@@ -530,12 +530,8 @@ fn judge_click(track: &mut CaptureTrack, aimed_ns: f64, freq_hz: f64, give_up: b
     })
 }
 
-/// 出力ごとに遅れを測る。戻り値は `targets` と同じ並び。`stop` が Some を返したら、全体をやめる（開いた流れは全部落とす）
-pub fn measure(targets: &[Target], stop: &dyn Fn() -> Option<Abort>) -> Result<Vec<Result<Measured, FailCode>>, Abort> {
-    measure_with(targets, stop, Options::default()).map(|v| v.into_iter().map(|d| d.outcome).collect())
-}
-
-/// `measure` の中身。回ごとの記録（診断用）も返す。
+/// 出力ごとに遅れを測る。戻り値は `targets` と同じ並びで、回ごとの記録（診断用）も返す（結果は `outcome`）。
+/// `stop` が Some を返したら、全体をやめる（開いた流れは全部落とす）。
 /// 時間は、開く（ふつう数十 ms）＋落ち着くまで 3 秒＋クリック 6 回で約 2.8 秒＋最後の窓 0.4 秒（通常は約 6 秒）。
 /// いちばん長いと、開く待ち 5 秒＋落ち着く待ち 5 秒＋約 2.8 秒＋録り切れない待ち約 1.9 秒で 14.7 秒ほど（画面の文は「長くて 15 秒ほど」）
 pub fn measure_with(targets: &[Target], stop: &dyn Fn() -> Option<Abort>, opts: Options) -> Result<Vec<TargetDiag>, Abort> {
@@ -725,7 +721,6 @@ mod tests {
         let mut track = recorded(rate, t0, 1.5, &[(too_late, 1000.0)]);
         assert_eq!(judge_click(&mut track, aimed, 1000.0, false), Some(Err(Miss::Detect(HitMiss::NoSignal))));
     }
-
 
     /// コールバック1回ぶんを書く（ステレオを見立てず、フレームごとの値だけを集める）
     fn render(p: u64, n: u64, plan: &ClickPlan, burst: &[f32], begun: &mut [bool; MAX_CLICKS]) -> Vec<f32> {

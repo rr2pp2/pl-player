@@ -162,8 +162,6 @@ pub struct OutputStream {
     pub name: String,
     /// 自動のアイコン（headphones / speaker / stream）
     pub kind: &'static str,
-    /// 開いた時刻（QPC ns）
-    pub opened_ns: u64,
     /// 自前の QPC と `stream.now()` の差（ns。13.1 の2）
     pub now_diff_ns: i64,
     gen: u64,
@@ -233,7 +231,6 @@ impl OutputStream {
             other => Err(OpenFail::Format(format!("unsupported device sample format: {other:?}"))),
         }?;
         stream.play().map_err(|e| OpenFail::from_cpal(e.kind(), format!("stream play: {e}")))?;
-        let opened_ns = qpc_now_ns();
         let q1 = qpc_now_ns();
         let now = stream.now().as_nanos().min(u64::MAX as u128) as u64;
         let q2 = qpc_now_ns();
@@ -250,7 +247,6 @@ impl OutputStream {
             resolved_id,
             name,
             kind,
-            opened_ns,
             now_diff_ns,
             gen: 0,
         })
