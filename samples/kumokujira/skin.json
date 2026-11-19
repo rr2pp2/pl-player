@@ -1,0 +1,48 @@
+{
+  "format": "pl-player-skin",
+  "schemaVersion": 1,
+  "id": "kumokujira-sample",
+  "name": "くもくじら（見本）",
+  "version": "1.0.0",
+  "author": "PL Player",
+  "description": "スキン作りの見本。雲に乗ったくじらの立ち絵・夜の海の色（Dark のテーマ）・ウィンドウのアイコンが入っています。絵は図形だけで描いたもの",
+  "minAppVersion": "3.7.0",
+  "parts": {
+    "appearance": {
+      "themes": {
+        "dark": {
+          "tokens": {
+            "--c-bg": "#0d1720",
+            "--c-panel-rgb": "20, 36, 50",
+            "--c-accent": "#8fd8ec",
+            "--c-accent-contrast": "#06161d",
+            "--c-secondary": "#a3bccd",
+            "--c-hover": "#1b3446",
+            "--c-selected": "#21425a",
+            "--c-favorite": "#ffd56b"
+          },
+          "shadow": "soft"
+        }
+      },
+      "tokens": {
+        "--radius": 14
+      }
+    },
+    "application": {
+      "window": "app/window.png"
+    },
+    "character": {
+      "states": {
+        "playing": "character/playing.png",
+        "stopped": "character/stopped.png"
+      },
+      "placement": {
+        "mode": "right-rail",
+        "widthPx": 220,
+        "maxHeightPx": 420,
+        "minWindowWidthPx": 920
+      }
+    }
+  },
+  "extensions": {}
+}

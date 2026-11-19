@@ -8,6 +8,7 @@
 //! - package：取り込み（一時の場所 → 確認 → 正式の場所）・読み込み・一覧・削除・書き出し
 //! - runtime：画面・トレイ・ウィンドウとのやり取り（適用・既定に戻す・セーフモード・アイコンの差し替え・使う立ち絵）
 //! - avatars：登録した立ち絵（v3.9.0。画像を選ぶだけで作る。画面の呼び名は「立ち絵」）と、使う立ち絵の選び方
+//! - sample：見本の立ち絵「くじら」を一度だけ入れる（v3.9.1）
 //!
 //! 仕様の全文は docs\着せ替え_仕様.md。
 
@@ -19,6 +20,7 @@ pub mod manifest;
 pub mod names;
 pub mod package;
 pub mod runtime;
+pub mod sample;
 pub mod tokens;
 
 #[cfg(test)]

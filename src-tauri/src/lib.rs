@@ -67,6 +67,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     tracing::info!("start {}", app.package_info().version);
 
+    // v3.9.1：新しく入れた人か（ライブラリの DB がまだ無い）。見本の立ち絵を使う立ち絵にも選ぶかを決める。DB を開く前に見る
+    let fresh_install = skins::sample::is_fresh_install(&data_dir);
     let db = match db::Db::open(&data_dir.join("library.db"), paths.thumbs_dir.clone()) {
         Ok(db) => Arc::new(db),
         Err(e) => {
@@ -86,7 +88,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             return Err(Box::new(e));
         }
     };
-    let settings = settings::store::load(&db);
+    let mut settings = settings::store::load(&db);
+    // v3.9.1：見本の立ち絵「くじら」を一度だけ入れる（新しく入れた人は、使う立ち絵にも選ぶ）。画面が最初に描く前（AppState に置く前）
+    skins::sample::install_at_start(&db, &skins::Dirs::new(&data_dir), fresh_install, &mut settings);
     let controller = playback::Controller::new(db.clone());
     controller.add_listener(Arc::new(UiEmitter(handle.clone())));
 

@@ -21,7 +21,8 @@
 //   4. release\ に組み立てる。前の物があれば release\控え\<日時>\ へ動かす（消さない）
 //      - Releases に置く物：PL-Player-<版>.zip・PL-Player-<版>-x64-setup.exe・PL-Player-<版>-x64-portable.exe・PL-Player-<版>.sha256.txt
 //        GitHub は空白や英数字以外を含む資産の名前を変えるので、英数字と . _ - だけの名前にする。SHA256 の一覧もこの名前（フォルダなし）で書く
-//      - release\PL-Player-<版>\：zip の中身と同じもの（日本語の名前の exe 2つと、使う人向けの README（scripts/release-README.md から））
+//      - release\PL-Player-<版>\：zip の中身と同じもの（日本語の名前の exe 2つと、使う人向けの README（scripts/release-README.md から）と、
+//        v3.9.1 から「見本」フォルダ（立ち絵とスキンの見本と使い方。scripts/release-samples.mts））
 //   5. zip を Windows の Expand-Archive で展開し、中身が置いた物と同じかを SHA256 で確かめる。SHA256 の一覧も読み直して照らす
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -30,6 +31,7 @@ import { basename, join, relative, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentRoots, formatReport, isBad, listFiles, maskText, needlesFor, nsisRuntimePathLines, scanFile, variants, type FileReport, type Roots } from "./release-scan.mts";
 import { makeZip } from "./release-zip.mts";
+import { SAMPLE_DIR, sampleFiles, type SampleFile } from "./release-samples.mts";
 
 const PORTABLE_NAME = "PL Player 3（インストールせずに使う）.exe";
 
@@ -442,6 +444,14 @@ function main() {
   } catch (e) {
     fail((e as Error).message);
   }
+  // v3.9.1：見本フォルダの中身（絵に作った PC・ソフトを書ける塊があれば、ここで止まる）
+  let samples: SampleFile[];
+  try {
+    samples = sampleFiles(project, version);
+  } catch (e) {
+    fail((e as Error).message);
+  }
+  console.log(`見本：${samples.map((f) => f.name).join("・")}`);
   const others = otherVersions(readme, version);
   if (others.length > 0) {
     console.log(`使う人向けの README に、今の版（${version}）と違う版番号があります。前の版のまま残っていないかを目で確かめてください（止めません）：`);
@@ -614,7 +624,13 @@ function main() {
   mkdirSync(outDir, { recursive: true });
   for (const [src, n] of [[setup, setupName], [exe, PORTABLE_NAME]] as const) copyFileSync(src, join(outDir, n));
   writeFileSync(join(outDir, "README.md"), readme, "utf8");
-  const entries = [setupName, PORTABLE_NAME, "README.md"].map((n) => ({ name: `${assets.base}/${n}`, path: join(outDir, n) }));
+  // v3.9.1：見本フォルダ（立ち絵とスキンの見本と使い方）
+  mkdirSync(join(outDir, SAMPLE_DIR), { recursive: true });
+  for (const f of samples) writeFileSync(join(outDir, SAMPLE_DIR, f.name), f.data);
+  const entries = [
+    ...[setupName, PORTABLE_NAME, "README.md"].map((n) => ({ name: `${assets.base}/${n}`, path: join(outDir, n) })),
+    ...samples.map((f) => ({ name: `${assets.base}/${SAMPLE_DIR}/${f.name}`, path: join(outDir, SAMPLE_DIR, f.name) })),
+  ];
   writeFileSync(zipPath, makeZip(entries.map((e) => ({ name: e.name, data: readFileSync(e.path), mtime: statSync(e.path).mtime }))));
   // Releases に1つずつ置く物（GitHub が名前を変えない名前で）
   copyFileSync(setup, setupAsset);

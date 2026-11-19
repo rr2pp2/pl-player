@@ -21,3 +21,9 @@ pub fn set(db: &Db, key: &str, value: &serde_json::Value) -> AppResult<()> {
     )?;
     Ok(())
 }
+
+/// キーを消す（無ければ何もしない）
+pub fn remove(db: &Db, key: &str) -> AppResult<()> {
+    db.writer().execute("DELETE FROM settings WHERE key = ?1", [key])?;
+    Ok(())
+}
