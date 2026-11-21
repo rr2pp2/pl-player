@@ -5,6 +5,7 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::error::{AppResult, ErrorKind};
+use crate::settings::store::AppSettings;
 use crate::skins::package::{self, ExportReport, Inspection, SkinSummary};
 use crate::skins::runtime::{self, SkinState};
 use crate::skins::manifest::{from_skin, skin_error};
@@ -65,9 +66,23 @@ pub async fn skins_apply(app: AppHandle, id: String) -> AppResult<SkinState> {
     runtime::apply(&app, &id)
 }
 
+/// 「既定の見た目に戻す」：スキンを既定にし、手で選んだ色も外す（v3.10.0）。立ち絵は残す
 #[tauri::command]
 pub async fn skins_reset(app: AppHandle) -> AppResult<SkinState> {
-    runtime::reset(&app)
+    runtime::reset_look(&app)
+}
+
+/// v3.10.0：手で選んだ色を1つ変える（`value` が null なら外す）。名前は 15 個のどれか、値はスキンの色と同じ形だけ。
+/// Rust が形をそろえて保存し、設定を返す（画面からは任意の CSS の文字列を受けない）
+#[tauri::command]
+pub async fn skins_color_set(app: AppHandle, name: String, value: Option<String>) -> AppResult<AppSettings> {
+    runtime::set_color(&app, &name, value.as_deref())
+}
+
+/// v3.10.0：手で選んだ色を全部外す（スキンと立ち絵は変えない）
+#[tauri::command]
+pub async fn skins_colors_clear(app: AppHandle) -> AppResult<AppSettings> {
+    runtime::clear_colors(&app)
 }
 
 #[tauri::command]

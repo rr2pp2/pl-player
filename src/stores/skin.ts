@@ -1,11 +1,13 @@
 // 着せ替え（v3.2.0）の写し。正は Rust（skins::runtime）。ここは当てるだけ。
 // - 色と文字：今のテーマに合わせて、許した変数だけを <html> に当てる（既定のスキンでは何も当てない＝今の見た目そのまま）
+// - v3.10.0：手で選んだ色（設定の skin.colors）をスキンの色の上に重ねる。手の色が無ければ 3.9.1 と同じ（何も足さない）。
+//   セーフモードの間は手の色も当てない（既定の見た目）
 // - 「動きを減らす」（prefers-reduced-motion）を見張り、変わったらすぐ反映する（動く画像の代わりに最初の1コマを読む）
 import { api } from "../ipc/commands";
 import { fileUrl, on } from "../ipc/events";
 import type { AvatarList, PickedImage, ResolvedSkin, SkinCharacter, SkinInspection, SkinState } from "../ipc/types";
 import { skinNoticeText } from "../messages/ja";
-import { applyCssVars, skinCssVars } from "../skins/tokens";
+import { applyCssVars, layeredCssVars, manualColorVars } from "../skins/tokens";
 import { pickIconPath } from "../skins/icons";
 import { settings } from "./settings";
 import { playback } from "./playback";
@@ -35,18 +37,45 @@ export const bumpSkinList = () => skinListVersion.set((v) => v + 1);
 
 const currentSkin = (): ResolvedSkin | null => skinState.get()?.skin ?? null;
 
-/** 今のテーマに、スキンの色と文字を当てる。確かめに通らない値があれば、既定の見た目に戻して知らせる */
+/** v3.10.0：色の選び窓を動かしている間だけの色（保存は選び窓を閉じたとき・つまみを離したとき）。手の色の上に重ねて当てる */
+export const colorPreview = createStore<Record<string, string>>({});
+
+/** 手で選んだ色（セーフモードの間は当てない）。動かしている途中の色を上に重ねる */
+function manualColorsNow(): Record<string, string> {
+  if (skinState.get()?.safeMode) return {};
+  return { ...(settings.get().skin?.colors ?? {}), ...colorPreview.get() };
+}
+
+/** 知らせた手の色の不合格（同じものを何度も知らせない） */
+let lastManualRejected = "";
+
+/**
+ * 今のテーマに、スキンの色と文字・手で選んだ色を当てる。スキンの値が確かめに通らなければ、スキンを既定に戻して知らせる
+ * （手の色は残す。「既定の見た目に戻す」とは別の道）。手の色が確かめに通らなければ、その色だけ当てずに知らせる
+ */
 function applyTokens() {
   const root = document.documentElement;
   const theme = settings.get().theme || "dark";
-  const { vars, rejected } = skinCssVars(currentSkin()?.appearance ?? null, theme);
+  const { vars, rejected, manualRejected } = layeredCssVars(currentSkin()?.appearance ?? null, theme, manualColorsNow());
+  const bad = manualRejected.join(", ");
+  if (bad && bad !== lastManualRejected) notify({ level: "error", error: { code: "skin_color_invalid", detail: bad } });
+  lastManualRejected = bad;
   if (rejected.length > 0) {
-    applyCssVars(root.style, {});
+    applyCssVars(root.style, manualColorVars(manualColorsNow()).vars);
     notify({ level: "error", error: { code: "skin_apply_failed", detail: rejected.join(", ") } });
-    void resetSkin();
+    void fallbackToDefaultSkin();
     return;
   }
   applyCssVars(root.style, vars);
+}
+
+/** 当てているスキンの値が読めなかったとき：スキンだけを既定に戻す（手で選んだ色と立ち絵は残す） */
+async function fallbackToDefaultSkin() {
+  try {
+    receive(await api.skinsApply("builtin:default"));
+  } catch (e) {
+    fail(e);
+  }
 }
 
 function receive(s: SkinState) {
@@ -61,12 +90,15 @@ function receive(s: SkinState) {
 export async function initSkins() {
   receive(await api.skinsState());
   await on("skin", receive);
-  // テーマを変えたら、そのテーマの色に当て直す
+  // テーマを変えたら、そのテーマの色に当て直す。v3.10.0：手で選んだ色が変わったときも（Rust が保存して知らせた設定）
   currentTheme.set(settings.get().theme || "dark");
+  let colorsKey = JSON.stringify(settings.get().skin?.colors ?? {});
   settings.subscribe(() => {
     const t = settings.get().theme || "dark";
-    if (t !== currentTheme.get()) {
+    const k = JSON.stringify(settings.get().skin?.colors ?? {});
+    if (t !== currentTheme.get() || k !== colorsKey) {
       currentTheme.set(t);
+      colorsKey = k;
       applyTokens();
     }
   });
@@ -89,12 +121,53 @@ export async function applySkin(id: string) {
   }
 }
 
+/** 「既定の見た目に戻す」：スキンを既定にし、手で選んだ色も外す（v3.10.0）。立ち絵は残す */
 export async function resetSkin() {
   try {
     receive(await api.skinsReset());
   } catch (e) {
     fail(e);
   }
+}
+
+// ---------------- 手で選ぶ色（v3.10.0） ----------------
+
+/** 選び窓・つまみを動かしている間：保存せずに当てるだけ（値は当てる前に tokens.ts の決まりで確かめる） */
+export function previewColor(name: string, value: string) {
+  colorPreview.set((p) => ({ ...p, [name]: value }));
+  applyTokens();
+}
+
+/** 動かしていた色を捨てる（保存しなかったとき）。当て直す */
+export function dropColorPreview(name: string) {
+  if (!(name in colorPreview.get())) return;
+  colorPreview.set((p) => {
+    const { [name]: _drop, ...rest } = p;
+    return rest;
+  });
+  applyTokens();
+}
+
+/** 手で選んだ色を1つ保存する（null なら外す）。Rust が確かめて形をそろえる。断られたら理由を出し、前の色に戻す */
+export async function commitColor(name: string, value: string | null) {
+  try {
+    settings.set(await api.skinsColorSet(name, value));
+  } catch (e) {
+    fail(e);
+  } finally {
+    dropColorPreview(name);
+  }
+}
+
+/** 手で選んだ色を全部外す（スキンと立ち絵は変えない） */
+export async function clearColors() {
+  try {
+    settings.set(await api.skinsColorsClear());
+  } catch (e) {
+    fail(e);
+  }
+  colorPreview.set({});
+  applyTokens();
 }
 
 export async function exitSafeMode() {

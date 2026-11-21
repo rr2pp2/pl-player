@@ -208,7 +208,12 @@ export const api = {
   skinsImportCommit: (token: string) => invoke<SkinSummary>("skins_import_commit", { token }),
   skinsImportCancel: (token: string) => invoke<void>("skins_import_cancel", { token }),
   skinsApply: (id: string) => invoke<SkinState>("skins_apply", { id }),
+  /** 「既定の見た目に戻す」：スキンを既定にし、手で選んだ色も外す（v3.10.0）。立ち絵は残す */
   skinsReset: () => invoke<SkinState>("skins_reset"),
+  /** v3.10.0：手で選んだ色を1つ変える（null なら外す）。Rust が確かめて形をそろえ、保存した設定を返す。決まりに合わなければ skin_color_invalid */
+  skinsColorSet: (name: string, value: string | null) => invoke<AppSettings>("skins_color_set", { name, value }),
+  /** v3.10.0：手で選んだ色を全部外す（スキンと立ち絵は変えない） */
+  skinsColorsClear: () => invoke<AppSettings>("skins_colors_clear"),
   skinsExitSafeMode: () => invoke<SkinState>("skins_exit_safe_mode"),
   skinsDelete: (id: string) => invoke<SkinState>("skins_delete", { id }),
   skinsExport: (id: string) => invoke<SkinExportReport | null>("skins_export", { id }),

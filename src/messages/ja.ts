@@ -46,6 +46,8 @@ export const errorText: Record<ErrorCode, string> = {
   skin_builtin_readonly: "既定のスキンは消したり書き出したりできません。",
   skin_apply_failed: "スキンを読めなかったので、既定の見た目に戻しました。",
   skin_import_expired: "取り込みの確認が古くなりました。もう一度 zip を選んでください。",
+  // 手で選ぶ色（v3.10.0）。断ったときは何も変えていない
+  skin_color_invalid: "その色は使えません（色の欄の 15 個だけ、#rrggbb などの決まった形だけを受けます）。何も変えていません。",
   // 立ち絵（v3.9.0。画像から追加する立ち絵）。画像の中身で断るときは、スキンの取り込みと同じ skin_image_invalid・skin_image_limit の文
   avatar_image_format: "立ち絵に使える画像は PNG・WebP・GIF（動く画像も）だけです。",
   avatar_too_large: "画像のファイルが大きすぎます（1つ 15MB まで）。",

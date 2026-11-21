@@ -16,9 +16,15 @@ export function hex(s: string): RGB {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** `rgba(r, g, b, a)`・`rgb(r, g, b)`・`#rrggbb`・`#rgb`・`r, g, b`（--c-*-rgb の形） */
+/** `rgba(r, g, b, a)`・`rgb(r, g, b)`・`#rrggbb`・`#rgb`・`r, g, b`（--c-*-rgb の形）。
+ *  v3.10.0（直し3回目）：`#rrggbbaa`・`#rgba` も読む（ビルドした CSS では半透明の色がこの形に書き換わっている） */
 export function color(s: string): RGBA {
   const t = s.trim();
+  const ha = /^#([0-9a-f]{4}|[0-9a-f]{8})$/i.exec(t);
+  if (ha) {
+    const h = ha[1].length === 4 ? [...ha[1]].map((c) => c + c).join("") : ha[1];
+    return { rgb: hex("#" + h.slice(0, 6)), a: parseInt(h.slice(6), 16) / 255 };
+  }
   if (t.startsWith("#")) return { rgb: hex(t), a: 1 };
   const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(t);
   if (m) return { rgb: [+m[1], +m[2], +m[3]], a: m[4] === undefined ? 1 : +m[4] };
@@ -143,6 +149,18 @@ export function evaluate(base: Record<string, string>, skin: Record<string, stri
  * 基準に届かない組み合わせのうち、スキンで新しく届かなくなったもの・既定より悪くなったものだけ。
  * 既定のテーマで元から届かない組み合わせ（Dark の線など）を、スキンのせいにしない。スキンが色を変えていなければ空
  */
+/**
+ * 警告を計算する（画面用）。読めない色で投げたときは、黙って空にせず error に理由を返す
+ * （v3.10.0 直し3回目。前は呼び出し側が例外を捨て、警告が0件に見えていた）
+ */
+export function contrastWarningsOrError(base: Record<string, string>, skin: Record<string, string>): { rows: Result[]; error: string | null } {
+  try {
+    return { rows: contrastWarnings(base, skin), error: null };
+  } catch (e) {
+    return { rows: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export function contrastWarnings(base: Record<string, string>, skin: Record<string, string>): Result[] {
   if (Object.keys(skin).length === 0) return [];
   const before = evaluate(base, {});

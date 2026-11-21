@@ -4,8 +4,8 @@
 import { useMemo } from "react";
 import type { SkinAppearance, SkinInspection } from "../ipc/types";
 import { errorText, skinPartLabels, skinWarning } from "../messages/ja";
-import { contrastWarnings, type Result } from "../skins/contrast";
-import { COLOR_VARS } from "../skins/tokens";
+import { contrastWarningsOrError, type Result } from "../skins/contrast";
+import { themeDefaults } from "../skins/themeDefaults";
 import { warningRows } from "../skins/warnings";
 import { cancelSkinImport, commitSkinImport, skinImport } from "../stores/skin";
 import { useStore } from "../stores/store";
@@ -13,30 +13,20 @@ import { Modal } from "../components/Modal";
 
 const mb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
-/** 既定のテーマの色を、画面の CSS から読む（dark.css・light.css が正。値をここに写さない） */
-function themeDefaults(theme: string): Record<string, string> {
-  const el = document.createElement("div");
-  el.dataset.theme = theme;
-  el.style.display = "none";
-  document.body.appendChild(el);
-  const cs = getComputedStyle(el);
-  const out: Record<string, string> = {};
-  for (const v of COLOR_VARS) out[v] = cs.getPropertyValue(v).trim();
-  el.remove();
-  return out;
-}
 
-function contrastByTheme(a: SkinAppearance | null): { theme: string; rows: Result[] }[] {
+/** v3.10.0（直し3回目）：計算できなかったテーマは「基準を満たしています」と出さず、error に理由を返す（前は例外を捨てて0件に見えていた） */
+function contrastByTheme(a: SkinAppearance | null): { theme: string; rows: Result[]; error: string | null }[] {
   if (!a) return [];
-  const out: { theme: string; rows: Result[] }[] = [];
+  const out: { theme: string; rows: Result[]; error: string | null }[] = [];
   for (const theme of ["dark", "light"] as const) {
     const t = a[theme];
     if (!t || Object.keys(t.tokens).length === 0) continue;
-    try {
-      out.push({ theme, rows: contrastWarnings(themeDefaults(theme), t.tokens) });
-    } catch {
-      out.push({ theme, rows: [] });
+    const d = themeDefaults(theme);
+    if (d.unreadable.length > 0) {
+      out.push({ theme, rows: [], error: `読めない既定の色：${d.unreadable.join(", ")}` });
+      continue;
     }
+    out.push({ theme, ...contrastWarningsOrError(d.colors, t.tokens) });
   }
   return out;
 }
@@ -165,7 +155,11 @@ function Body(props: { r: SkinInspection }) {
         </div>
       ) : null}
       {contrast.map((c) =>
-        c.rows.length ? (
+        c.error ? (
+          <div className="skin-callout warn" key={c.theme}>
+            {c.theme === "light" ? "Light" : "Dark"} テーマの色の読みやすさを計算できませんでした（{c.error}）。取り込むことはできます。
+          </div>
+        ) : c.rows.length ? (
           <div className="skin-callout warn" key={c.theme}>
             <div>
               {c.theme === "light" ? "Light" : "Dark"} テーマの色で、読みにくくなる組み合わせが {c.rows.length} 件あります（本文 4.5:1・線 3:1 に届かない。背景の暗さ 45%・UI の不透明度 70% で計算）。取り込むことはできます。

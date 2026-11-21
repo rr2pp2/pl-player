@@ -25,6 +25,20 @@ pub fn quit(app: &AppHandle) {
     app.exit(0);
 }
 
+/// v3.10.0（直し2回目）：「既定の見た目に戻す」も「立ち絵を出さない」と同じく別のスレッドへ渡す。中で設定を書く鍵（settings_write）を取り、
+/// 設定の zip の読み込みはその鍵を読み込みの間ずっと持つので、メインのスレッドで呼ぶと読み込みが終わるまで固まるため
+fn reset_look_off_main(app: &AppHandle) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new().name("tray-reset-look".into()).spawn(move || {
+        if let Err(e) = crate::skins::runtime::reset_look(&app) {
+            crate::commands::notice_error(&app, &e);
+        }
+    });
+    if let Err(e) = spawned {
+        tracing::warn!("tray: could not start reset-look thread: {e}");
+    }
+}
+
 /// v3.9.0：トレイのメニューの「立ち絵を出さない」
 pub(crate) const HIDE_AVATAR_ID: &str = "hide-avatar";
 
@@ -50,7 +64,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
     let prev = MenuItem::with_id(app, "previous", "前の曲", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     // v3.2.0：着せ替えの逃げ道（画面が読めない配色にしてしまったときも、ここから戻せる）
-    // 「既定の見た目に戻す」はスキンだけを戻し、立ち絵は残す（v3.9.0）
+    // 「既定の見た目に戻す」はスキンと手で選んだ色（v3.10.0）を戻し、立ち絵は残す（v3.9.0）
     let reset_skin = MenuItem::with_id(app, "reset-skin", "既定の見た目に戻す", true, None::<&str>)?;
     // v3.9.0：立ち絵だけを外す逃げ道（立ち絵の画像で画面が崩れたときも、画面を通らずに外せる。作った立ち絵は消さない）
     let hide_avatar = MenuItem::with_id(app, HIDE_AVATAR_ID, "立ち絵を出さない", true, None::<&str>)?;
@@ -67,9 +81,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
             "next" => super::hotkeys::dispatch(app, "next"),
             "previous" => super::hotkeys::dispatch(app, "previous"),
             "reset-skin" => {
-                if let Err(e) = crate::skins::runtime::reset(app) {
-                    crate::commands::notice_error(app, &e);
-                }
+                reset_look_off_main(app);
                 show_main(app);
             }
             HIDE_AVATAR_ID => hide_avatar_off_main(app),

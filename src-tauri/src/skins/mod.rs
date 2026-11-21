@@ -9,10 +9,12 @@
 //! - runtime：画面・トレイ・ウィンドウとのやり取り（適用・既定に戻す・セーフモード・アイコンの差し替え・使う立ち絵）
 //! - avatars：登録した立ち絵（v3.9.0。画像を選ぶだけで作る。画面の呼び名は「立ち絵」）と、使う立ち絵の選び方
 //! - sample：見本の立ち絵「くじら」を一度だけ入れる（v3.9.1）
+//! - colors：手で選ぶ色（v3.10.0。設定の `skin.colors`。スキンの色の上に重ねる。値の確かめは tokens と同じ）
 //!
 //! 仕様の全文は docs\着せ替え_仕様.md。
 
 pub mod avatars;
+pub mod colors;
 pub mod grapheme_base;
 pub mod images;
 pub mod json;

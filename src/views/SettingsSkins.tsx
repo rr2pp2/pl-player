@@ -1,5 +1,6 @@
 // 設定の「着せ替え」の欄（v3.2.0）：スキンの一覧・見本・適用・取り込み・書き出し・削除・既定に戻す。
 // v3.9.0：立ち絵（使う立ち絵の一覧・「＋ 立ち絵を追加…」・変更・大きさ）は SettingsAvatars.tsx の「立ち絵」の欄（この欄の下に出す）。
+// v3.10.0：手で選ぶ色は SettingsColors.tsx の「色」の欄（「立ち絵」の欄の上に出す）。「既定の見た目に戻す」は手で選んだ色も外す。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
 import { fileUrl } from "../ipc/events";
@@ -12,6 +13,7 @@ import { useStore } from "../stores/store";
 import { confirmDialog } from "../components/Modal";
 import { SkinImportReview } from "./SkinImportReview";
 import { AvatarsField } from "./SettingsAvatars";
+import { ColorsField } from "./SettingsColors";
 
 const BUILTIN = "builtin:default";
 
@@ -40,6 +42,22 @@ export function SkinsSection() {
   const saved = list.find((x) => x.id === active);
   const name = (x: SkinSummary | undefined) => (!x || x.builtin ? "既定のスキン" : x.name);
   const nextDefault = s.skin?.safeModeNextStart === true;
+  // v3.10.0：手で選んだ色の数（「既定の見た目に戻す」で一緒に外れる）
+  const manualCount = Object.keys(s.skin?.colors ?? {}).length;
+
+  /** 「既定の見た目に戻す」：手で選んだ色があるときだけ確かめる（色は元に戻せないため）。立ち絵は残る */
+  const resetLook = async () => {
+    if (manualCount > 0) {
+      const ok = await confirmDialog(
+        "既定の見た目に戻す",
+        `スキンを既定に戻します。手で選んだ色（${manualCount} 個）も戻ります（元に戻せません）。立ち絵は残ります。`,
+        "既定の見た目に戻す",
+        true,
+      );
+      if (!ok) return;
+    }
+    await resetSkin();
+  };
 
   const del = async (x: SkinSummary) => {
     const using = x.id === active || x.id === effective;
@@ -55,7 +73,7 @@ export function SkinsSection() {
   return (
     <section>
       <h3>着せ替え</h3>
-      <p className="hint-text skin-lead">アプリの見た目（色と文字・ボタンのアイコン・アプリのアイコン・立ち絵）を変えます。立ち絵は下の「立ち絵」の欄で、スキンとは別に選べます（「＋ 立ち絵を追加…」で画像を選んで足すこともできます）。スキンと立ち絵はこの PC の中に置き、外へは通信しません。</p>
+      <p className="hint-text skin-lead">アプリの見た目（色と文字・ボタンのアイコン・アプリのアイコン・立ち絵）を変えます。色は下の「色」の欄で1つずつ選べ、立ち絵は「立ち絵」の欄で、スキンとは別に選べます（「＋ 立ち絵を追加…」で画像を選んで足すこともできます）。スキンと立ち絵はこの PC の中に置き、外へは通信しません。</p>
       {st?.safeMode ? (
         <div className="skin-callout warn" role="status">
           <div>既定の見た目で動いています（セーフモード）。保存しているスキン：{name(saved)}</div>
@@ -65,7 +83,7 @@ export function SkinsSection() {
                 保存しているスキンに戻す
               </button>
             ) : null}
-            <button className="btn" onClick={() => void resetSkin()}>
+            <button className="btn" onClick={() => void resetLook()}>
               既定の見た目のままにする
             </button>
           </div>
@@ -130,7 +148,7 @@ export function SkinsSection() {
           <button className="btn primary" disabled={picking} aria-busy={picking} onClick={() => void pickSkinZip()}>
             {picking ? "確かめています…" : "＋ zip を取り込む…"}
           </button>
-          <button className="btn" disabled={effective === BUILTIN && active === BUILTIN} onClick={() => void resetSkin()}>
+          <button className="btn" disabled={effective === BUILTIN && active === BUILTIN && manualCount === 0} onClick={() => void resetLook()}>
             既定の見た目に戻す
           </button>
           {/* v3.9.0（直し1回目）：立ち絵だけを外す（作った立ち絵は消さない）。「既定の見た目に戻す」では立ち絵は残るため */}
@@ -139,7 +157,7 @@ export function SkinsSection() {
           </button>
         </span>
         <span className="hint">
-          取り込むときは、中身を全部確かめてから確認の画面を出します。取り込んだだけでは当てません（一覧の「適用」で当てます）。「既定の見た目に戻す」はスキンだけを戻し、立ち絵は残ります。立ち絵も外すときは「立ち絵を出さない」を押してください（作った立ち絵は消えません。下の「立ち絵」の欄の「使う」で戻せます）。
+          取り込むときは、中身を全部確かめてから確認の画面を出します。取り込んだだけでは当てません（一覧の「適用」で当てます）。「既定の見た目に戻す」はスキンと手で選んだ色を戻し、立ち絵は残ります。立ち絵も外すときは「立ち絵を出さない」を押してください（作った立ち絵は消えません。下の「立ち絵」の欄の「使う」で戻せます）。
         </span>
       </div>
       <div className="field">
@@ -153,12 +171,13 @@ export function SkinsSection() {
           次の起動を既定の見た目にする（1回だけ。保存しているスキンは変えません）
         </label>
         <span className="hint">
-          画面が読めなくなったときの戻し方：タスクトレイのアイコンを右クリック →「既定の見た目に戻す」（立ち絵は残ります。立ち絵も外すときは、同じメニューの「立ち絵を出さない」）。または、起動の指定 --safe-mode を付けて起動する（起動中に付けて起動しても、動いているアプリが既定の見た目に切り替わります）。
+          画面が読めなくなったときの戻し方：タスクトレイのアイコンを右クリック →「既定の見た目に戻す」（手で選んだ色も戻ります。立ち絵は残ります。立ち絵も外すときは、同じメニューの「立ち絵を出さない」）。または、起動の指定 --safe-mode を付けて起動する（起動中に付けて起動しても、動いているアプリが既定の見た目に切り替わります）。
         </span>
       </div>
       <div className="skin-callout">
         スキンで変わるのは、起動中のウィンドウ・タスクバー・タスクトレイのアイコンです。exe・スタートメニュー・ショートカットのアイコンは変わりません（変えたいときは、ショートカットのプロパティの「アイコンの変更」から指定してください）。
       </div>
+      <ColorsField />
       <AvatarsField />
       <SkinImportReview />
     </section>

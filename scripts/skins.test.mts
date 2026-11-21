@@ -1,14 +1,31 @@
 // 着せ替え（v3.2.0）の画面側の決まりを確かめる：色と文字の値の確かめ・状態ごとのアイコンの選び方・立ち絵を出す／隠す条件・コントラストの計算。
 // v3.9.0：立ち絵の欄の並び・使う立ち絵の値（Rust と同じ形）・画面が出す立ち絵は Rust が解いたもの。
+// v3.10.0：手で選ぶ色（重なり順・値の確かめ・選び窓の値の作り方・読みやすさの警告・「既定の見た目に戻す」で外れる道）。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ALPHA_VARS,
   applyCssVars,
+  COLOR_LABELS,
+  COLOR_ROWS,
   COLOR_VARS,
+  colorKind,
+  currentColors,
+  layeredCssVars,
+  manualColorVars,
+  pickedColor,
+  readCurrentColor,
+  readThemeColors,
+  skinThemeColors,
+  splitColor,
+  warningLabel,
   DEFAULT_FONT_STACK,
   LOCKED_VARS,
   SKIN_VARS,
@@ -44,7 +61,7 @@ import {
 } from "../src/skins/character.ts";
 import { APP, centerWidth, DETAIL, detailLayout, type DetailInput } from "../src/layout/detailLayout.ts";
 import { LIST_BELOW, listLayoutFor } from "../src/layout/density.ts";
-import { contrastWarnings, evaluate, ratio } from "../src/skins/contrast.ts";
+import { color as contrastColor, contrastWarnings, contrastWarningsOrError, evaluate, ratio } from "../src/skins/contrast.ts";
 import { warningRows } from "../src/skins/warnings.ts";
 import { AVATAR_NAME_MAX, avatarChoice, avatarNameOk, avatarNameReady, avatarRows, canCreateAvatar, cardClickSwitches, cardKeySwitches, CHOICE_NONE, CHOICE_SKIN, skinCharacterChoice } from "../src/skins/avatars.ts";
 import { evaluate as evaluateFile, readTheme } from "./theme-contrast.mts";
@@ -506,7 +523,8 @@ test("立ち絵（直し1回目）：「既定の見た目に戻す」の隣に�
   // 間に別の欄を挟まない（同じ行の中）
   assert.ok(!skinsView.slice(reset, hide).includes('className="field"'));
   assert.ok(skinsView.includes("onClick={() => void hideAvatar()}"));
-  assert.match(skinsView, /「既定の見た目に戻す」はスキンだけを戻し、立ち絵は残ります/);
+  // v3.10.0：「既定の見た目に戻す」は手で選んだ色も戻す（立ち絵は残す）
+  assert.match(skinsView, /「既定の見た目に戻す」はスキンと手で選んだ色を戻し、立ち絵は残ります/);
   assert.match(skinsView, /同じメニューの「立ち絵を出さない」/);
   const store = readFileSync(fileURLToPath(new URL("../src/stores/skin.ts", import.meta.url)), "utf8");
   assert.ok(store.includes("receive(await api.avatarsHide())"));
@@ -949,4 +967,363 @@ test("直し8回目：(5) 大きさのつまみの下の案内は、実際の出
   assert.ok(view.includes("useCharacterPaneFor(size, s, lyricsRowOn(s))"));
   assert.ok(view.indexOf("<ScaleSlider />") < view.indexOf("<WindowNote />"));
   assert.ok(view.includes("【隠しています】"));
+});
+
+// ---------------- v3.10.0 手で選ぶ色 ----------------
+
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+const skinWith = (dark: Record<string, string> | null, light: Record<string, string> | null) => ({
+  dark: dark ? { tokens: dark, shadow: null } : null,
+  light: light ? { tokens: light, shadow: null } : null,
+  fontFamily: [],
+  tokens: {},
+});
+
+test("v3.10.0：重なり順は テーマの既定 < スキンのそのテーマの色 < 手の色。手の色は Dark・Light 共通。手の色が無ければ 3.9.1 と同じ", () => {
+  const skin = skinWith({ "--c-primary": "#111111", "--c-accent": "#222222" }, { "--c-bg": "#eeeeee" });
+  const manual = { "--c-accent": "#333333", "--c-ok": "#00AA00" };
+  // Dark：スキンの文字はそのまま、アクセントは手の色が勝つ
+  const d = layeredCssVars(skin, "dark", manual);
+  assert.deepEqual(d.vars, { "--c-primary": "#111111", "--c-accent": "#333333", "--c-ok": "#00aa00" });
+  assert.deepEqual([d.rejected, d.manualRejected], [[], []]);
+  // Light：スキンの Light の色の上に、同じ手の色
+  const l = layeredCssVars(skin, "light", manual);
+  assert.deepEqual(l.vars, { "--c-bg": "#eeeeee", "--c-accent": "#333333", "--c-ok": "#00aa00" });
+  // 既定のスキン（スキン無し）でも手の色だけ当たる
+  assert.deepEqual(layeredCssVars(null, "light", manual).vars, { "--c-accent": "#333333", "--c-ok": "#00aa00" });
+  // 手の色が無い（3.9.1 から上げた人・全部戻したあと）：スキンだけのときと同じ。既定のスキンなら何も当てない
+  for (const none of [{}, undefined, null]) {
+    assert.deepEqual(layeredCssVars(skin, "dark", none), { ...skinCssVars(skin, "dark"), manualRejected: [] });
+    assert.deepEqual(layeredCssVars(null, "dark", none).vars, {});
+  }
+  // 当て方：外してから当てる（手の色を外すと、スキンの値か既定に戻る）
+  const set = new Map<string, string>();
+  const style = { setProperty: (n: string, v: string) => void set.set(n, v), removeProperty: (n: string) => set.delete(n) };
+  applyCssVars(style, d.vars);
+  assert.equal(set.get("--c-accent"), "#333333");
+  applyCssVars(style, layeredCssVars(skin, "dark", {}).vars);
+  assert.equal(set.get("--c-accent"), "#222222");
+  assert.equal(set.has("--c-ok"), false);
+});
+
+test("v3.10.0：手の色は 15 個の名前とスキンの色と同じ値の形だけ（当てる前にもう一度確かめる）。合わない色だけ当てずに名前を返す", () => {
+  const r = manualColorVars({
+    "--c-bg": "#ABC",
+    "--c-panel-rgb": "1,2,3",
+    "--c-hover": "rgba(0,0,0,.5)",
+    "--c-primary": "red",
+    "--c-secondary": "#000; background: url(https://example.invalid/x)",
+    "--c-accent": "var(--c-bg)",
+    "--row-h": "#000000",
+    "--ui-alpha": "#000000",
+    "--c-overlay-rgb": "#000000",
+    "--c-ok": 5,
+  });
+  assert.deepEqual(r.vars, { "--c-bg": "#aabbcc", "--c-panel-rgb": "1, 2, 3", "--c-hover": "rgba(0, 0, 0, 0.5)" });
+  assert.deepEqual(r.rejected.sort(), ["--c-accent", "--c-ok", "--c-overlay-rgb", "--c-primary", "--c-secondary", "--row-h", "--ui-alpha"].sort());
+  for (const bad of [null, undefined, "x", 5, ["--c-bg", "#000000"]]) assert.deepEqual(manualColorVars(bad), { vars: {}, rejected: [] }, String(bad));
+  // スキンの値が壊れていれば rejected（スキンを既定に戻す）、手の色が壊れていれば manualRejected（その色だけ当てない）。別々に返す
+  const x = layeredCssVars(skinWith({ "--c-bg": "nope" }, null), "dark", { "--c-ok": "nope", "--c-danger": "#ff0000" });
+  assert.deepEqual([x.rejected, x.manualRejected, x.vars], [["--c-bg"], ["--c-ok"], { "--c-danger": "#ff0000" }]);
+});
+
+test("v3.10.0：色の欄の 15 行は COLOR_VARS と同じ並び（新しい表を作らない）。半透明の5色は色＋濃さ、*-rgb の2色は色だけ", () => {
+  assert.deepEqual(COLOR_ROWS.map((r) => r.name), [...COLOR_VARS]);
+  assert.deepEqual(Object.keys(COLOR_LABELS).sort(), [...COLOR_VARS].sort());
+  assert.ok(COLOR_ROWS.every((r) => r.label.length > 0 && !r.label.includes("--")));
+  assert.deepEqual(COLOR_ROWS.filter((r) => r.kind === "alpha").map((r) => r.name), ["--c-hover", "--c-selected", "--c-border", "--c-outline", "--c-input"]);
+  assert.deepEqual([...ALPHA_VARS], ["--c-hover", "--c-selected", "--c-border", "--c-outline", "--c-input"]);
+  assert.deepEqual(COLOR_ROWS.filter((r) => r.kind === "rgb").map((r) => r.name), ["--c-panel-rgb", "--c-overlay-rgb"]);
+  assert.equal(COLOR_ROWS.filter((r) => r.kind === "solid").length, 8);
+  // 半透明の5色は、どちらのテーマでも既定が rgba（濃さのつまみの初期値になる）
+  for (const f of [light, dark]) {
+    const t = readTheme(f);
+    for (const n of ALPHA_VARS) assert.match(t[n], /^rgba\(/, `${f} ${n}`);
+  }
+  // Rust の手の色の確かめは、スキンの色と同じ表と同じ確かめ（新しい表を作っていない）
+  const rs = read("../src-tauri/src/skins/colors.rs");
+  assert.ok(rs.includes("use super::tokens::{color_token, COLOR_VARS};"));
+  assert.ok(!/const [A-Z_]+: \[&str; 15\]/.test(rs));
+});
+
+test("v3.10.0：選び窓の値（#rrggbb）と濃さから保存する値を作る。どの行の値も、その色の確かめに通る", () => {
+  assert.deepEqual(splitColor("#AABBCC"), { hex: "#aabbcc", alpha: 1 });
+  assert.deepEqual(splitColor("rgba(255, 255, 255, 0.07)"), { hex: "#ffffff", alpha: 0.07 });
+  assert.deepEqual(splitColor("15, 15, 22"), { hex: "#0f0f16", alpha: 1 });
+  assert.deepEqual(splitColor("rgb(1, 2, 3)"), { hex: "#010203", alpha: 1 });
+  assert.equal(splitColor("red"), null);
+  assert.equal(pickedColor("solid", "#ABCDEF"), "#abcdef");
+  assert.equal(pickedColor("rgb", "#0f0f16"), "15, 15, 22");
+  assert.equal(pickedColor("alpha", "#7c6cff", 0.22), "rgba(124, 108, 255, 0.22)");
+  // 濃さは小数3桁まで（色だけ選んだとき、Light の既定 0.045 などの濃さを変えない）
+  assert.equal(pickedColor("alpha", "#000000", 0.045), "rgba(0, 0, 0, 0.045)");
+  assert.equal(pickedColor("alpha", "#000000", 0.12345), "rgba(0, 0, 0, 0.123)");
+  assert.equal(pickedColor("alpha", "#000000", 2), "rgba(0, 0, 0, 1)");
+  assert.equal(pickedColor("alpha", "#000000", -1), "rgba(0, 0, 0, 0)");
+  assert.equal(pickedColor("alpha", "#000000", NaN), "rgba(0, 0, 0, 1)");
+  // 選び窓の値は #rrggbb。rgb() は色の確かめと同じく #rrggbb にそろえて受け、濃さのある rgba() は選び窓の値として受けない
+  assert.equal(pickedColor("solid", "rgb(1,2,3)"), "#010203");
+  assert.equal(pickedColor("solid", "rgba(1,2,3,0.5)"), null);
+  assert.equal(pickedColor("solid", "javascript:x"), null);
+  // 全部の行・どちらのテーマの既定からでも：分けて作り直した値が、その名前の確かめに通り、濃さが残る
+  for (const f of [light, dark]) {
+    const t = readTheme(f);
+    for (const r of COLOR_ROWS) {
+      const p = splitColor(t[r.name]);
+      assert.ok(p, `${f} ${r.name}`);
+      const v = pickedColor(r.kind, p!.hex, p!.alpha)!;
+      assert.equal(validColorToken(r.name, v), v, `${r.name} ${v}`);
+      assert.equal(colorKind(r.name), r.kind);
+      if (r.kind === "alpha") assert.equal(splitColor(v)!.alpha, p!.alpha, r.name);
+    }
+  }
+});
+
+test("v3.10.0：今の色の見本と初期値は、手の色 → スキンのそのテーマの色 → テーマの既定 の順で決まる", () => {
+  const D = readTheme(dark);
+  const skin = skinThemeColors(skinWith({ "--c-accent": "#123456", "--c-bg": "bad" }, null), "dark");
+  assert.deepEqual(skin, { "--c-accent": "#123456" });
+  assert.deepEqual(skinThemeColors(skinWith({ "--c-accent": "#123456" }, null), "light"), {});
+  const c = currentColors(D, skin, { "--c-ok": "#00ff00", "--c-accent": "#654321", "--c-bg": "nope" });
+  assert.deepEqual(c["--c-ok"], { value: "#00ff00", source: "manual" });
+  assert.deepEqual(c["--c-accent"], { value: "#654321", source: "manual" });
+  assert.deepEqual(c["--c-bg"], { value: D["--c-bg"], source: "theme" });
+  assert.deepEqual(currentColors(D, skin, {})["--c-accent"], { value: "#123456", source: "skin" });
+  assert.equal(Object.keys(c).length, 15);
+});
+
+test("v3.10.0：読みやすさの警告は今のテーマで、手の色のせいで新しく届かなくなった組み合わせだけ（基準は既定＋スキンの色）", () => {
+  const D = readTheme(dark);
+  const L = readTheme(light);
+  // 欄が渡すもの：基準＝既定＋スキンの色、重ねる色＝確かめた手の色（SettingsColors.tsx と同じ組み立て）
+  const warn = (base: Record<string, string>, skin: Record<string, string>, manual: Record<string, string>) =>
+    contrastWarnings({ ...base, ...skin }, manualColorVars(manual).vars);
+  assert.deepEqual(warn(D, {}, {}), []);
+  // 1組だけなので、Dark で文字を白にしたまま Light に切り替えると、Light で警告が出る（Dark では出ない）
+  const white = { "--c-primary": "#ffffff" };
+  assert.deepEqual(warn(D, {}, white), []);
+  const w = warn(L, {}, white);
+  assert.ok(w.length > 0 && w.every((r) => r.name.includes("--c-primary") || r.name.includes("--c-bg")), JSON.stringify(w.map((r) => r.name)));
+  // スキンがもう読みにくくしている色を、手でも同じ色にしただけなら、手の色のせいにしない
+  const skinBad = { "--c-secondary": "#bbbbbb" };
+  assert.ok(contrastWarnings(L, skinBad).length > 0);
+  assert.deepEqual(warn(L, skinBad, { "--c-secondary": "#bbbbbb" }), []);
+  // 確かめに通らない手の色は計算にも入れない
+  assert.deepEqual(warn(L, {}, { "--c-primary": "white" }), []);
+  // 画面に出す名前は、変数の名前を色の名前に置き換える
+  assert.equal(warningLabel("--c-bg／--c-primary（再生ボタン）"), "「背景」／「文字」（再生ボタン）");
+  assert.equal(warningLabel("線 --c-outline（操作部の輪郭）／パネル"), "線 「操作部の輪郭」（操作部の輪郭）／パネル");
+  const view = read("../src/views/SettingsColors.tsx");
+  assert.ok(view.includes("contrastWarningsOrError({ ...defaults, ...skinColors }, manualColorVars(manual).vars)"));
+});
+
+test("v3.10.0：色の欄の作り（選び窓は <input type=\"color\">・保存は選び窓を閉じたとき・行の「戻す」・全部戻すは確認あり・セーフモード）", () => {
+  const view = read("../src/views/SettingsColors.tsx");
+  assert.ok(view.includes('type="color"'));
+  // 値を文字で打つ欄は作らない
+  assert.ok(!/type="text"|className="input"/.test(view));
+  // 動かしている間は当てるだけ、選び窓の本来の change で保存
+  assert.ok(view.includes('el.addEventListener("change", onChange)'));
+  assert.ok(view.includes("previewColor(props.name, v)"));
+  assert.ok(view.includes("void commitColor(props.name, null)"));
+  assert.ok(view.includes('disabled={props.disabled || props.source !== "manual"}'));
+  assert.ok(view.includes('"手で選んだ色を全部戻す"') && view.includes("confirmDialog("));
+  assert.ok(view.includes("セーフモード"));
+  // 欄は着せ替えの中、立ち絵の欄の上
+  const skinsView = read("../src/views/SettingsSkins.tsx");
+  assert.ok(skinsView.indexOf("<ColorsField />") > 0 && skinsView.indexOf("<ColorsField />") < skinsView.indexOf("<AvatarsField />"));
+  // 外のライブラリを足していない
+  const pkg = JSON.parse(read("../package.json"));
+  assert.deepEqual(Object.keys(pkg.dependencies).sort(), ["@dnd-kit/core", "@dnd-kit/sortable", "@tanstack/react-virtual", "@tauri-apps/api", "@tauri-apps/plugin-global-shortcut", "react", "react-dom"]);
+});
+
+test("v3.10.0：手の色の保存は Rust の窓口だけ・「既定の見た目に戻す」（設定とトレイ）は手の色も外す・スキンが読めないときの戻しは手の色を残す・セーフモードでは当てない", () => {
+  const cmds = read("../src/ipc/commands.ts");
+  assert.ok(cmds.includes('invoke<AppSettings>("skins_color_set", { name, value })'));
+  assert.ok(cmds.includes('invoke<AppSettings>("skins_colors_clear")'));
+  const lib = read("../src-tauri/src/lib.rs");
+  assert.ok(lib.includes("commands::skins::skins_color_set,") && lib.includes("commands::skins::skins_colors_clear,"));
+  const rsCmd = read("../src-tauri/src/commands/skins.rs");
+  assert.match(rsCmd, /pub async fn skins_reset\(app: AppHandle\) -> AppResult<SkinState> \{\r?\n\s+runtime::reset_look\(&app\)/);
+  const tray = read("../src-tauri/src/platform/windows/tray.rs");
+  assert.ok(tray.includes("crate::skins::runtime::reset_look(&app)")); // 直し2回目：別のスレッドの中で呼ぶ
+  // 画面から来た設定の保存では、手の色は変わらない
+  const rsSettings = read("../src-tauri/src/commands/settings.rs");
+  assert.ok(rsSettings.includes("s.skin.colors = before.skin.colors.clone();"));
+  // 画面の当て方：スキンの値が読めないときは、スキンだけを既定にする（手の色を消す skins_reset を呼ばない）
+  const store = read("../src/stores/skin.ts");
+  assert.ok(store.includes('receive(await api.skinsApply("builtin:default"))'));
+  assert.ok(!/rejected\.length > 0\) \{[^}]*resetSkin\(\)/.test(store));
+  assert.ok(store.includes("if (skinState.get()?.safeMode) return {};"));
+  // 「既定の見た目に戻す」の確認の文と案内
+  const skinsView = read("../src/views/SettingsSkins.tsx");
+  assert.ok(skinsView.includes("手で選んだ色（${manualCount} 個）も戻ります"));
+  assert.ok(skinsView.includes("manualCount === 0"));
+});
+
+// ---------------- v3.10.0 直し1回目 ----------------
+
+test("直し1回目：行に「手で選んだ色／スキンの色／既定の色」の札を出さない（手で変えたかは「戻す」が押せるかで分かる）", () => {
+  const view = read("../src/views/SettingsColors.tsx");
+  assert.ok(!view.includes("SOURCE_TEXT") && !view.includes("color-source"));
+  assert.ok(!/"スキンの色"|"既定の色"|"手で選んだ色"/.test(view));
+  assert.ok(view.includes('disabled={props.disabled || props.source !== "manual"}'));
+  assert.ok(!read("../src/theme/base.css").includes(".color-source"));
+});
+
+test("直し1回目：濃さのつまみの刻みは保存する桁（0.1%）と同じ。どの濃さでも、つまみの位置と「濃さ N%」の表示がそろう", () => {
+  const view = read("../src/views/SettingsColors.tsx");
+  assert.ok(view.includes("const ALPHA_STEP_PCT = 0.1;"));
+  assert.ok(view.includes("step={ALPHA_STEP_PCT}") && view.includes("value={pctOf(alpha)}") && view.includes("濃さ {pctOf(alpha)}%"));
+  assert.ok(view.includes("const pctOf = (a: number) => Math.round(a * 1000) / 10;"));
+  const pctOf = (a: number) => Math.round(a * 1000) / 10;
+  // 保存できる濃さ（小数3桁）は全部、0.1% の刻みにちょうど乗る（つまみが別の位置へ丸めない）
+  for (let i = 0; i <= 1000; i++) {
+    const a = i / 1000;
+    const v = pctOf(a);
+    assert.ok(Math.abs(v * 10 - Math.round(v * 10)) < 1e-9, String(a));
+    assert.equal(splitColor(pickedColor("alpha", "#000000", v / 100)!)!.alpha, a, String(a));
+  }
+  // 両方のテーマの既定の濃さ（Light の 0.045 など）も同じ
+  for (const f of [light, dark]) {
+    const t = readTheme(f);
+    for (const n of ALPHA_VARS) assert.equal(pctOf(splitColor(t[n])!.alpha) / 100, splitColor(t[n])!.alpha, `${f} ${n}`);
+  }
+});
+
+test("直し1回目：設定を書く道は全部「読む → 直す → 書く」を1つの鍵で一続きにする（全体を書き戻すだけの古い関数は残っていない）", () => {
+  const settingsRs = read("../src-tauri/src/commands/settings.rs");
+  const runtimeRs = read("../src-tauri/src/skins/runtime.rs");
+  for (const src of [settingsRs, runtimeRs]) assert.ok(!src.includes("store_and_emit"));
+  assert.ok(settingsRs.includes("let _w = write.lock()"));
+  assert.ok(settingsRs.includes("update_and_emit(&app, &state, |before| Ok(Some(from_screen(settings, before, &bg_dir))))"));
+  assert.ok(runtimeRs.includes("crate::commands::settings::update_and_emit(app, &state, |cur| {"));
+  // 写しを直接置き換えるのは、鍵の中の2か所（write_locked と設定の zip の読み込み）だけ
+  const direct = [settingsRs, runtimeRs].join("\n").match(/\*state\.settings\.lock\(\)|\*current\.lock\(\)/g) ?? [];
+  assert.equal(direct.length, 2);
+  assert.ok(read("../src-tauri/src/commands/mod.rs").includes("pub settings_write: Mutex<()>,"));
+});
+
+// ---------------- v3.10.0 直し2回目 ----------------
+
+test("直し2回目：設定の知らせは最新を読み直して1か所から送る・トレイの「既定の見た目に戻す」は別のスレッドへ渡す（メインのスレッドで書く鍵を待たない）", () => {
+  const settingsRs = read("../src-tauri/src/commands/settings.rs");
+  // 設定の知らせを送るのは emit_latest の中の1か所だけ（読み直してから送る）
+  assert.equal((settingsRs.match(/app\.emit\(ev::SETTINGS/g) ?? []).length, 1);
+  assert.ok(settingsRs.includes("emit_latest(&state.settings_emit, &state.settings, |s| {"));
+  assert.ok(read("../src-tauri/src/commands/mod.rs").includes("pub settings_emit: Mutex<()>,"));
+  // トレイ：reset_look は「立ち絵を出さない」と同じく別のスレッドで
+  const tray = read("../src-tauri/src/platform/windows/tray.rs");
+  assert.ok(tray.includes('"reset-skin" => {\n                reset_look_off_main(app);'));
+  assert.ok(tray.includes('name("tray-reset-look".into()).spawn(move || {\n        if let Err(e) = crate::skins::runtime::reset_look(&app)'));
+  assert.equal((tray.match(/runtime::reset_look\(/g) ?? []).length, 1);
+});
+
+// ---------------- v3.10.0 直し3回目：ビルドした CSS の色を読む ----------------
+// ソースの CSS（dark.css・light.css）だけを見るテストでは、ビルドで CSS を小さくする道具が rgba(…) を #rrggbbaa に書き換えることが
+// 見えなかった（画面では半透明の5色が #000000・濃さ 100% と読まれ、読みやすさの警告が黙って0件になっていた）。
+// ここでは vite で一時フォルダへビルドし、できた CSS のテーマの色を、画面と同じ読み取りに通す（npm ci 済みであること）
+
+/** vite で一時フォルダへビルドし、できた CSS のテーマごとの --c-* の値を返す（一時フォルダは消す） */
+function builtThemeColors(): Record<"dark" | "light", Record<string, string>> {
+  const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+  const out = mkdtempSync(join(tmpdir(), "plp-css-"));
+  try {
+    execFileSync(process.execPath, [join(projectRoot, "node_modules", "vite", "bin", "vite.js"), "build", "--outDir", out, "--emptyOutDir", "--logLevel", "error"], {
+      cwd: projectRoot,
+      stdio: "pipe",
+    });
+    const assets = join(out, "assets");
+    const css = readdirSync(assets).filter((f) => f.endsWith(".css")).map((f) => readFileSync(join(assets, f), "utf8")).join("\n");
+    const block = (theme: string) => {
+      const m = new RegExp(`\\[data-theme="?${theme}"?\\]\\s*\\{([^}]*)\\}`).exec(css);
+      assert.ok(m, `built CSS has [data-theme=${theme}]`);
+      const o: Record<string, string> = {};
+      for (const d of m![1].matchAll(/(--c-[a-z-]+)\s*:\s*([^;]+)/g)) o[d[1]] = d[2].trim();
+      return o;
+    };
+    return { dark: block("dark"), light: block("light") };
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+}
+
+const BUILT = builtThemeColors();
+
+test("直し3回目：ビルドした CSS のテーマの色（半透明の色は #rrggbbaa に書き換わっている）を、画面と同じ読み取りで全部読める", () => {
+  for (const [theme, file] of [["dark", dark], ["light", light]] as const) {
+    const raw = BUILT[theme];
+    assert.deepEqual(Object.keys(raw).sort(), [...COLOR_VARS].sort(), theme);
+    const { colors, unreadable } = readThemeColors(raw);
+    assert.deepEqual(unreadable, [], `${theme}: ${JSON.stringify(raw)}`);
+    const src = readTheme(file);
+    for (const r of COLOR_ROWS) {
+      // 読んだ値は、手の色・スキンと同じ形（validColorToken に通る）にそろっている
+      assert.equal(validColorToken(r.name, colors[r.name]), colors[r.name], `${theme} ${r.name} ${raw[r.name]}`);
+      // 選び窓の色と濃さは、ソースの値と同じ（濃さは 8桁の16進の刻み 1/255 の中）
+      const a = splitColor(colors[r.name])!;
+      const b = splitColor(src[r.name])!;
+      assert.ok(a && b, `${theme} ${r.name}`);
+      assert.equal(a.hex, b.hex, `${theme} ${r.name}`);
+      assert.ok(Math.abs(a.alpha - b.alpha) <= 1 / 255, `${theme} ${r.name} ${a.alpha} ${b.alpha}`);
+      // 半透明の5色は、#000000・濃さ 100% と読まれない
+      if (r.kind === "alpha") assert.ok(a.alpha < 1, `${theme} ${r.name}`);
+      // 読みやすさの計算の読み取りも、書き換わったままの値で投げない
+      assert.doesNotThrow(() => contrastColor(raw[r.name]), `${theme} ${r.name}`);
+    }
+    // 計算の結果も、ソースの値で計算したものとほぼ同じ（濃さの丸めの分だけ。比の差は 1% 未満）
+    const e1 = evaluate(colors, {});
+    const e2 = evaluate(src, {});
+    assert.equal(e1.length, e2.length);
+    e1.forEach((x, i) => assert.ok(Math.abs(x.ratio - e2[i].ratio) / e2[i].ratio < 0.01, `${theme} ${x.scene} ${x.name} ${x.ratio} ${e2[i].ratio}`));
+    // 注：基準に届くかどうかまでは比べない。Dark の --c-hover・--c-input（0.07）はビルドで 0x12（0.0706）になり、明るい背景画像の上の
+    // 薄い文字が 4.512 → 4.498:1 と基準 4.5 をわずかに割る（ビルドの書き換えによるもので、読む側の直しの範囲の外）
+  }
+});
+
+test("直し3回目：ビルドした CSS の既定を基準にしても、読みやすさの警告が出る（色の欄・スキンの取り込みの確認画面）", () => {
+  const L = readThemeColors(BUILT.light).colors;
+  const D = readThemeColors(BUILT.dark).colors;
+  // 何も変えなければ警告なし（既定で元から届かない組み合わせは出さない）
+  assert.deepEqual(contrastWarningsOrError(L, {}), { rows: [], error: null });
+  assert.deepEqual(contrastWarningsOrError(D, {}), { rows: [], error: null });
+  // 色の欄：Light で文字を #eeeeee にすると警告が出る
+  const manual = contrastWarningsOrError(L, manualColorVars({ "--c-primary": "#eeeeee" }).vars);
+  assert.equal(manual.error, null);
+  assert.ok(manual.rows.length > 0 && manual.rows.every((r) => r.name.includes("--c-primary") || r.name.includes("--c-bg")));
+  // スキンの取り込みの確認画面：読みにくい色のスキンは警告が出る（3.9.1 以前は、ビルドした画面ではここが黙って0件だった）
+  const skinRows = contrastWarningsOrError(L, { "--c-secondary": "#bbbbbb" });
+  assert.equal(skinRows.error, null);
+  assert.ok(skinRows.rows.length > 0);
+  // 書き換わったままの値を渡しても投げない（計算の読み取りも #rrggbbaa を読む）
+  assert.ok(contrastWarningsOrError(BUILT.light, { "--c-secondary": "#bbbbbb" }).rows.length > 0);
+  // 読めない値は黙って0件にせず、理由を返す
+  const bad = contrastWarningsOrError({ ...L, "--c-hover": "nope" }, { "--c-primary": "#eeeeee" });
+  assert.ok(bad.error && bad.rows.length === 0);
+});
+
+test("直し3回目：読むだけで、受け付ける形は広げない（手の色・スキンの値に #rrggbbaa は書けない。Rust の確かめも同じ）", () => {
+  assert.equal(readCurrentColor("--c-hover", "#ffffff12"), "rgba(255, 255, 255, 0.071)");
+  assert.equal(readCurrentColor("--c-hover", "#0000000b"), "rgba(0, 0, 0, 0.043)");
+  assert.equal(readCurrentColor("--c-hover", "#fff8"), "rgba(255, 255, 255, 0.533)");
+  assert.equal(readCurrentColor("--c-bg", "#123456ff"), "#123456");
+  assert.equal(readCurrentColor("--c-bg", "#fff"), "#ffffff");
+  for (const [n, v] of [["--c-panel-rgb", "#ffffff12"], ["--c-hover", "#fffff"], ["--c-hover", "red"], ["--row-h", "#ffffff12"], ["--c-hover", 5]] as const) {
+    assert.equal(readCurrentColor(n, v), null, `${n} ${v}`);
+  }
+  assert.equal(validColorToken("--c-hover", "#ffffff12"), null);
+  assert.equal(validColor("#fff8"), null);
+  assert.deepEqual(manualColorVars({ "--c-hover": "#ffffff12" }).rejected, ["--c-hover"]);
+  assert.deepEqual(skinCssVars(skinWith({ "--c-hover": "#ffffff12" }, null), "dark").rejected, ["--c-hover"]);
+  const rs = read("../src-tauri/src/skins/tokens.rs");
+  assert.ok(rs.includes('"#1234567",'), "Rust still refuses 7+ hex digits");
+  // 画面：既定の色は readThemeColors を通し、計算できなかったときは理由を出す（例外を捨てて0件にしない）
+  const td = read("../src/skins/themeDefaults.ts");
+  assert.ok(td.includes("readThemeColors(raw)"));
+  const view = read("../src/views/SettingsColors.tsx");
+  assert.ok(!/catch\s*\{\s*return \[\];/.test(view));
+  assert.ok(view.includes("読みやすさを計算できませんでした"));
+  const review = read("../src/views/SkinImportReview.tsx");
+  assert.ok(review.includes("contrastWarningsOrError(d.colors, t.tokens)") && review.includes("読みやすさを計算できませんでした"));
+  assert.ok(!/catch\s*\{\s*out\.push\(\{ theme, rows: \[\] \}\);/.test(review));
 });

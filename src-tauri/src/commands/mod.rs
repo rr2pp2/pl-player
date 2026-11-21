@@ -61,6 +61,14 @@ pub struct AppState {
     pub controller: Arc<Controller>,
     pub paths: Paths,
     pub settings: Mutex<AppSettings>,
+    /// v3.10.0：設定を書く人どうしの鍵。「今の設定を読む → 直す → DB に書く → 写しを置き換える」を一続きにする
+    /// （commands::settings::update_and_emit）。読んでから書くまでの間に別の書き込みが入ると、片方の変更（手で選んだ色など）が
+    /// 古い値に戻るため。鍵を持っている間は DB に書くだけで、メインのスレッド・Runtime の鍵・再生の司令塔を待たない。知らせは鍵を外してから
+    pub settings_write: Mutex<()>,
+    /// v3.10.0（直し2回目）：設定の知らせ（`pl://settings`）を送る人どうしの鍵。鍵の中で最新の設定を読み直してから送るので、
+    /// 知らせは読んだ順に並び、最後に届く知らせは最後に書いた値になる（commands::settings::emit_latest）。
+    /// settings_write とは入れ子にしない（書く鍵を外してから取る）
+    pub settings_emit: Mutex<()>,
     /// 取り込みが走っている間は true（二重に走らせない）
     pub importing: Mutex<bool>,
     /// v3.1.0：歌詞をネットから取る処理（同時に1つだけ・やめるボタン・要求の間隔・進み具合）

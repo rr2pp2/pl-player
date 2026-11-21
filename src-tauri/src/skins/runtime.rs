@@ -17,6 +17,7 @@ use super::{images, Dirs};
 use crate::commands::{ev, AppState};
 use crate::error::{AppError, AppResult, ErrorKind};
 use crate::playback::Notice as PlaybackNotice;
+use crate::settings::store::AppSettings;
 
 /// 起動中だけの状態（設定には残さない）
 #[derive(Default)]
@@ -106,22 +107,37 @@ fn emit(app: &AppHandle, state: &AppState) {
 
 /// 保存しているスキンの id を変える（画面から来た設定ではここは変わらない。commands::settings::settings_set）
 fn save_active(app: &AppHandle, state: &AppState, id: &str) -> AppResult<()> {
-    let mut s = state.settings();
-    if s.skin.active_skin_id == id {
-        return Ok(());
-    }
+    update_settings(app, state, |s| (s.skin.active_skin_id != id).then(|| with_active(s.clone(), id)))
+}
+
+/// 設定を「読む → 直す → 書く」の一続きで変える（v3.10.0。commands::settings::update_and_emit）。`change` が None なら書かない。
+/// `change` の中では Runtime の鍵を取らない（鍵の順番を一方向に保つ）
+fn update_settings(app: &AppHandle, state: &AppState, change: impl FnOnce(&AppSettings) -> Option<AppSettings>) -> AppResult<()> {
+    crate::commands::settings::update_and_emit(app, state, |s| Ok(change(s))).map(|_| ())
+}
+
+/// 使うスキンだけを変えた設定（v3.10.0：手で選んだ色と立ち絵はそのまま。スキンを替えても手の色は残る）
+pub(crate) fn with_active(mut s: AppSettings, id: &str) -> AppSettings {
     s.skin.active_skin_id = id.to_string();
-    crate::commands::settings::store_and_emit(app, state, s).map(|_| ())
+    s
+}
+
+/// 「既定の見た目に戻す」で変わる設定（v3.10.0）：既定のスキン・手で選んだ色なし。立ち絵の選択と大きさはそのまま
+pub(crate) fn reset_look_settings(s: AppSettings) -> AppSettings {
+    let mut s = with_active(s, BUILTIN_ID);
+    s.skin.colors.clear();
+    s
 }
 
 /// v3.9.0：使う立ち絵を変えて保存する（画面から来た設定ではここは変わらない。commands::settings::from_screen）
 fn save_avatar(app: &AppHandle, state: &AppState, choice: &str) -> AppResult<()> {
-    let mut s = state.settings();
-    if s.skin.avatar == choice {
-        return Ok(());
-    }
-    s.skin.set_avatar(choice);
-    crate::commands::settings::store_and_emit(app, state, s).map(|_| ())
+    update_settings(app, state, |s| {
+        (s.skin.avatar != choice).then(|| {
+            let mut s = s.clone();
+            s.skin.set_avatar(choice);
+            s
+        })
+    })
 }
 
 /// v3.9.0：使う立ち絵を解いて、画面に出す立ち絵を決め直す（スキンを替えた・セーフモード・使う立ち絵を変えた・消した・設定の読み込み）。
@@ -245,12 +261,15 @@ pub fn startup(app: &AppHandle, safe_arg: bool) {
 fn startup_inner(app: &AppHandle, state: &AppState, safe_arg: bool) {
     let d = dirs(state);
     package::clean_staging(&d);
-    let mut s = state.settings();
+    let s = state.settings();
     let ver = app_version(app);
     let plan = plan_startup(&s.skin, safe_arg, |id| package::load(&d, id, &ver));
     if plan.clear_flag {
-        s.skin.safe_mode_next_start = false;
-        let _ = crate::commands::settings::store_and_emit(app, state, s.clone());
+        let _ = update_settings(app, state, |cur| {
+            let mut c = cur.clone();
+            c.skin.safe_mode_next_start = false;
+            Some(c)
+        });
     }
     if plan.safe_mode {
         tracing::info!("skin: safe mode ({})", if safe_arg { "--safe-mode" } else { "next start" });
@@ -317,9 +336,50 @@ pub fn apply(app: &AppHandle, id: &str) -> AppResult<SkinState> {
     Ok(snapshot(&state, false))
 }
 
-/// 既定の見た目に戻す（設定画面・トレイのメニュー）。保存しているスキンも既定にする
+/// 既定のスキンに切り替えて保存する（使っているスキンを消すとき・セーフモードを抜けられなかったとき）。
+/// 手で選んだ色と立ち絵は残す。使う人の「既定の見た目に戻す」は `reset_look`
 pub fn reset(app: &AppHandle) -> AppResult<SkinState> {
     apply(app, BUILTIN_ID)
+}
+
+/// 「既定の見た目に戻す」（設定画面・トレイのメニュー）。スキンを既定にし、手で選んだ色も全部外す（v3.10.0）。立ち絵は残す（v3.9.0）。
+/// 色を先に外してからスキンを戻す（スキンを戻せなくても、読めなくなった色はもう当たらない）
+pub fn reset_look(app: &AppHandle) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    update_settings(app, &state, |s| {
+        let mut colorless = s.clone();
+        colorless.skin.colors = reset_look_settings(s.clone()).skin.colors;
+        (colorless != *s).then(|| {
+            tracing::info!("manual colors cleared (reset to the default look)");
+            colorless
+        })
+    })?;
+    reset(app)
+}
+
+/// v3.10.0：手で選んだ色を1つ変える（`None` なら外す）。決まりに合わなければ何も変えずに断る。保存して設定を画面へ知らせる
+pub fn set_color(app: &AppHandle, name: &str, value: Option<&str>) -> AppResult<AppSettings> {
+    let state = app.state::<AppState>();
+    crate::commands::settings::update_and_emit(app, &state, |cur| {
+        let mut s = cur.clone();
+        super::colors::set(&mut s.skin.colors, name, value)?;
+        Ok(Some(s))
+    })
+    .map(|(_, now)| now)
+}
+
+/// v3.10.0：手で選んだ色を全部外す（「手で選んだ色を全部戻す」）。スキンと立ち絵は変えない
+pub fn clear_colors(app: &AppHandle) -> AppResult<AppSettings> {
+    let state = app.state::<AppState>();
+    update_settings(app, &state, |cur| {
+        (!cur.skin.colors.is_empty()).then(|| {
+            tracing::info!("manual colors cleared");
+            let mut s = cur.clone();
+            s.skin.colors.clear();
+            s
+        })
+    })?;
+    Ok(state.settings())
 }
 
 /// 2つ目の起動に `--safe-mode` が付いていたとき：前からあるアプリを、この起動の間だけ既定の見た目にする

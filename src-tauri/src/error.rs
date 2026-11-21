@@ -74,6 +74,8 @@ pub enum ErrorKind {
     SkinApplyFailed,
     /// 着せ替え：取り込みの確認が古い（別の zip を選んだ・取り消した）
     SkinImportExpired,
+    /// 手で選ぶ色（v3.10.0）：色の名前か値が決まりに合わない（スキンの色と同じ 15 個・同じ値の形だけ）。何も変えていない
+    SkinColorInvalid,
     /// 立ち絵（v3.9.0。画像から追加する立ち絵）：PNG・WebP・GIF でない（拡張子で見る。中身は画像の確かめで見る）
     AvatarImageFormat,
     /// 立ち絵：画像のファイルが大きすぎる（1つ 15MB まで。スキンの画像と同じ上限）

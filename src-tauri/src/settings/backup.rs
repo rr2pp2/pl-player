@@ -10,6 +10,8 @@
 //! （3.7.0 まで）では出力に触らない。表示のモード（DB の `mode`）は入れない
 //!
 //! v3.9.0：着せ替えの設定のうち、使う立ち絵の選択（`skin.avatar`）だけは読み込む（立ち絵の画像は入らない）
+//!
+//! v3.10.0：手で選んだ色（`skin.colors`）も読み込む（置き換える）。項目の無い zip（3.9.1 まで）では、この PC の手の色を変えない
 
 use std::fs;
 use std::path::Path;
@@ -176,14 +178,24 @@ fn json_entry<T: serde::de::DeserializeOwned>(entries: &[zip::Entry], name: &str
     }
 }
 
-/// v3.9.0：zip の settings.json に、使う立ち絵の項目（`skin.avatar`）があるか（値が壊れていても、項目があれば true）
-fn avatar_in_zip(entries: &[zip::Entry]) -> bool {
+/// zip の settings.json の `skin` に、その項目があるか（値が壊れていても、項目があれば true）
+fn skin_field_in_zip(entries: &[zip::Entry], field: &str) -> bool {
     entries
         .iter()
         .find(|e| e.name == "settings.json")
         .and_then(|e| serde_json::from_slice::<serde_json::Value>(&e.data).ok())
-        .map(|v| v.get("skin").and_then(|s| s.get("avatar")).is_some())
+        .map(|v| v.get("skin").and_then(|s| s.get(field)).is_some())
         .unwrap_or(false)
+}
+
+/// v3.9.0：zip の settings.json に、使う立ち絵の項目（`skin.avatar`）があるか
+fn avatar_in_zip(entries: &[zip::Entry]) -> bool {
+    skin_field_in_zip(entries, "avatar")
+}
+
+/// v3.10.0：zip の settings.json に、手で選んだ色の項目（`skin.colors`）があるか
+fn colors_in_zip(entries: &[zip::Entry]) -> bool {
+    skin_field_in_zip(entries, "colors")
 }
 
 /// 読み込み。設定は戻り値で返し、呼び出し側が保存・反映する。
@@ -219,6 +231,9 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     // v3.9.0：使う立ち絵の選択は zip の値を使う（整える前の値。値があって壊れていれば `skin`。store::de_avatar）。
     // 値が無い（3.8.1 までの zip。`skin` の項目ごと無い zip も）は None。有る無しは JSON の項目で見る（読んだ形では既定の値と見分けられないため）
     let zip_avatar = avatar_in_zip(entries).then(|| settings.skin.avatar.clone());
+    // v3.10.0：手で選んだ色も同じく、項目があれば zip の値（15 個の名前と決まった値の形だけ残す。オブジェクトでなければ空）。
+    // 項目が無い（3.9.1 までの zip）は None で、この PC の手の色を変えない
+    let zip_colors = colors_in_zip(entries).then(|| crate::skins::colors::normalize(&settings.skin.colors));
     let folders: Vec<FolderOut> = json_entry(entries, "library.json")?.unwrap_or_default();
     let favs: Vec<String> = json_entry(entries, "favorites.json")?.unwrap_or_default();
     let pls: Vec<PlaylistOut> = json_entry(entries, "playlists.json")?.unwrap_or_default();
@@ -293,6 +308,7 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
         report.playlists += 1;
     }
     // v3.2.0：着せ替えの設定は読み込まない（スキンそのものは zip に入らず、別の PC には無いことがあるため）。
+    // v3.10.0：ただし手で選んだ色は zip の値にする（下。値そのものが入っていて、ファイルに頼らないため）。
     // v3.9.0：ただし使う立ち絵の選択は zip の値にする（立ち絵の画像は zip に入らない）。
     // - 値が無い（3.8.1 までの zip）：この PC の今の選択を変えない（作者の決定。3.8.1 で「立ち絵を出す」を切っていた人に出てしまわないように）
     // - 値があって壊れている（形の違う文字・文字でない値）：「スキンの立ち絵」（store::de_avatar と normalize_choice）
@@ -300,6 +316,10 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     let mut skin = store::load(db).skin;
     if let Some(v) = zip_avatar {
         skin.set_avatar(&v);
+    }
+    // v3.10.0：手で選んだ色（Dark・Light 共通の1組）。zip に項目があれば置き換え、無ければこの PC のまま
+    if let Some(c) = zip_colors {
+        skin.colors = c;
     }
     settings.skin = skin;
     store::save(db, &settings)?;
@@ -704,6 +724,73 @@ mod tests {
             assert!(r.settings.skin.character_visible);
             assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
             assert_eq!(store::load(&b).skin.avatar, "skin");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.10.0：手で選んだ色は zip に入り、読み込むと置き換わる（空の組の zip なら外れる）。項目の無い zip（3.9.1 まで・skin ごと無い）は
+    /// この PC の手の色を変えない。値が壊れていても zip 全体は断らず、決まりに合う色だけを入れる（オブジェクトでなければ手の色なし）
+    #[test]
+    fn import_manual_colors_from_zip() {
+        let tmp = tmp_dir("colors");
+        let mine_db = |tag: &str| {
+            let b = Db::open_memory(tag).unwrap();
+            let mut mine = AppSettings::default();
+            mine.skin.active_skin_id = "quiet-paper".into();
+            mine.skin.set_avatar("none");
+            mine.skin.colors.insert("--c-primary".into(), "#ffeedd".into());
+            mine.skin.colors.insert("--c-hover".into(), "rgba(1, 2, 3, 0.5)".into());
+            store::save(&b, &mine).unwrap();
+            (b, mine)
+        };
+        // 書き出し：settings.json の skin.colors に、画面と同じ名前で入る
+        let a = Db::open_memory("backup_colors_a").unwrap();
+        let mut s = AppSettings::default();
+        s.theme = "light".into();
+        s.skin.colors.insert("--c-accent".into(), "#123456".into());
+        s.skin.colors.insert("--c-panel-rgb".into(), "9, 8, 7".into());
+        let (entries, _) = export_entries(&a, &s, &tmp.join("no-bg")).unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&entries.iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
+        assert_eq!(j["skin"]["colors"], serde_json::json!({"--c-accent": "#123456", "--c-panel-rgb": "9, 8, 7"}));
+        // 読み込み：置き換わる（この PC の手の色は残らない）。スキン・立ち絵の選択はこの PC のまま（立ち絵は zip の値）
+        let (b, mine) = mine_db("backup_colors_b");
+        let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+        assert_eq!(r.settings.skin.colors, s.skin.colors);
+        assert_eq!(store::load(&b).skin.colors, s.skin.colors);
+        assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
+        assert_eq!(r.settings.theme, "light");
+        // 手の色の無い PC から書き出した zip（空の組）：読み込むと手の色が外れる
+        let (entries, _) = export_entries(&a, &AppSettings::default(), &tmp.join("no-bg")).unwrap();
+        let (b, _) = mine_db("backup_colors_empty");
+        assert!(import_entries(&b, &entries, &tmp.join("bgs")).unwrap().settings.skin.colors.is_empty());
+        assert!(store::load(&b).skin.colors.is_empty());
+        // 項目の無い zip（3.9.1 までの形・skin ごと無い形）：この PC の手の色を変えない
+        let v391 = br#"{"theme":"light","skin":{"activeSkinId":"from-other-pc","avatar":"skin","characterVisible":true,"characterScale":1.2,"safeModeNextStart":false}}"#;
+        let no_skin = br#"{"theme":"light"}"#;
+        for (i, json) in [&v391[..], &no_skin[..]].into_iter().enumerate() {
+            let (b, mine) = mine_db(&format!("backup_colors_old_{i}"));
+            let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+            assert_eq!(r.settings.theme, "light", "{i}");
+            assert_eq!(r.settings.skin.colors, mine.skin.colors, "{i}");
+            assert_eq!(store::load(&b).skin.colors, mine.skin.colors, "{i}");
+        }
+        // 値が壊れている：zip は断らない。決まりに合う色だけ入る・オブジェクトでなければ手の色なし
+        let cases: [(&str, &[u8], &[(&str, &str)]); 5] = [
+            ("mixed", br##"{"theme":"light","skin":{"colors":{"--c-bg":"#ABC","--c-primary":"red","--row-h":"#000000","--c-ok":5,"--c-panel-rgb":"1,2,3"}}}"##, &[("--c-bg", "#aabbcc"), ("--c-panel-rgb", "1, 2, 3")]),
+            ("css", br##"{"theme":"light","skin":{"colors":{"--c-bg":"#000; background:url(https://example.invalid/x)"}}}"##, &[]),
+            ("text", br##"{"theme":"light","skin":{"colors":"#000000"}}"##, &[]),
+            ("null", br##"{"theme":"light","skin":{"colors":null}}"##, &[]),
+            ("array", br##"{"theme":"light","skin":{"colors":[["--c-bg","#000000"]]}}"##, &[]),
+        ];
+        for (name, json, want) in cases {
+            let (b, _) = mine_db(&format!("backup_colors_bad_{name}"));
+            let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap_or_else(|e| panic!("{name}: {}", e.detail));
+            assert_eq!(r.settings.theme, "light", "{name}");
+            let want: crate::skins::colors::Colors = want.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            assert_eq!(r.settings.skin.colors, want, "{name}");
+            assert_eq!(store::load(&b).skin.colors, want, "{name}: saved");
         }
         let _ = fs::remove_dir_all(&tmp);
     }

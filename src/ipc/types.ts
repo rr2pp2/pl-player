@@ -35,6 +35,8 @@ export type ErrorCode =
   | "skin_builtin_readonly"
   | "skin_apply_failed"
   | "skin_import_expired"
+  // 手で選ぶ色（v3.10.0）
+  | "skin_color_invalid"
   // 立ち絵（v3.9.0。画像から追加する立ち絵）
   | "avatar_image_format"
   | "avatar_too_large"
@@ -418,6 +420,11 @@ export interface SkinSettings {
   characterScale: number;
   /** 次の起動だけ既定の見た目にする */
   safeModeNextStart: boolean;
+  /**
+   * v3.10.0：手で選んだ色（色の名前 → 値。15 個の名前と、スキンの色と同じ値の形だけ。Rust が形をそろえる）。Dark・Light 共通。
+   * 変えるのは skins_color_set・skins_colors_clear・「既定の見た目に戻す」だけ（設定の保存では変わらない）。3.9.1 までの設定には無い
+   */
+  colors?: Record<string, string>;
 }
 
 export interface HotkeyStatus {

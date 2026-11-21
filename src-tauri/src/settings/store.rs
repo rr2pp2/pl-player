@@ -188,6 +188,12 @@ pub struct SkinSettings {
     pub character_scale: f32,
     /// 次の起動だけ既定の見た目にする（起動したら消える）
     pub safe_mode_next_start: bool,
+    /// v3.10.0：手で選んだ色（色の名前 → 値。`skins::colors`）。Dark・Light 共通の1組で、スキンの色の上に重ねる。
+    /// 変えるのは「色」の欄の窓口と「既定の見た目に戻す」だけ（画面から来た設定の保存では変わらない）。
+    /// 3.9.1 までの設定には無い（空＝手の色なし。見た目は変わらない）。形の違う値は、その色だけ捨てる（`sanitize`）。
+    /// オブジェクトでない値は空（`de_colors`。設定全体は既定に戻さない）
+    #[serde(default, deserialize_with = "de_colors")]
+    pub colors: crate::skins::colors::Colors,
 }
 
 impl Default for SkinSettings {
@@ -198,8 +204,15 @@ impl Default for SkinSettings {
             avatar: crate::skins::avatars::CHOICE_SKIN.into(),
             character_scale: 1.0,
             safe_mode_next_start: false,
+            colors: Default::default(),
         }
     }
+}
+
+/// v3.10.0：手で選んだ色。どんな JSON の値でも受け、オブジェクトでなければ空・文字でない値は捨てる（名前と値の確かめは `sanitize`）
+fn de_colors<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::skins::colors::Colors, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(crate::skins::colors::from_json(&v))
 }
 
 /// v3.9.0：使う立ち絵の値。文字ならそのまま受け（形は `sanitize` で確かめる）、文字でない値と空の文字は `skin`（値が壊れている）。
@@ -334,6 +347,8 @@ impl AppSettings {
             sk.avatar.clone()
         };
         sk.set_avatar(&avatar);
+        // v3.10.0：手で選んだ色。15 個の名前と、スキンの色と同じ値の形だけを残し、形をそろえる
+        sk.colors = crate::skins::colors::normalize(&sk.colors);
         self
     }
 }
@@ -502,6 +517,42 @@ mod tests {
         let back = load(&db).skin;
         assert_eq!((back.avatar.as_str(), back.character_visible), ("none", false));
         assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains(r#""avatar":"skin""#));
+    }
+
+    /// v3.10.0：手で選んだ色。3.9.1 からの引き継ぎ（値が無い）は手の色なし・形の違う値はその色だけ捨てる・
+    /// オブジェクトでない値は手の色なし（設定全体は既定に戻さない）・DB に保存して読み直す・画面に送る名前
+    #[test]
+    fn manual_colors_upgrade_and_shape() {
+        let read = |j: &str| serde_json::from_str::<AppSettings>(j).unwrap_or_else(|e| panic!("{j}: {e}")).sanitize();
+        assert!(AppSettings::default().skin.colors.is_empty());
+        // 3.9.1 の設定（colors が無い）
+        let old = read(r#"{"theme":"light","skin":{"activeSkinId":"shape-test","avatar":"none","characterVisible":false,"characterScale":1.5,"safeModeNextStart":false}}"#);
+        assert!(old.skin.colors.is_empty());
+        assert_eq!((old.theme.as_str(), old.skin.avatar.as_str(), old.skin.active_skin_id.as_str()), ("light", "none", "shape-test"));
+        // 形をそろえる・決まりに合わない色だけ捨てる
+        let s = read(r##"{"skin":{"colors":{"--c-bg":"#FFF","--c-hover":"rgba(0,0,0,.25)","--c-overlay-rgb":"1,2,3","--c-primary":"white","--c-x":"#000000","--fs-body":"#000000","--c-ok":7}}}"##);
+        assert_eq!(s.skin.colors.len(), 3);
+        assert_eq!(s.skin.colors["--c-bg"], "#ffffff");
+        assert_eq!(s.skin.colors["--c-hover"], "rgba(0, 0, 0, 0.25)");
+        assert_eq!(s.skin.colors["--c-overlay-rgb"], "1, 2, 3");
+        // オブジェクトでない値：手の色なし（ほかの設定は残す）
+        for bad in ["null", "5", "\"#000000\"", "true", r#"["--c-bg"]"#] {
+            let s = read(&format!(r#"{{"theme":"light","skin":{{"colors":{bad},"characterScale":0.8}}}}"#));
+            assert!(s.skin.colors.is_empty(), "{bad}");
+            assert_eq!(s.theme, "light", "{bad}");
+            assert!((s.skin.character_scale - 0.8).abs() < 1e-6, "{bad}");
+        }
+        // 保存して読み直す（DB に細工した値が入っていても、読むときに整える）
+        let db = Db::open_memory("store_colors").unwrap();
+        let mut s = AppSettings::default();
+        s.skin.colors.insert("--c-accent".into(), "#abcdef".into());
+        save(&db, &s).unwrap();
+        assert_eq!(load(&db).skin.colors, s.skin.colors);
+        let mut raw = serde_json::to_value(&s).unwrap();
+        raw["skin"]["colors"]["--c-bg"] = serde_json::json!("expression(1)");
+        db::settings::set(&db, KEY, &raw).unwrap();
+        assert_eq!(load(&db).skin.colors, s.skin.colors);
+        assert!(serde_json::to_string(&AppSettings::default()).unwrap().contains(r#""colors":{}"#));
     }
 
     /// v3.3.0：再生バーのボタンとサイドバーの項目を隠す設定。古い設定（値が無い）では全部出す。
