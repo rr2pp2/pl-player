@@ -1,4 +1,4 @@
-// v3.8.0 段2-2：ボタンから開く小窓（出力のプルダウン・ミキサーの「…」・「＋ 出力先を追加」の一覧）。
+// v3.8.0：ボタンから開く小窓（出力のプルダウン・ミキサーの「…」・「＋ 出力先を追加」の一覧）。
 // 再生バーの「···」（PlayerBar の PlayerMore）と同じ決まり：body の直下に出す（backdrop-filter の枠の中で fixed がずれるため）・
 // 開いたら中の最初の操作へフォーカス・Esc で閉じてボタンへ戻る（歌詞の画面の Esc より先に受ける）・外を押す・窓の大きさが変わる・窓から離れると閉じる。
 // 置き場所：above はボタンの上（右端をボタンにそろえる）、below はボタンの下（入りきらなければ上）。画面の外へははみ出さない（高さは中で送る）
@@ -61,7 +61,7 @@ export function Popover(props: {
     };
   }, []); // eslint-disable-line
   // 最初の操作で Shift+Tab を押したら、小窓を閉じて開いたボタンへ戻る（body の直下に出しているので、
-  // そのままだと DOM の順で別の場所へ移ってしまう。段2-2 検査1回目の指摘11）
+  // そのままだと DOM の順で別の場所へ移ってしまう）
   const onKeyDown = (e: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
     if (e.key !== "Tab" || !e.shiftKey) return;
     const first = pop.current?.querySelector<HTMLElement>(FOCUSABLE);

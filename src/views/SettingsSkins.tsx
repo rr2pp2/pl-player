@@ -1,6 +1,7 @@
 // 設定の「着せ替え」の欄（v3.2.0）：スキンの一覧・見本・適用・取り込み・書き出し・削除・既定に戻す。
 // v3.9.0：立ち絵（使う立ち絵の一覧・「＋ 立ち絵を追加…」・変更・大きさ）は SettingsAvatars.tsx の「立ち絵」の欄（この欄の下に出す）。
 // v3.10.0：手で選ぶ色は SettingsColors.tsx の「色」の欄（「立ち絵」の欄の上に出す）。「既定の見た目に戻す」は手で選んだ色も外す。
+// v3.11.0：手で入れるアイコンは SettingsIcons.tsx の「アイコン」の欄（「色」の欄と「立ち絵」の欄の間）。「既定の見た目に戻す」は手で入れたアイコンも外す。
 import { useEffect, useState } from "react";
 import { api } from "../ipc/commands";
 import { fileUrl } from "../ipc/events";
@@ -14,6 +15,8 @@ import { confirmDialog } from "../components/Modal";
 import { SkinImportReview } from "./SkinImportReview";
 import { AvatarsField } from "./SettingsAvatars";
 import { ColorsField } from "./SettingsColors";
+import { IconsField } from "./SettingsIcons";
+import { manualIconCount } from "../skins/iconSlots";
 
 const BUILTIN = "builtin:default";
 
@@ -44,13 +47,20 @@ export function SkinsSection() {
   const nextDefault = s.skin?.safeModeNextStart === true;
   // v3.10.0：手で選んだ色の数（「既定の見た目に戻す」で一緒に外れる）
   const manualCount = Object.keys(s.skin?.colors ?? {}).length;
+  // v3.11.0：手で入れたアイコンの数（「既定の見た目に戻す」で一緒に外れ、入れた画像も消える）
+  const manualIcons = manualIconCount(s.skin?.icons);
 
-  /** 「既定の見た目に戻す」：手で選んだ色があるときだけ確かめる（色は元に戻せないため）。立ち絵は残る */
+  /** 「既定の見た目に戻す」：手で選んだ色・手で入れたアイコンがあるときだけ確かめる（元に戻せないため）。立ち絵は残る */
   const resetLook = async () => {
-    if (manualCount > 0) {
+    if (manualCount > 0 || manualIcons > 0) {
+      const icons = `手で入れたアイコン（${manualIcons} 個。入れた画像も消えます）`;
+      const text =
+        manualIcons === 0
+          ? `スキンを既定に戻します。手で選んだ色（${manualCount} 個）も戻ります（元に戻せません）。立ち絵は残ります。`
+          : `スキンを既定に戻します。${manualCount > 0 ? `手で選んだ色（${manualCount} 個）と` : ""}${icons}も戻ります（元に戻せません）。立ち絵は残ります。`;
       const ok = await confirmDialog(
         "既定の見た目に戻す",
-        `スキンを既定に戻します。手で選んだ色（${manualCount} 個）も戻ります（元に戻せません）。立ち絵は残ります。`,
+        text,
         "既定の見た目に戻す",
         true,
       );
@@ -148,16 +158,16 @@ export function SkinsSection() {
           <button className="btn primary" disabled={picking} aria-busy={picking} onClick={() => void pickSkinZip()}>
             {picking ? "確かめています…" : "＋ zip を取り込む…"}
           </button>
-          <button className="btn" disabled={effective === BUILTIN && active === BUILTIN && manualCount === 0} onClick={() => void resetLook()}>
+          <button className="btn" disabled={effective === BUILTIN && active === BUILTIN && manualCount === 0 && manualIcons === 0} onClick={() => void resetLook()}>
             既定の見た目に戻す
           </button>
-          {/* v3.9.0（直し1回目）：立ち絵だけを外す（作った立ち絵は消さない）。「既定の見た目に戻す」では立ち絵は残るため */}
+          {/* v3.9.0：立ち絵だけを外す（作った立ち絵は消さない）。「既定の見た目に戻す」では立ち絵は残るため */}
           <button className="btn" disabled={(st?.avatar ?? "skin") === "none"} onClick={() => void hideAvatar()}>
             立ち絵を出さない
           </button>
         </span>
         <span className="hint">
-          取り込むときは、中身を全部確かめてから確認の画面を出します。取り込んだだけでは当てません（一覧の「適用」で当てます）。「既定の見た目に戻す」はスキンと手で選んだ色を戻し、立ち絵は残ります。立ち絵も外すときは「立ち絵を出さない」を押してください（作った立ち絵は消えません。下の「立ち絵」の欄の「使う」で戻せます）。
+          取り込むときは、中身を全部確かめてから確認の画面を出します。取り込んだだけでは当てません（一覧の「適用」で当てます）。「既定の見た目に戻す」はスキンと手で選んだ色・手で入れたアイコンを戻し、立ち絵は残ります。立ち絵も外すときは「立ち絵を出さない」を押してください（作った立ち絵は消えません。下の「立ち絵」の欄の「使う」で戻せます）。
         </span>
       </div>
       <div className="field">
@@ -171,13 +181,14 @@ export function SkinsSection() {
           次の起動を既定の見た目にする（1回だけ。保存しているスキンは変えません）
         </label>
         <span className="hint">
-          画面が読めなくなったときの戻し方：タスクトレイのアイコンを右クリック →「既定の見た目に戻す」（手で選んだ色も戻ります。立ち絵は残ります。立ち絵も外すときは、同じメニューの「立ち絵を出さない」）。または、起動の指定 --safe-mode を付けて起動する（起動中に付けて起動しても、動いているアプリが既定の見た目に切り替わります）。
+          画面が読めなくなったときの戻し方：タスクトレイのアイコンを右クリック →「既定の見た目に戻す」（手で選んだ色・手で入れたアイコンも戻ります。立ち絵は残ります。立ち絵も外すときは、同じメニューの「立ち絵を出さない」）。または、起動の指定 --safe-mode を付けて起動する（起動中に付けて起動しても、動いているアプリが既定の見た目に切り替わります）。
         </span>
       </div>
       <div className="skin-callout">
         スキンで変わるのは、起動中のウィンドウ・タスクバー・タスクトレイのアイコンです。exe・スタートメニュー・ショートカットのアイコンは変わりません（変えたいときは、ショートカットのプロパティの「アイコンの変更」から指定してください）。
       </div>
       <ColorsField />
+      <IconsField />
       <AvatarsField />
       <SkinImportReview />
     </section>

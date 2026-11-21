@@ -40,7 +40,7 @@ pub enum Mode {
 pub struct FetchProgress {
     pub running: bool,
     pub finished: bool,
-    /// 送る曲を選んでいる途中（直し2回目）。この間は prepare_done / prepare_total で進み具合を出す
+    /// 送る曲を選んでいる途中。この間は prepare_done / prepare_total で進み具合を出す
     pub preparing: bool,
     /// 選ぶ対象の曲数（手動の歌詞が無い曲）
     pub prepare_total: usize,
@@ -65,9 +65,9 @@ pub struct FetchProgress {
     pub no_metadata: usize,
     /// 前に見つからなかったので聞き直さなかった曲（予定の曲数に入れない）
     pub skipped_known: usize,
-    /// 一括の途中でライブラリから外された・手動の歌詞が付いたので送らなかった曲（エラーに数えない。直し1回目）
+    /// 一括の途中でライブラリから外された・手動の歌詞が付いたので送らなかった曲（エラーに数えない）
     pub changed_during_run: usize,
-    /// 最後にエラーになった曲の記号（timeout・http_404・bad_response など。打ち切りの文言を原因ごとに分けるため。直し1回目）
+    /// 最後にエラーになった曲の記号（timeout・http_404・bad_response など。打ち切りの文言を原因ごとに分けるため）
     pub last_error: Option<String>,
     /// 送った要求の数
     pub requests: u64,
@@ -162,7 +162,7 @@ impl Control {
     }
 }
 
-/// 一括のスレッドに持たせる（直し1回目）。`finish` で終わりを知らせる。
+/// 一括のスレッドに持たせる。`finish` で終わりを知らせる。
 /// **途中で落ちても（panic）drop で必ず**：処理中の印を外し、進み具合を `running:false`・`aborted:internal_error` にして、
 /// 終わりの知らせを出す（設定画面のボタンが押せないまま残らないように）
 pub struct DoneGuard<'a, F: FnMut(&FetchDone)> {
@@ -275,7 +275,7 @@ impl Env for RealEnv {
     }
 }
 
-/// 曲名がタグに無く、ファイル名（拡張子なし）から作った値か（直し1回目）。
+/// 曲名がタグに無く、ファイル名（拡張子なし）から作った値か。
 ///
 /// 取り込みは、タグに曲名が無いとファイル名を曲名にする（`library::tags_read::read_track`）。それを LRCLIB へ送ると、
 /// 「送らないもの：ファイルの場所」に反してファイル名が出ていく。だから曲名がファイル名と同じ曲は、
@@ -283,7 +283,7 @@ impl Env for RealEnv {
 /// ファイル名と同じ曲名をタグに書いてある曲は、タグの値なので送る
 ///
 /// `has_tag_title` は曲のタグに曲名があるか（本物は `tag_has_title`。テストでは差し替える）。
-/// **読み取りが panic しても止まらない**（直し2回目）：panic は「タグに無い」＝送らない
+/// **読み取りが panic しても止まらない**：panic は「タグに無い」＝送らない
 pub fn title_is_file_name(path: &str, title: &str, has_tag_title: &dyn Fn(&str) -> bool) -> bool {
     let Some(stem) = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()) else {
         return false;
@@ -406,7 +406,7 @@ pub fn run_batch<T: Transport, E: Env>(
         }
     };
     // 送る曲を決める（手動の歌詞がある曲は候補に入っていない）。
-    // 直し2回目：曲ファイルを読む（曲名がファイル名と同じ曲のタグを確かめる）のは最後にする。覚えた結果で聞き直さない曲は読まない。
+    // 曲ファイルを読む（曲名がファイル名と同じ曲のタグを確かめる）のは最後にする。覚えた結果で聞き直さない曲は読まない。
     // 選ぶ間も、やめるボタン・設定のオフを見て、進み具合（準備中 ◯曲中◯曲）を出す
     p.preparing = true;
     p.prepare_total = candidates.len();
@@ -463,7 +463,7 @@ pub fn run_batch<T: Transport, E: Env>(
             p.aborted = Some(stop.code().into());
             break;
         }
-        // 送る直前に確かめ直す（直し1回目）：一括の途中で、ライブラリから外された曲・手動の歌詞が付いた曲は送らない。
+        // 送る直前に確かめ直す：一括の途中で、ライブラリから外された曲・手動の歌詞が付いた曲は送らない。
         // 外部の歌詞の有無も今の値を使う（取れていた歌詞を残す判断に使う）
         let c = match store::fetch_candidate(db, c.id) {
             Ok(Some(now)) if !now.has_manual => FetchCandidate { has_external: now.has_external, ..c },
@@ -755,7 +755,7 @@ mod tests {
         t.push(200, SYNCED).push(200, SYNCED);
         let mut c = Client::new(t, FakeEnv::default(), || {
             calls.set(calls.get() + 1);
-            // 1回目：一括の頭、2回目：選ぶ途中（直し2回目で足した）、3回目：1曲目の前、4回目：1曲目の送る直前、5回目：2曲目の前
+            // 1回目：一括の頭、2回目：選ぶ途中（足した）、3回目：1曲目の前、4回目：1曲目の送る直前、5回目：2曲目の前
             (calls.get() >= 5).then_some(Stop::Cancelled)
         });
         let (p, _) = run_batch(&db, Mode::Missing, &mut c, &no_tag, &tag_has_title, &mut |_| {});
@@ -830,7 +830,7 @@ mod tests {
         assert_eq!(store::get(&db, m, StoredKind::Manual).unwrap().unwrap().raw_text, "手動");
     }
 
-    /// 直し1回目 指摘1：曲名がタグに無く、ファイル名から作った値なら送らない。タグにファイル名と同じ曲名があれば送る
+    /// 曲名がタグに無く、ファイル名から作った値なら送らない。タグにファイル名と同じ曲名があれば送る
     #[test]
     fn title_from_file_name_is_not_sent() {
         let db = Db::open_memory("online_stem").unwrap();
@@ -868,7 +868,7 @@ mod tests {
         assert_eq!(fetch_one(&db, b, &mut c_).unwrap().status, "no_metadata");
     }
 
-    /// 直し1回目 指摘2：一括の途中で外された曲・手動の歌詞が付いた曲は、送る直前に確かめ直して送らない（エラーに数えない）
+    /// 一括の途中で外された曲・手動の歌詞が付いた曲は、送る直前に確かめ直して送らない（エラーに数えない）
     #[test]
     fn recheck_before_each_send() {
         let db = Db::open_memory("online_recheck").unwrap();
@@ -898,7 +898,7 @@ mod tests {
         assert_eq!(store::get(&db, c, StoredKind::Manual).unwrap().unwrap().raw_text, "手動");
     }
 
-    /// 直し1回目 指摘5：打ち切りの文言を分けるため、最後のエラーの記号を返す
+    /// 打ち切りの文言を分けるため、最後のエラーの記号を返す
     #[test]
     fn last_error_is_reported() {
         let db = Db::open_memory("online_lasterr").unwrap();
@@ -917,7 +917,7 @@ mod tests {
         assert!(s.contains("\"lastError\":\"http_403\"") && s.contains("\"changedDuringRun\":0"), "{s}");
     }
 
-    /// 直し1回目 指摘6：一括のスレッドが落ちても、終わりの知らせが出て running:false に戻り、処理中の印も外れる
+    /// 一括のスレッドが落ちても、終わりの知らせが出て running:false に戻り、処理中の印も外れる
     #[test]
     fn done_guard_reports_on_panic() {
         let ctl = Control::default();
@@ -945,7 +945,7 @@ mod tests {
         begin(&on, &ctl).unwrap();
     }
 
-    /// 直し2回目 A：タグの読み取りが panic しても、一括は止まらず、その曲だけ no_metadata（送らない）
+    /// タグの読み取りが panic しても、一括は止まらず、その曲だけ no_metadata（送らない）
     #[test]
     fn panicking_tag_reader_skips_only_that_track() {
         let db = Db::open_memory("online_panic").unwrap();
@@ -978,7 +978,7 @@ mod tests {
         assert!(!tag_has_lyrics("C:/o/p/no-such.opus"));
     }
 
-    /// 直し2回目 B：選ぶ途中でも、やめるボタンが効く。曲ファイルを読む前に止まる
+    /// 選ぶ途中でも、やめるボタンが効く。曲ファイルを読む前に止まる
     #[test]
     fn cancel_during_preparation() {
         let db = Db::open_memory("online_prep_cancel").unwrap();
@@ -1007,7 +1007,7 @@ mod tests {
         assert_eq!(events[0].prepare_total, 200);
     }
 
-    /// 直し2回目 B：覚えた結果で聞き直さない曲は、曲ファイルを読まない。準備が終わると準備中を外す
+    /// 覚えた結果で聞き直さない曲は、曲ファイルを読まない。準備が終わると準備中を外す
     #[test]
     fn remembered_tracks_are_not_read() {
         let db = Db::open_memory("online_prep_known").unwrap();

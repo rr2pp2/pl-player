@@ -46,7 +46,7 @@ pub const DURATION_MAX: u32 = 250;
 /// スキンから変えさせない（レイアウトの寸法と、使う人の背景の設定）。書いてあれば警告して使わない。
 /// v3.8.0：再生バーの真ん中の列の幅 `--player-center-w` を足した（画面の src\skins\tokens.ts の LOCKED_VARS と同じ並び。
 /// 3列と1段の切り替えの計算（src\layout\playerLayout.ts）がこの幅を前提にするため）。
-/// v3.8.0 段2-2：出力ボタン・出力のプルダウン・ミキサー・メーターの寸法（`--player-output-w` `--output-popup-w` `--mixer-w`
+/// v3.8.0：出力ボタン・出力のプルダウン・ミキサー・メーターの寸法（`--player-output-w` `--output-popup-w` `--mixer-w`
 /// `--mixer-strip-min-w` `--meter-h`）を足した（再生バーの3列・1段の計算と、詳細の左右・上下の計算 src\layout\detailLayout.ts が前提にするため）
 pub const LOCKED_VARS: [&str; 17] = [
     "--sidebar-w",
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(screen, LOCKED_VARS.to_vec());
         assert!(LOCKED_VARS.contains(&"--player-center-w"));
         assert_eq!(common_token("--player-center-w", &json!("100px")), CommonToken::Locked);
-        // v3.8.0 段2-2：出力ボタン・プルダウン・ミキサー・メーターの寸法
+        // v3.8.0：出力ボタン・プルダウン・ミキサー・メーターの寸法
         for v in ["--player-output-w", "--output-popup-w", "--mixer-w", "--mixer-strip-min-w", "--meter-h"] {
             assert_eq!(common_token(v, &json!("10px")), CommonToken::Locked, "{v}");
         }

@@ -90,6 +90,16 @@ pub enum ErrorKind {
     AvatarBroken,
     /// 立ち絵：選んだ画像の確認が古い（選び直した・取り消した）
     AvatarPickExpired,
+    /// 手で入れるアイコン（v3.11.0）：アイコンの名前か状態が、入れられる枠のどれでもない。何も変えていない
+    IconSlotInvalid,
+    /// 手で入れるアイコン：PNG・WebP・GIF でない（拡張子で見る。中身は画像の確かめで見る）
+    IconImageFormat,
+    /// 手で入れるアイコン：枠に落としたものが、ファイル1つではない（複数・フォルダ・ファイルでないもの・落とした記録が無い）
+    IconDropInvalid,
+    /// 手で入れるアイコン：入れた画像のファイルを読めない（消えた・壊れた・リンク）
+    IconBroken,
+    /// 手で入れるアイコン：セーフモード（既定の見た目）の間は入れない
+    IconSafeMode,
     /// 曲をごみ箱へ移す（v3.3.0）：その曲はライブラリに無い（もう外した・一覧が古い）。何も動かしていない
     TrackNotInLibrary,
     /// 曲をごみ箱へ移す：ライブラリの曲ファイルとして確かめられない（音声ファイルの拡張子でない・フォルダ・リンク）。何も動かしていない
@@ -217,6 +227,11 @@ mod tests {
             ErrorKind::AvatarNotFound,
             ErrorKind::AvatarBroken,
             ErrorKind::AvatarPickExpired,
+            ErrorKind::IconSlotInvalid,
+            ErrorKind::IconImageFormat,
+            ErrorKind::IconDropInvalid,
+            ErrorKind::IconBroken,
+            ErrorKind::IconSafeMode,
             ErrorKind::TrackNotInLibrary,
             ErrorKind::TrashNotAllowed,
             ErrorKind::TrashUnavailable,

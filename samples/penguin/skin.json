@@ -1,0 +1,123 @@
+{
+  "format": "pl-player-skin",
+  "schemaVersion": 1,
+  "id": "penguin-sample",
+  "name": "ペンギン（見本）",
+  "version": "1.0.0",
+  "author": "PL Player",
+  "description": "スキン作りの見本。氷の上のペンギンの立ち絵（再生中はヘッドホンで歌い、止めると眠る）、夜と昼の氷の海の色（Dark・Light）、ボタンのアイコン全部（34 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
+  "minAppVersion": "3.7.0",
+  "parts": {
+    "appearance": {
+      "themes": {
+        "dark": {
+          "tokens": {
+            "--c-bg": "#0a1118",
+            "--c-panel-rgb": "16, 26, 36",
+            "--c-overlay-rgb": "8, 13, 18",
+            "--c-primary": "#f4fbff",
+            "--c-secondary": "#b8cad8",
+            "--c-accent": "#ffc185",
+            "--c-accent-contrast": "#1c0f02",
+            "--c-hover": "rgba(190, 228, 255, 0.07)",
+            "--c-selected": "rgba(255, 178, 107, 0.13)",
+            "--c-border": "rgba(210, 236, 255, 0.11)",
+            "--c-outline": "rgba(210, 236, 255, 0.50)",
+            "--c-input": "rgba(190, 228, 255, 0.07)",
+            "--c-favorite": "#ffd23f"
+          },
+          "shadow": "soft"
+        },
+        "light": {
+          "tokens": {
+            "--c-bg": "#eef5f9",
+            "--c-panel-rgb": "252, 254, 255",
+            "--c-overlay-rgb": "242, 248, 251",
+            "--c-primary": "#0a141e",
+            "--c-secondary": "#3b4856",
+            "--c-accent": "#7a3300",
+            "--c-accent-contrast": "#ffffff",
+            "--c-hover": "rgba(10, 20, 30, 0.045)",
+            "--c-selected": "rgba(122, 51, 0, 0.11)",
+            "--c-border": "rgba(10, 20, 30, 0.54)",
+            "--c-outline": "rgba(10, 20, 30, 0.54)",
+            "--c-input": "rgba(10, 20, 30, 0.02)",
+            "--c-favorite": "#735300"
+          },
+          "shadow": "soft"
+        }
+      },
+      "tokens": {
+        "--radius": 14
+      }
+    },
+    "icons": {
+      "IconMusic": "icons/IconMusic.png",
+      "IconUser": "icons/IconUser.png",
+      "IconDisc": "icons/IconDisc.png",
+      "IconTag": "icons/IconTag.png",
+      "IconClockPlus": "icons/IconClockPlus.png",
+      "IconHistory": "icons/IconHistory.png",
+      "IconStar": {
+        "outline": "icons/IconStar/outline.png",
+        "filled": "icons/IconStar/filled.png"
+      },
+      "IconList": "icons/IconList.png",
+      "IconQueue": "icons/IconQueue.png",
+      "IconSettings": "icons/IconSettings.png",
+      "IconSearch": "icons/IconSearch.png",
+      "IconPlus": "icons/IconPlus.png",
+      "IconFolderPlus": "icons/IconFolderPlus.png",
+      "IconFilePlus": "icons/IconFilePlus.png",
+      "IconPlay": "icons/IconPlay.png",
+      "IconPause": "icons/IconPause.png",
+      "IconNext": "icons/IconNext.png",
+      "IconPrev": "icons/IconPrev.png",
+      "IconShuffle": {
+        "off": "icons/IconShuffle/off.png",
+        "on": "icons/IconShuffle/on.png"
+      },
+      "IconRepeat": {
+        "off": "icons/IconRepeat/off.png",
+        "all": "icons/IconRepeat/all.png",
+        "one": "icons/IconRepeat/one.png"
+      },
+      "IconVolume": {
+        "muted": "icons/IconVolume/muted.png",
+        "zero": "icons/IconVolume/zero.png",
+        "low": "icons/IconVolume/low.png",
+        "high": "icons/IconVolume/high.png"
+      },
+      "IconX": "icons/IconX.png",
+      "IconTrash": "icons/IconTrash.png",
+      "IconEdit": "icons/IconEdit.png",
+      "IconImage": "icons/IconImage.png",
+      "IconSidebar": "icons/IconSidebar.png",
+      "IconRefresh": "icons/IconRefresh.png",
+      "IconFolder": "icons/IconFolder.png",
+      "IconChevron": "icons/IconChevron.png",
+      "IconBars": "icons/IconBars.png",
+      "IconLyrics": "icons/IconLyrics.png",
+      "IconBack": "icons/IconBack.png",
+      "IconLyricsRow": "icons/IconLyricsRow.png",
+      "IconRanking": "icons/IconRanking.png"
+    },
+    "application": {
+      "window": "app/window.png",
+      "tray": "app/tray.png"
+    },
+    "character": {
+      "states": {
+        "playing": "character/playing.png",
+        "stopped": "character/stopped.png"
+      },
+      "placement": {
+        "mode": "right-rail",
+        "widthPx": 220,
+        "maxHeightPx": 420,
+        "minWindowWidthPx": 920
+      }
+    }
+  },
+  "extensions": {}
+}

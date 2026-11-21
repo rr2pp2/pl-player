@@ -55,7 +55,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         bg_dir: data_dir.join("backgrounds"),
         data_dir: data_dir.clone(),
     };
-    for d in [&paths.data_dir, &paths.thumbs_dir, &paths.art_dir, &paths.bg_dir, &data_dir.join("skins"), &data_dir.join("avatars")] {
+    for d in [&paths.data_dir, &paths.thumbs_dir, &paths.art_dir, &paths.bg_dir, &data_dir.join("skins"), &data_dir.join("avatars"), &data_dir.join("icons")] {
         std::fs::create_dir_all(d)?;
     }
     logging::init(data_dir.join("logs"));
@@ -154,9 +154,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
 /// 画面（asset プロトコル）が読んでよいフォルダ（v3.1.1）。曲の縮小版（artwork\embedded）・外部画像と見本（artwork\external）・背景。
 /// v3.2.0：入っているスキン（skins）。確認待ちの一時の場所（skins-staging）は入れない。
-/// v3.9.0：登録した立ち絵（avatars）。作る途中の一時の場所（avatars-staging）は入れない
-pub(crate) fn asset_dirs(data_dir: &std::path::Path) -> [std::path::PathBuf; 4] {
-    [data_dir.join("artwork"), data_dir.join("backgrounds"), data_dir.join("skins"), data_dir.join("avatars")]
+/// v3.9.0：登録した立ち絵（avatars）。作る途中の一時の場所（avatars-staging）は入れない。
+/// v3.11.0：手で入れたアイコン（icons）。書く途中の一時の場所（icons-staging）は入れない
+pub(crate) fn asset_dirs(data_dir: &std::path::Path) -> [std::path::PathBuf; 5] {
+    [data_dir.join("artwork"), data_dir.join("backgrounds"), data_dir.join("skins"), data_dir.join("avatars"), data_dir.join("icons")]
 }
 
 /// 起動の指定に `--safe-mode` があるか（v3.2.0。既定の見た目で起動する）
@@ -192,6 +193,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(setup)
         .on_window_event(|window, event| {
+            // v3.11.0：OS からファイルを落とされたら、パスと位置を控える（アイコンの枠に落としたときは、画面が位置だけを知らせ、
+            // Rust がここで控えたパスを使う。画面からパスを受け取らないため）。曲の取り込みは今までどおり画面の知らせで動く
+            if let WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = event {
+                if window.label() == "main" {
+                    skins::icons::record_drop(paths, position.x, position.y);
+                }
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() != "main" {
                     return;
@@ -319,6 +328,11 @@ pub fn run() {
             commands::avatars::avatars_delete,
             commands::avatars::avatars_use,
             commands::avatars::avatars_hide,
+            commands::icons::icons_pick,
+            commands::icons::icons_drop,
+            commands::icons::icons_reset,
+            commands::icons::icons_clear,
+            commands::icons::icons_app_preview,
         ])
         .build(tauri::generate_context!())
         .expect("error while building PL Player");
@@ -449,6 +463,7 @@ mod tests {
     /// v3.1.1（ペネトレーションテスト v3.0.2 の14）：asset プロトコルで画面が読めるのは artwork と backgrounds だけ。
     /// v3.2.0：入っているスキン（skins）を足した。確認待ちの一時の場所（skins-staging）は読めない。
     /// v3.9.0：登録した立ち絵（avatars）を足した。作る途中の一時の場所（avatars-staging）は読めない
+    /// v3.11.0：手で入れたアイコン（icons）を足した。書く途中の一時の場所（icons-staging）は読めない
     /// 画面が表示に使う画像（曲の縮小版・外部画像と見本・背景）はその中にあり、library.db・ログ・歌詞・WebView のデータは外。
     /// 音声は Rust が読んで鳴らすので、asset プロトコルは通らない
     #[test]
@@ -456,7 +471,7 @@ mod tests {
         let conf = json("tauri.conf.json");
         assert_eq!(
             conf["app"]["security"]["assetProtocol"]["scope"],
-            serde_json::json!(["$APPDATA/artwork/**", "$APPDATA/backgrounds/**", "$APPDATA/skins/**", "$APPDATA/avatars/**"])
+            serde_json::json!(["$APPDATA/artwork/**", "$APPDATA/backgrounds/**", "$APPDATA/skins/**", "$APPDATA/avatars/**", "$APPDATA/icons/**"])
         );
         let data = Path::new(r"C:\Users\x\AppData\Roaming\jp.local.plplayer3");
         let dirs = super::asset_dirs(data);
@@ -471,6 +486,8 @@ mod tests {
             data.join("skins").join("shape-test").join("derived").join("0123456789abcdef.png"),
             data.join("avatars").join("0123456789abcdef").join("playing.gif"),
             data.join("avatars").join("0123456789abcdef").join("derived").join("playing.png"),
+            data.join("icons").join("IconPlay").join("default.png"),
+            data.join("icons").join("IconStar").join("derived").join("filled.png"),
         ] {
             assert!(allowed(&ok), "{}", ok.display());
         }
@@ -483,6 +500,7 @@ mod tests {
             data.join("window-state.json"),
             data.join("skins-staging").join("0123456789abcdef").join("skin.json"),
             data.join("avatars-staging").join("0123456789abcdef").join("playing.png"),
+            data.join("icons-staging").join("0123456789abcdef.png"),
             data.parent().unwrap().join("jp.local.plplayer2").join("library.db"),
         ] {
             assert!(!allowed(&ng), "{}", ng.display());

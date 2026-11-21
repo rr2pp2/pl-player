@@ -64,7 +64,7 @@ pub struct SlotView {
     pub reason: Option<UnavailableReason>,
 }
 
-/// 遅れを測るときに見る、枠1つの今の様子（v3.8.0 段3）
+/// 遅れを測るときに見る、枠1つの今の様子（v3.8.0）
 #[derive(Debug, Clone)]
 pub struct MeasureSlot {
     pub slot: usize,
@@ -147,7 +147,7 @@ impl Controller {
     }
 
     /// `reset` の枠の、音声スレッドが知らせた状態も消す（外した・差し替えた）。消すのは音声スレッドへ送る前・同じロックの中
-    /// （送ったあとに消すと、先に届いた新しい状態まで消しうる。検査1回目の指摘3）
+    /// （送ったあとに消すと、先に届いた新しい状態まで消しうる）
     fn update_outputs_reset(
         &self,
         f: impl FnOnce(&mut OutputsDoc) -> Result<(), OpError>,
@@ -277,7 +277,7 @@ impl Controller {
         self.update_outputs(|d| d.set_delay(slot, ms))
     }
 
-    /// 遅れを測った結果をまとめて入れる（v3.8.0 段3）。`(枠, 測ったときのデバイスの設定, 遅らせ量)`。
+    /// 遅れを測った結果をまとめて入れる（v3.8.0）。`(枠, 測ったときのデバイスの設定, 遅らせ量)`。
     /// 測ってから入れるまでに、その枠のデバイスが差し替えられた・外された枠には入れない（別の機器の値になるため）。
     /// 入れた枠を返す。1つも入らなければ何も送らない
     pub fn output_set_delays(&self, items: &[(usize, Option<String>, u32)]) -> AppResult<Vec<usize>> {
@@ -294,7 +294,7 @@ impl Controller {
         Ok(applied)
     }
 
-    /// 遅れを測るときに見る、枠ごとの今の様子（v3.8.0 段3）。状態の決め方は画面へ送るもの（`view_of`）と同じ
+    /// 遅れを測るときに見る、枠ごとの今の様子（v3.8.0）。状態の決め方は画面へ送るもの（`view_of`）と同じ
     pub fn measure_slots(&self) -> Vec<MeasureSlot> {
         let i = self.lock();
         let v = view_of(&i);
@@ -315,7 +315,7 @@ impl Controller {
             .collect()
     }
 
-    /// 曲を流しているか（遅れを測るのは、流していないときだけ。2.3 の段3）
+    /// 曲を流しているか（遅れを測るのは、流していないときだけ。2.3 ）
     pub fn is_playing(&self) -> bool {
         self.lock().status == super::controller::Status::Playing
     }
@@ -335,7 +335,7 @@ impl Controller {
 
     /// デバイスの差し替え（6.2）。前のデバイスの設定は覚える
     pub fn output_set_device(&self, slot: usize, device: DeviceRef) -> AppResult<()> {
-        // 同じデバイスを選び直しただけなら、音声スレッドは何も知らせ直さないので、枠の状態も消さない（検査2回目の指摘B）。
+        // 同じデバイスを選び直しただけなら、音声スレッドは何も知らせ直さないので、枠の状態も消さない。
         // 実際に差し替えたときは、音声スレッドが必ず知らせ直す（同じ名前の別デバイスでも）
         let changes = self.lock().outputs.changes_device(slot, &device);
         let reset = changes.then_some(slot);

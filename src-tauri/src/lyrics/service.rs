@@ -18,7 +18,7 @@ pub const MAX_DELAY_MS: i64 = 600_000;
 /// 歌詞が大きすぎて読み解かなかった（1MiB 超。主に曲ファイルのタグ）。歌詞なしとして扱い、警告にとどめる
 pub const WARN_TOO_LARGE: &str = "lyrics_too_large";
 
-/// 解析に渡してよい大きさか（1回目の検査の指摘：解析の前に上限を当てる）
+/// 解析に渡してよい大きさか（解析の前に上限を当てる）
 fn within_limit(text: &str) -> bool {
     text.len() <= lrc::MAX_TEXT_BYTES
 }
@@ -226,7 +226,7 @@ mod tests {
         assert_eq!(get_lyrics(&db, id).unwrap().source, Some(SourceKind::EmbeddedTag));
     }
 
-    /// 1回目の検査 1a：曲のタグの歌詞が 1MiB を超えたら、解析せず「歌詞なし＋警告」
+    /// 曲のタグの歌詞が 1MiB を超えたら、解析せず「歌詞なし＋警告」
     #[test]
     fn oversized_tag_lyrics_are_not_parsed() {
         let db = Db::open_memory("lyrics_service_bigtag").unwrap();
@@ -262,7 +262,7 @@ mod tests {
         assert!(set_delay(&db, id, 600_001).is_err());
         assert!(set_delay(&db, id, -600_001).is_err());
         assert_eq!(set_delay(&db, id, -600_000).unwrap(), -600_000);
-        // 1回目の検査 1a：見本・手動保存は 1MiB を超えたら解析しない（閉じない `<` の山でも、すぐ返る）
+        // 見本・手動保存は 1MiB を超えたら解析しない（閉じない `<` の山でも、すぐ返る）
         let big = "<".repeat(lrc::MAX_TEXT_BYTES + 1);
         let t = std::time::Instant::now();
         let pv = preview(&big);

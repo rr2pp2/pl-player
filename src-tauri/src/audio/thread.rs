@@ -7,7 +7,7 @@
 //! - 抜けた出力はその枠だけ切断中にして手放し、つなぎ直す（知らせの直後、0.5・1・2 秒、そのあと一覧にある間は 5 秒おき）
 //! - オンの出力が全部鳴らせなくなったら一時停止（戻っても自動では再生しない）
 //! - デバイスを開くのは別のスレッド（`pl-audio-open`）。開くのに時間がかかる機器（Bluetooth など）でも、
-//!   ほかの出力への書き込みを止めない（検査1回目の指摘4）。開けたストリームは知らせの通り道で受け取る
+//!   ほかの出力への書き込みを止めない。開けたストリームは知らせの通り道で受け取る
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,7 +29,7 @@ use super::sync::{
 use crate::error::{AppError, ErrorKind};
 
 const POSITION_INTERVAL: Duration = Duration::from_millis(250);
-/// 音声スレッドの部品が panic したときの知らせの間隔（v3.1.1 直し1回目）
+/// 音声スレッドの部品が panic したときの知らせの間隔（v3.1.1）
 const PANIC_NOTICE_INTERVAL: Duration = Duration::from_secs(5);
 /// 再生を始めるとき、温まっている途中の出力をこれだけ待つ（それより遅いものは途中から入る）
 const START_WAIT: Duration = Duration::from_millis(600);
@@ -63,7 +63,7 @@ pub(super) struct OpenRequest {
     device_id: Option<String>,
 }
 
-/// 音声スレッドと開く役が共有する、枠ごとの番号（検査3回目の新指摘1・2）
+/// 音声スレッドと開く役が共有する、枠ごとの番号
 #[derive(Default)]
 pub(super) struct OpenerShared {
     /// 今その枠が欲しい頼みの番号（0 は何も欲しくない）。音声スレッドが頼む前に書き、オフ・差し替えで 0 にする
@@ -117,7 +117,7 @@ fn run_opener(
 }
 
 /// 開く役の中で部品（cpal・ドライバ）が panic しても、開く役のスレッドを止めない。「開けません（その他）」として返す
-/// （検査2回目の指摘A：止まると、開いている途中の印が残り、音も出ず一時停止もしないまま曲が進む）
+/// 
 fn guard_open<T>(f: impl FnOnce() -> Result<T, OpenFail>) -> Result<T, OpenFail> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
         .unwrap_or_else(|_| Err(OpenFail::Other("panicked while opening the device".into())))
@@ -176,7 +176,7 @@ struct Slot {
     delay_apply_at: Option<Instant>,
     /// 開く役に頼んで、結果を待っている（その頼みの番号）
     opening: Option<u64>,
-    /// 開く役が実際に開き始めたのを見た時刻（待ちの上限はここから数える。検査3回目の新指摘1）
+    /// 開く役が実際に開き始めたのを見た時刻（待ちの上限はここから数える）
     opening_since: Option<Instant>,
     /// 開き始めてから上限を過ぎた：「開けません」と出し、鳴らせる見込みとしては数えない。
     /// 頼みは取り消さず、結果が届けば（その枠がまだ同じデバイスを欲しがっていれば）採る＝遅い機器でもいずれつながる
@@ -216,7 +216,7 @@ struct AudioThread {
     last_tick_ns: u64,
     devices_dirty_at: Option<Instant>,
     last_pos_emit: Instant,
-    /// 部品が panic したことを最後に知らせた token と時刻（v3.1.1 直し1回目：同じ token で続けて起きるときは知らせを間引く）
+    /// 部品が panic したことを最後に知らせた token と時刻（v3.1.1。同じ token で続けて起きるときは知らせを間引く）
     last_panic_notice: Option<(Option<u64>, Instant)>,
 }
 
@@ -292,7 +292,7 @@ impl AudioThread {
         self.track = None;
         self.halt();
         // 曲と関係ない箇所で毎回 panic しても、知らせ（とログ）は PANIC_NOTICE_INTERVAL に1回まで。
-        // v3.1.1 直し2回目（検査2回目の指摘C）：間引くのは「前と同じ token（token なし同士を含む）」のときだけ。
+        // v3.1.1：間引くのは「前と同じ token（token なし同士を含む）」のときだけ。
         // 別の曲（token が違う）の panic は、間隔の中でも必ず知らせる（司令塔がその曲の結果を待ち続けないように）
         if self
             .last_panic_notice
@@ -487,11 +487,11 @@ impl AudioThread {
                 self.close_lane(i);
                 let s = &mut self.slots[i];
                 if device_changed {
-                    // 前のデバイスの名前を、差し替え先の名前として出さない（検査1回目の指摘2）
+                    // 前のデバイスの名前を、差し替え先の名前として出さない
                     s.name = None;
                     s.resolved_id = None;
                     s.kind = None;
-                    // 司令塔はこの枠の状態を消している。同じ名前の別デバイス（同じ機種の2台目など）でも知らせ直す（検査2回目の指摘B）
+                    // 司令塔はこの枠の状態を消している。同じ名前の別デバイス（同じ機種の2台目など）でも知らせ直す
                     s.reported = None;
                 }
                 s.retry = None;
@@ -635,13 +635,13 @@ impl AudioThread {
         if self.open_tx.send(OpenRequest { slot: i, serial, device_id: spec.device_id }).is_ok() {
             return true;
         }
-        // 開く役がいない（検査2回目の指摘A）：印を残さず、開けなかったものとして試し直しに回す
+        // 開く役がいない：印を残さず、開けなかったものとして試し直しに回す
         tracing::warn!("output {i}: the opener thread is gone");
         self.finish_open(i, serial, Err(OpenFail::Other("the opener thread is gone".into())), true);
         false
     }
 
-    /// 開くのに時間がかかっている枠（検査2回目の指摘C・3回目の新指摘1）。
+    /// 開くのに時間がかかっている枠。
     /// 上限は、開く役が**実際に開き始めてから**数える（ほかの枠の遅い機器の後ろで待っている間は数えない）。
     /// 過ぎたら「開けません（その他）」と出し、鳴らせる見込みとしては数えない（ほかに鳴らせる出力が無ければ一時停止）。
     /// ただし頼みは取り消さず、新しい頼みも積まない。結果が届けば採るので、10 秒を超えて開く機器もいずれつながる
@@ -698,7 +698,7 @@ impl AudioThread {
                     tracing::info!("output {i}: open failed: {}", f.detail());
                 }
                 s.lost = true;
-                // 検査1回目の指摘1：切断中か開けませんかは、cpal のエラーの種類ではなく、一覧にあるかで決める
+                // ：切断中か開けませんかは、cpal のエラーの種類ではなく、一覧にあるかで決める
                 s.status = Some(if !present {
                     (OutputStatus::Disconnected, None)
                 } else {
@@ -726,7 +726,7 @@ impl AudioThread {
     }
 
     /// 開いている出力の時計が全部 QPC とそろっているか（13.1 の2）。そろわない出力を閉じたら、ずれの直しを戻す
-    /// （検査1回目の指摘8：一度切ったら戻らなかった）
+    /// 
     fn update_sync(&mut self) {
         let ok = self.slots.iter().filter_map(|s| s.lane.as_ref()).all(|l| l.stream.clock_matches());
         if ok == self.sync_ok {
@@ -1209,7 +1209,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// v3.1.1 直し1回目：同じ panic が毎ループ起きても、知らせは間引く（5 秒に1回まで）。曲は毎回手放す
+    /// v3.1.1：同じ panic が毎ループ起きても、知らせは間引く（5 秒に1回まで）。曲は毎回手放す
     #[test]
     fn repeated_panics_are_reported_sparingly() {
         let (ev_tx, ev_rx) = crossbeam_channel::unbounded();
@@ -1224,7 +1224,7 @@ mod tests {
         t.last_panic_notice = Some((Some(1), std::time::Instant::now() - super::PANIC_NOTICE_INTERVAL));
         t.guarded(Some(1), |_| panic!("test panic after the interval"));
         assert_eq!(ev_rx.try_iter().filter(|e| matches!(e, Event::Error { .. })).count(), 1);
-        // v3.1.1 直し2回目（検査2回目の指摘C）：5 秒の中でも、token が違う panic（曲 A → 曲 B）は必ず知らせる。
+        // v3.1.1：5 秒の中でも、token が違う panic（曲 A → 曲 B）は必ず知らせる。
         // Error（その token）と Playing(false) の両方が届く
         for tok in [Some(10), Some(11), None, Some(12)] {
             t.guarded(tok, |_| panic!("test panic on another track"));
@@ -1272,7 +1272,7 @@ mod tests {
         assert!(positions >= 2 && last_pos >= 2500, "positions {positions} last {last_pos}");
     }
 
-    // ---- つなぎ直しの組み立て（検査1回目の指摘10）。デバイスは開かない：開く役への頼みをテストが受け取り、
+    // ---- つなぎ直しの組み立て。デバイスは開かない：開く役への頼みをテストが受け取り、
     // 開けなかった結果だけを渡す。デバイスの ID は実在しない形（`test:`）で、既定のデバイスの枠も作らない（一覧を引かない）
 
     use super::{AudioThread, OpenRequest, OutputSpec, OutputStatus, UnavailableReason};
@@ -1339,7 +1339,7 @@ mod tests {
         }
     }
 
-    /// cpal が「デバイスが無い」と返しても、一覧にあれば開けません（5 秒おきに試し続ける。検査1回目の指摘1）。
+    /// cpal が「デバイスが無い」と返しても、一覧にあれば開けません（5 秒おきに試し続ける）。
     /// 一覧に無ければ切断中で、試さずに知らせを待つ。知らせが来たら、数え直してすぐ試す
     #[test]
     fn missing_devices_wait_for_the_notice_and_restart_the_count() {
@@ -1385,7 +1385,7 @@ mod tests {
         assert!(got.iter().any(|e| matches!(e, Event::Playing(false))));
     }
 
-    /// デバイスを差し替えたら、前のデバイスの名前を出さない（検査1回目の指摘2）。オフにしたら、届いた結果は捨てる
+    /// デバイスを差し替えたら、前のデバイスの名前を出さない。オフにしたら、届いた結果は捨てる
     #[test]
     fn replacing_the_device_forgets_the_old_name_and_off_drops_results() {
         let (mut t, ev, open_rx) = quiet_thread();
@@ -1410,7 +1410,7 @@ mod tests {
         assert!(t.slots[0].retry.is_none());
     }
 
-    // ---- 検査2回目の指摘 A・B・C ----
+    // ----  A・B・C ----
 
     /// A：開く役の中で panic しても、開く役は止まらず「開けません（その他）」として返る
     #[test]
@@ -1435,7 +1435,7 @@ mod tests {
         assert!(ev.try_iter().any(|e| matches!(e, Event::OutputsAllLost)));
     }
 
-    /// 開く役の中身（検査3回目の新指摘1・2）：その枠が今欲しい番号の頼みだけを開く。古い頼みは開かずに捨てる
+    /// 開く役の中身：その枠が今欲しい番号の頼みだけを開く。古い頼みは開かずに捨てる
     /// （デバイスを一瞬掴まない）。開き始めたら started に番号を書く。開く処理はテストの関数（デバイスは開かない）
     #[test]
     fn opener_skips_stale_requests_without_opening() {
@@ -1471,7 +1471,7 @@ mod tests {
         assert_eq!(shared.started[1].load(std::sync::atomic::Ordering::Acquire), 0);
     }
 
-    /// 10 秒を超えて開く機器でも、いずれつながる（検査3回目の新指摘1）：
+    /// 10 秒を超えて開く機器でも、いずれつながる：
     /// - 待ちの上限は、開く役が実際に開き始めてから数える（ほかの枠の後ろで待っている間は数えない）
     /// - 上限を過ぎたら「開けません」と出し、鳴らせる見込みとしては数えない（再生中でほかに無ければ一時停止）
     /// - その間、新しい頼みは積まない（古い頼みが溜まらない）。頼みも取り消さない

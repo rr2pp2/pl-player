@@ -1,4 +1,4 @@
-// v3.8.0：画面の土台（同時再生と配信モードの段1）を確かめる。
+// v3.8.0：画面の土台（同時再生と配信モード）を確かめる。
 //   - 曲一覧の列・ジャケット・行の高さ・自動のコンパクトを「曲一覧の側の幅」で決めても、3.7.0 の設定から上げた見た目が今と同じ
 //   - 上の帯のモード切替（通常／コンパクト）の押し方と、文字を出す幅
 //   - 再生バーの3列と1段の切り替え（中身が入るかどうか）と、ボタンの置き場所
@@ -136,7 +136,7 @@ test("3.7.0 の値の読み替え（画面側）：narrow → 使わない＋自
 
 // ---------- 上の帯のモード切替 ----------
 
-test("モード切替：通常／コンパクト／詳細（詳細は段2-2。scripts\\ui-detail.test.mts。ミニはあとで足す）。今のモードは見た目どおり（自動でコンパクトのときもコンパクト）", () => {
+test("モード切替：通常／コンパクト／詳細（詳細は scripts\\ui-detail.test.mts。ミニはあとで足す）。今のモードは見た目どおり（自動でコンパクトのときもコンパクト）", () => {
   assert.deepEqual(VIEW_MODES.map((m) => [m.id, m.label]), [["normal", "通常"], ["compact", "コンパクト"], ["detail", "詳細"]]);
   const narrow = COMPACT_AUTO_BELOW - 1;
   const wide = COMPACT_AUTO_BELOW;
@@ -192,7 +192,7 @@ test("モード切替の画面（TopBar）：上の帯の右端（ファイル�
   assert.match(tipSrc, /const parts = props\.describe === false \? \{ \.\.\.full, childProps: \{\}, srText: null \} : full;/);
   assert.match(tipSrc, /\{full\.srText\}\s*<\/div>,/);
   assert.match(top, /\{props\.labels \? <span>\{m\.label\}<\/span> : null\}/);
-  // 押したら pressViewMode の値を保存する（設定画面と同じ compactList・compactAuto）。v3.8.0 段2-2：詳細を足したので pressMode を通す
+  // 押したら pressViewMode の値を保存する（設定画面と同じ compactList・compactAuto）。v3.8.0：詳細を足したので pressMode を通す
   // （詳細でなければ pressViewMode と同じ。詳細のときは詳細を抜けたあとの幅で決める）
   assert.match(top, /ui: \{ \.\.\.x\.ui, \.\.\.pressMode\(x\.ui, listPaneWidth\.get\(\), listPaneExitWidth\.get\(\), detail, m\)\.settings \}/);
   // 吹き出しは下にも出せる（右に出すと画面の外にはみ出すため）。包み方は1つのまま（tipParts）
@@ -212,7 +212,7 @@ test("モード切替の文字を出す幅：base.css の寸法と同じ数え�
   assert.match(rule(".seg.view-mode .icon"), /width: 16px;\s*height: 16px;/);
   assert.equal(TOPBAR.frame, 2 + 14 * 2);
   assert.equal(TOPBAR.fileFolderLabeled, 2 * (12 * 2 + 2 + 16 + 6 + 4 * 16) + 6);
-  // v3.8.0 段2-2：3つ目の「詳細」（2字）を足した
+  // v3.8.0：3つ目の「詳細」（2字）を足した
   assert.equal(TOPBAR.switchLabeled, 2 + (10 * 2 + 16 + 6 + 2 * 16) + (10 * 2 + 16 + 6 + 5 * 16) + (10 * 2 + 16 + 6 + 2 * 16));
   assert.equal(TOPBAR.switchIcons, 2 + 36 * 3);
   // 曲一覧の側の幅を広げていくと、文字は一度出たら消えない（単調）
@@ -228,9 +228,9 @@ test("モード切替の文字を出す幅：base.css の寸法と同じ数え�
   assert.equal(viewModeLabelsFit(mainWidth(1100, false), false), true);
 });
 
-// v3.8.0 段2-2：幅の下の端を 300 → 360px にした。モード切替が3つ（アイコンだけで 110px）になり 336px 未満には入らないが、
+// v3.8.0：幅の下の端を 300 → 360px にした。モード切替が3つ（アイコンだけで 110px）になり 336px 未満には入らないが、
 // 曲一覧の側がいちばん狭くなるのは詳細の左右の 360px（仕様 3.2。ふだんは最小の窓で 398px）なので、実際の幅の全部を当てている
-test("上の帯の幅（検査1回目の指摘2）：曲一覧の側 360〜2600px のどこでも、取り込み中の知らせが出ていても、検索欄の最低幅とファイル・フォルダ・モード切替が入る（モード切替が切れない）", () => {
+test("上の帯の幅：曲一覧の側 360〜2600px のどこでも、取り込み中の知らせが出ていても、検索欄の最低幅とファイル・フォルダ・モード切替が入る（モード切替が切れない）", () => {
   // 取り込み中の知らせは縮んで 0 まで（.import-status の min-width: 0）。どの幅でも min-width: 140px を残していない
   const imp = rule(".import-status");
   assert.match(imp, /min-width: 0;/);
@@ -252,7 +252,7 @@ test("上の帯の幅（検査1回目の指摘2）：曲一覧の側 360〜2600p
   }
   // いちばん余裕の少ない幅でも 0 以上（3.7.0 の min-width: 140px のままだと、674〜703px で 30px あふれていた）
   assert.ok(worst >= 0, String(worst));
-  // （段1 のときのモード切替は「通常／コンパクト」の2つで、文字つき 198px）
+  // （ときのモード切替は「通常／コンパクト」の2つで、文字つき 198px）
   const before = 674 - (TOPBAR.frame + searchMin + TOPBAR.gap * 2 + 140 + TOPBAR.fileFolderLabeled + TOPBAR.actionsGap + 198);
   assert.equal(before, -30);
 });
@@ -299,7 +299,7 @@ test("再生バーの寸法：playerLayout.ts の PLAYER と CSS（tokens.css �
 test("再生バー：3列か1段かは、真ん中の列（40%・240〜560px）と左右の最低幅が入るかで決まる（窓の幅の決まった値で区切らない）", () => {
   assert.equal(playerLeftMin(), 60 + 12 + 120);
   assert.equal(playerRightMin(), 138 + 4 + 36);
-  assert.equal(playerRightMin(80), 80 + 4 + 138 + 4 + 36, "段2の出力ボタンの幅を渡すと最低幅に入る");
+  assert.equal(playerRightMin(80), 80 + 4 + 138 + 4 + 36, "出力ボタンの幅を渡すと最低幅に入る");
   assert.equal(playerCenterWidth(100), 240);
   assert.equal(playerCenterWidth(1000), 400);
   assert.equal(playerCenterWidth(5000), 560);
@@ -314,12 +314,12 @@ test("再生バー：3列か1段かは、真ん中の列（40%・240〜560px）�
   assert.equal(firstThree, 728);
   assert.equal(playerLayout(barWidth(747), () => true).mode, "one");
   assert.equal(playerLayout(barWidth(748), () => true).mode, "three");
-  // v3.8.0 段2-2（作者の決定）：出力ボタンを足しても、入らないときは全体の音量を「···」へ移して3列を保つ。3列が始まる幅は同じ
+  // v3.8.0（作者の決定）：出力ボタンを足しても、入らないときは全体の音量を「···」へ移して3列を保つ。3列が始まる幅は同じ
   assert.equal(playerLayout(728, () => true, 120).mode, "three");
   assert.equal(playerLayout(727, () => true, 120).mode, "one");
 });
 
-test("再生バー（出力ボタン 112px あり。v3.8.0 段2-2・作者の決定）：3列は段1 と同じ再生バーの幅 728px（窓 748px）から。入らない幅では全体の音量を「···」へ移す（728〜1067px）。再生ボタンは中央のまま", () => {
+test("再生バー（出力ボタン 112px あり。v3.8.0・作者の決定）：3列は出力ボタンが無いときと同じ再生バーの幅 728px（窓 748px）から。入らない幅では全体の音量を「···」へ移す（728〜1067px）。再生ボタンは中央のまま", () => {
   const out = PLAYER.output3;
   assert.equal(out, 112);
   const volInMore: number[] = [];
@@ -355,7 +355,7 @@ test("再生バー（出力ボタン 112px あり。v3.8.0 段2-2・作者の決
   assert.deepEqual(playerLayout(1300, () => true, out).right, ["volume", "lyricsRow", "lyrics"]);
   // 音量を隠している人：歌詞のボタンだけで決まる（出力 112 ＋ 36 ＋ 36 ＋ 間 4×2 ＝ 192px は 3列の最低幅と同じなので、3列になった幅から右の列）
   assert.deepEqual(playerLayout(728, (b) => b !== "volume", out).right, ["lyricsRow", "lyrics"]);
-  // 出力ボタンを隠していれば、段1 と同じ（音量はいつも右の列）
+  // 出力ボタンを隠していれば、と同じ（音量はいつも右の列）
   for (let w = 728; w <= 1300; w++) assert.equal(playerLayout(w, () => true, 0).right[0], "volume", String(w));
 });
 
@@ -422,7 +422,7 @@ test("再生バー（1段）：中は前・再生・次、右は「···」（�
 test("再生バーの画面（PlayerBar）：自分の幅を測って playerLayout で形を決める。1段ではシークバーを上の縁の線にし、アーティスト名と歌詞の1行の代わりに時間を出す", () => {
   const pb = read("src/layout/PlayerBar.tsx");
   assert.match(pb, /new ResizeObserver\(put\)/);
-  // v3.8.0 段2-2：出力ボタンを出していれば、その幅（PLAYER.output3）を渡す
+  // v3.8.0：出力ボタンを出していれば、その幅（PLAYER.output3）を渡す
   assert.match(pb, /const L = playerLayout\(barW, shown, outputsOn \? PLAYER\.output3 : 0\);/);
   assert.match(pb, /className=\{"player panel " \+ \(one \? "one-row" : "three-col"\)\}/);
   assert.match(pb, /\{one \? <SeekBar disabled=\{!t\} variant="line" \/> : null\}/);
@@ -437,7 +437,7 @@ test("再生バーの画面（PlayerBar）：自分の幅を測って playerLayo
   assert.match(pb, /role="dialog" aria-label="その他の操作"/);
   assert.match(pb, /if \(e\.key === "Escape"\)/);
   assert.match(pb, /<button className="menu-item" onClick=\{o\.onClick\} title=\{o\.title\} aria-pressed=\{o\.on\}>/);
-  // 出力ボタン（段2-2）は、右の列の全体の音量の左
+  // 出力ボタンは、右の列の全体の音量の左
   const right = pb.slice(pb.indexOf('<div className="player-right">'));
   assert.ok(right.indexOf("<OutputButton") >= 0 && right.indexOf("<OutputButton") < right.indexOf("L.right.map"));
   // シークバーの線の形：時間の文字を持たず、読み上げに今の時間と長さを渡す
@@ -457,7 +457,7 @@ test("最小の窓は 480×480（tauri.conf.json）", () => {
 test("480×480 の窓で、再生バー・上の帯・曲一覧がはみ出さない（幅の計算）", () => {
   const W = 480;
   // 再生バー：1段。左（残り）＝ 再生バーの中の幅 − 中（前・再生・次）− 右（出力ボタン 80 ＋ 間 4 ＋「···」）− 間×2
-  // （v3.8.0 段2-2 で出力ボタンを足した。段1 では 266px、出力ボタンを隠せば今も 266px）
+  // （v3.8.0 で出力ボタンを足した。では 266px、出力ボタンを隠せば今も 266px）
   const bar = barWidth(W);
   const L1 = playerLayout(bar, () => true, PLAYER.output3);
   assert.equal(L1.mode, "one");

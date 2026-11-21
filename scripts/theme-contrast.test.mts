@@ -1,6 +1,6 @@
 // Light テーマの色が、文字と背景の濃さの差（WCAG のコントラスト比）の基準を満たすかを確かめる（v3.1.2）。
 // v3.7.0：Dark のアクセント・アクセントの上の文字・危険の色を変え、操作部の輪郭（--c-outline）とお気に入りの星（--c-favorite）を両方のテーマに足した。
-// v3.8.0 段2-2：メーターの帯（緑 --c-ok・黄 --c-favorite・赤 --c-danger。新しい色の変数は足さない）を、ミキサー（パネル）とプルダウン（メニュー）の面で足した。
+// v3.8.0：メーターの帯（緑 --c-ok・黄 --c-favorite・赤 --c-danger。新しい色の変数は足さない）を、ミキサー（パネル）とプルダウン（メニュー）の面で足した。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない）：
 //   node --test scripts/theme-contrast.test.mts
 import { test } from "node:test";
@@ -28,8 +28,8 @@ test("色の読み方：#rrggbb・rgba()・r, g, b", () => {
 
 test("Light：既定の設定（背景の暗さ 45%・UI の不透明度 70%）で、白・黒の背景画像と画像なしのどれでも基準を満たす", () => {
   const rows = evaluate(light, DEFAULT_DIM, DEFAULT_UI);
-  // 場面3つ × 組み合わせ。組み合わせが減っていないこと（数え漏れで通らないように）。v3.8.0 段2-2 でメーターの帯 6 を足した
-  assert.equal(rows.length, 3 * 44); // 段2-2 の直し1回目で最大の線5・出力ボタンの縁1、直し2回目で出力ボタンの「!」1、段3 で遅れを測る小窓の文字3を足した
+  // 場面3つ × 組み合わせ。組み合わせが減っていないこと（数え漏れで通らないように）。v3.8.0 でメーターの帯 6 を足した
+  assert.equal(rows.length, 3 * 44); // v3.8.0 で最大の線5・出力ボタンの縁1・出力ボタンの「!」1・遅れを測る小窓の文字3を足した
   const fails = rows.filter((r) => !(r.ratio >= r.min)).map((r) => `${r.scene} ${r.name} ${r.ratio.toFixed(2)} < ${r.min}`);
   assert.deepEqual(fails, []);
 });
@@ -101,8 +101,8 @@ test("Dark（v3.7.0）：既定の設定で、届かないのは飾りの区切�
 test("v3.7.0 で足した決まり：アクセントの文字 4.5・危険 4.5・アクセントの上の文字 4.5・操作部の輪郭 3・お気に入りの星 3 を、両方のテーマの3つの場面で満たす", () => {
   for (const f of [dark, light]) {
     const rows = evaluate(f, DEFAULT_DIM, DEFAULT_UI).filter((r) => /--c-accent|--c-danger|--c-outline|--c-favorite/.test(r.name));
-    // 名前で拾った数（場面3つ × アクセント文字5・線1・上の文字1・危険2・輪郭2・星3 ＋ v3.8.0 段2-2 のメーターの黄と赤の帯 4）
-    // （段2-2 の直し1回目で、最大の線の縁と黄・赤の帯 2、出力ボタンの危険の色の縁 1 を足した。段3 で小窓の危険の文字 1 を足した）
+    // 名前で拾った数（場面3つ × アクセント文字5・線1・上の文字1・危険2・輪郭2・星3 ＋ v3.8.0 メーターの黄と赤の帯 4）
+    // （最大の線の縁と黄・赤の帯 2、出力ボタンの危険の色の縁 1 を足した。で小窓の危険の文字 1 を足した）
     assert.equal(rows.length, 3 * 22, f);
     const fails = rows.filter((r) => !(r.ratio >= r.min)).map((r) => `${r.scene} ${r.name} ${r.ratio.toFixed(2)}`);
     assert.deepEqual(fails, [], f);

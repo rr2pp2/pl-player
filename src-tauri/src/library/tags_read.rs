@@ -61,7 +61,7 @@ pub fn best_picture(tag: &Tag) -> Option<&lofty::picture::Picture> {
 
 /// lofty は細工したファイル（チャンネル数 0 の Opus など）で panic することがある
 /// （`docs\ペネトレーションテスト_v3.0.2.md` の3）。読み取りを包み、panic は None にする（呼び出し側で Err に倒す）。
-/// v3.1.0 直し2回目で、読み取り側（open_tagged・read_values・read_lyrics）にだけ入れた。書き込み（tags_write）の後始末は v3.1.1
+/// v3.1.0 で、読み取り側（open_tagged・read_values・read_lyrics）にだけ入れた。書き込み（tags_write）の後始末は v3.1.1
 fn no_panic<T>(path: &Path, f: impl FnOnce() -> T) -> Option<T> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(v) => Some(v),
@@ -81,7 +81,7 @@ fn panicked_error(path: &Path) -> AppError {
 /// v1 の不具合：既定の読み方は、音声部分（MPEG のフレーム）の長さ計算まで行い、そこで失敗すると
 /// タグが読めていてもファイル全体を「読めない」にしていた。タグを読み書きするだけなら長さは要らないので、
 /// 失敗したら「長さを読まない・寛容に読む」でもう一度開く。
-/// lofty が panic したら Err（v3.1.0 直し2回目）
+/// lofty が panic したら Err（v3.1.0）
 pub fn open_tagged(path: &Path) -> Result<lofty::file::TaggedFile, lofty::error::FileParseError> {
     no_panic(path, || open_tagged_inner(path))
         .unwrap_or_else(|| Err(std::io::Error::other("tag reader panicked").into()))
@@ -169,7 +169,7 @@ pub fn read_track(path: &Path, thumbs_dir: &Path) -> Result<TrackInfo, AppError>
     Ok(info)
 }
 
-/// 編集画面用：今のタグの値。lofty が panic したら Err（v3.1.0 直し2回目）
+/// 編集画面用：今のタグの値。lofty が panic したら Err（v3.1.0）
 pub fn read_values(path: &Path) -> Result<TagValues, AppError> {
     no_panic(path, || read_values_inner(path)).unwrap_or_else(|| Err(panicked_error(path)))
 }
@@ -199,7 +199,7 @@ fn read_values_inner(path: &Path) -> Result<TagValues, AppError> {
 /// Vorbis コメントの LYRICS を `Lyrics` として返す。主のタグから順に見て、空でない最初の1件を使う
 /// （言語での選び分けはしない）。歌詞が無ければ `Ok(None)`。
 pub fn read_lyrics(path: &Path) -> Result<Option<String>, AppError> {
-    // lofty が panic したら Err（v3.1.0 直し2回目。歌詞なし＋警告として扱われる）
+    // lofty が panic したら Err（v3.1.0。歌詞なし＋警告として扱われる）
     no_panic(path, || read_lyrics_inner(path)).unwrap_or_else(|| Err(panicked_error(path)))
 }
 
@@ -230,7 +230,7 @@ impl Drop for LoftyAllocLimit {
 /// lofty の割り当ての上限は MP3・AAC の頭の ID3v2 の項目（USLT など）には効かず、項目の大きさ（最大 256MB）まで読む。
 /// そこで、lofty に渡す前に項目の見出しだけを見て、大きすぎる項目があれば読まない。
 ///
-/// v3.1.1 直し1回目：見る範囲を lofty 0.25.4 の読み方（`mpeg\read.rs`・`aac\read.rs` の頭）にそろえた。
+/// v3.1.1：見る範囲を lofty 0.25.4 の読み方（`mpeg\read.rs`・`aac\read.rs` の頭）にそろえた。
 /// - 先頭に続く 0x00 を読み飛ばす
 /// - `ID3` が続く限り、次のタグの見出しも確かめる（lofty は後ろのタグの項目も前のタグに足して読む）
 /// - 頭に APE タグ（`APETAGEX`）があれば、そのあとの位置を lofty と同じには追えないので、大きすぎる扱いにする（読まない側に倒す。まれな形）
@@ -239,7 +239,7 @@ impl Drop for LoftyAllocLimit {
 /// 見出しが壊れていて歩けなくなったら、そのタグの残りは飛ばす（lofty もそこから先は項目として読まない）。
 /// ID3v2.3 までのタグ全体の非同期化（まれ）は見出しが崩れうるので、タグ全体の大きさで判断する。
 ///
-/// v3.1.1 直し2回目（検査2回目の指摘A）：細工した見出し（空のタグ 500万個・サイズ 0 の項目 200万個など）で、
+/// v3.1.1：細工した見出し（空のタグ 500万個・サイズ 0 の項目 200万個など）で、
 /// 確かめ自体が何秒も読み続けていた。
 /// - 見るタグは MAX_ID3_TAGS 個、項目は合計 MAX_ID3_FRAMES 個まで。超えたら「大きすぎる」扱い（読まない）
 /// - 読み飛ばしは `BufReader::seek_relative`（読み込み用の中身を捨てない）。位置は自分で数える
@@ -398,7 +398,7 @@ fn read_lyrics_inner(path: &Path) -> Result<Option<String>, AppError> {
     for tag in tags {
         for key in [ItemKey::UnsyncLyrics, ItemKey::Lyrics] {
             if let Some(s) = tag.get_strings(key).find(|s| !s.trim().is_empty()) {
-                // v3.1.1 直し1回目：二重の守り。見出しの確かめをすり抜けて読めてしまった歌詞も、上限を超えれば捨てる
+                // v3.1.1：二重の守り。見出しの確かめをすり抜けて読めてしまった歌詞も、上限を超えれば捨てる
                 // （歌詞なし＋「歌詞タグを読み込めませんでした」の警告）
                 if s.len() > LYRICS_TAG_ALLOC_LIMIT {
                     tracing::info!("lyrics tag too large after reading: {}", path.display());
@@ -543,7 +543,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// v3.1.0 直し2回目：lofty が panic するファイル（OpusHead のチャンネル数を 0 にした Opus。ペネトレーションテスト v3.0.2 の3）
+    /// v3.1.0：lofty が panic するファイル（OpusHead のチャンネル数を 0 にした Opus。ペネトレーションテスト v3.0.2 の3）
     /// でも、読み取りは panic せず Err を返す
     #[test]
     fn panicking_files_become_errors() {
@@ -662,7 +662,7 @@ mod tests {
         t.tags().iter().any(|tag| tag.get_strings(ItemKey::UnsyncLyrics).any(|s| s.len() > LYRICS_TAG_ALLOC_LIMIT))
     }
 
-    /// v3.1.1 直し1回目（検査1回目の指摘1）：lofty は先頭の 0x00 を読み飛ばし、続く ID3v2 タグを全部読む。
+    /// v3.1.1：lofty は先頭の 0x00 を読み飛ばし、続く ID3v2 タグを全部読む。
     /// 「先頭に 0x00 を16個＋9MB の USLT」と「小さいタグの直後に 9MB のタグ」も、読む前に断る
     #[test]
     fn padded_and_chained_id3_tags_are_checked() {
@@ -710,7 +710,7 @@ mod tests {
         }
     }
 
-    /// v3.1.1 直し2回目（検査2回目の指摘A）：細工した見出しでも、確かめはすぐ終わる（読まない側に倒す）。
+    /// v3.1.1：細工した見出しでも、確かめはすぐ終わる（読まない側に倒す）。
     /// 空のタグ 500万個（約 50MB）・サイズ 0 の項目 200万個（約 20MB）
     #[test]
     fn crafted_headers_are_refused_quickly() {

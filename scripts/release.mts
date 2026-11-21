@@ -27,7 +27,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, relative, resolve, win32 } from "node:path";
+import { basename, dirname, join, relative, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentRoots, formatReport, isBad, listFiles, maskText, needlesFor, nsisRuntimePathLines, scanFile, variants, type FileReport, type Roots } from "./release-scan.mts";
 import { makeZip } from "./release-zip.mts";
@@ -451,7 +451,10 @@ function main() {
   } catch (e) {
     fail((e as Error).message);
   }
-  console.log(`見本：${samples.map((f) => f.name).join("・")}`);
+  // v3.11.0：アイコンのフォルダはファイルが多いので、フォルダごとの数だけを出す
+  const sampleTop = samples.filter((f) => !f.name.includes("/")).map((f) => f.name);
+  const sampleDirs = [...new Set(samples.filter((f) => f.name.includes("/")).map((f) => f.name.slice(0, f.name.lastIndexOf("/"))))];
+  console.log(`見本：${[...sampleTop, ...sampleDirs.map((d) => `${d}/（${samples.filter((f) => f.name.startsWith(`${d}/`)).length} 枚）`)].join("・")}`);
   const others = otherVersions(readme, version);
   if (others.length > 0) {
     console.log(`使う人向けの README に、今の版（${version}）と違う版番号があります。前の版のまま残っていないかを目で確かめてください（止めません）：`);
@@ -624,12 +627,16 @@ function main() {
   mkdirSync(outDir, { recursive: true });
   for (const [src, n] of [[setup, setupName], [exe, PORTABLE_NAME]] as const) copyFileSync(src, join(outDir, n));
   writeFileSync(join(outDir, "README.md"), readme, "utf8");
-  // v3.9.1：見本フォルダ（立ち絵とスキンの見本と使い方）
+  // v3.9.1：見本フォルダ（立ち絵とスキンの見本と使い方）。v3.11.0 からアイコンのフォルダ（アイコン/<くじら|ペンギン>/…。名前の区切りは /）も
+  const samplePath = (name: string) => join(outDir, SAMPLE_DIR, ...name.split("/"));
   mkdirSync(join(outDir, SAMPLE_DIR), { recursive: true });
-  for (const f of samples) writeFileSync(join(outDir, SAMPLE_DIR, f.name), f.data);
+  for (const f of samples) {
+    mkdirSync(dirname(samplePath(f.name)), { recursive: true });
+    writeFileSync(samplePath(f.name), f.data);
+  }
   const entries = [
     ...[setupName, PORTABLE_NAME, "README.md"].map((n) => ({ name: `${assets.base}/${n}`, path: join(outDir, n) })),
-    ...samples.map((f) => ({ name: `${assets.base}/${SAMPLE_DIR}/${f.name}`, path: join(outDir, SAMPLE_DIR, f.name) })),
+    ...samples.map((f) => ({ name: `${assets.base}/${SAMPLE_DIR}/${f.name}`, path: samplePath(f.name) })),
   ];
   writeFileSync(zipPath, makeZip(entries.map((e) => ({ name: e.name, data: readFileSync(e.path), mtime: statSync(e.path).mtime }))));
   // Releases に1つずつ置く物（GitHub が名前を変えない名前で）

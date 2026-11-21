@@ -1,7 +1,7 @@
 // 設定の「着せ替え」の中の「立ち絵」の欄（v3.9.0）：使う立ち絵の一覧（スキンの立ち絵・出さない・取り込んだスキンの立ち絵・追加した立ち絵）・
 // カードを押すか「使う」で切り替え・「変更」・「削除」・「＋ 立ち絵を追加…」・大きさ。3.8.1 までの「立ち絵を出す」のチェックは、一覧の「出さない」にまとめた。
 // 画像は Rust がファイルを選ぶ画面を出して確かめ、見本（data: URL）と印 token だけを返す（画面はパスを持たない）。
-// 直し2回目：名前は空でよい（Rust がファイル名から作る）・「変更」の小窓（差し替え・停止中を外す・名前）・カード全体を押せる。
+// 名前は空でよい（Rust がファイル名から作る）・「変更」の小窓（差し替え・停止中を外す・名前）・カード全体を押せる。
 import { useEffect, useState } from "react";
 import { fileUrl } from "../ipc/events";
 import type { AvatarSummary, PickedImage } from "../ipc/types";
@@ -71,7 +71,7 @@ function ScaleSlider() {
 }
 
 /**
- * 大きさのつまみの下：この大きさで立ち絵が出る窓の幅と、今の窓で出せるか（直し3回目。直し5回目で窓の幅で決める形に合わせた）。
+ * 大きさのつまみの下：この大きさで立ち絵が出る窓の幅と、今の窓で出せるか（窓の幅で決める形に合わせた）。
  * どの立ち絵でも同じ決まり。「今の窓で出せるか」は AppShell が実際に使った曲一覧の側の幅で決める（詳細の表示でも食い違わない）。
  * 出せないときは文で書き、印（「隠しています」）も文字で付ける（色だけで伝えない）
  */
@@ -80,7 +80,7 @@ function WindowNote() {
   const s = useStore(settings);
   const size = useLayoutSize();
   const pane = useStore(characterPaneWidth);
-  // 詳細の表示か（境目が 360px になる。直し6回目）。AppShell と同じ入力で詳細の配置を求める
+  // 詳細の表示か（境目が 360px になる）。AppShell と同じ入力で詳細の配置を求める
   const D = useDetailLayout(size, s, s.ui.sidebarCollapsed || size.sidebarAuto, lyricsRowOn(s));
   const paneFor = useCharacterPaneFor(size, s, lyricsRowOn(s));
   const note = characterWindowNote(!!st?.character, s.skin?.characterScale ?? 1, size.width, pane, paneFor, characterMinListOf(D), !!D);
@@ -379,7 +379,7 @@ export function AvatarsField() {
           const on = r.choice === choice;
           const pickable = !r.broken;
           return (
-            // カード全体を押すと、その立ち絵に切り替わる（直し2回目）。中のボタン（使う・変更・削除）から来たクリック・キーは、
+            // カード全体を押すと、その立ち絵に切り替わる。中のボタン（使う・変更・削除）から来たクリック・キーは、
             // ボタン自身が処理するので切り替えない（cardClickSwitches・cardKeySwitches）
             <div
               key={r.choice}

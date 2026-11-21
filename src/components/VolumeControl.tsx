@@ -14,7 +14,7 @@ export function VolumeControl() {
   const timer = useRef<number | undefined>(undefined);
   const v = local ?? s.volume;
   const shown = s.muted ? 0 : v;
-  // v3.8.0 段2-2：保存を待っている間に消えた（「···」を閉じた・再生バーの形が変わって音量が「···」へ移った）ときは、消えるときに保存を送る
+  // v3.8.0：保存を待っている間に消えた（「···」を閉じた・再生バーの形が変わって音量が「···」へ移った）ときは、消えるときに保存を送る
   useEffect(
     () => () => {
       if (timer.current === undefined) return;

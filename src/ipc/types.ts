@@ -45,6 +45,12 @@ export type ErrorCode =
   | "avatar_not_found"
   | "avatar_broken"
   | "avatar_pick_expired"
+  // 手で入れるアイコン（v3.11.0）
+  | "icon_slot_invalid"
+  | "icon_image_format"
+  | "icon_drop_invalid"
+  | "icon_broken"
+  | "icon_safe_mode"
   // 曲をごみ箱へ移す（v3.3.0）
   | "track_not_in_library"
   | "trash_not_allowed"
@@ -248,7 +254,7 @@ export interface OutputsView {
 }
 
 /**
- * 遅れを測る（v3.8.0 段3）。録る所：その出力のループバック（Windows がその出力へ渡した音）か、録音デバイス（仮想ケーブルの出口など）
+ * 遅れを測る（v3.8.0）。録る所：その出力のループバック（Windows がその出力へ渡した音）か、録音デバイス（仮想ケーブルの出口など）
  */
 export type CaptureSource = { kind: "loopback" } | { kind: "input"; id: string };
 
@@ -425,6 +431,11 @@ export interface SkinSettings {
    * 変えるのは skins_color_set・skins_colors_clear・「既定の見た目に戻す」だけ（設定の保存では変わらない）。3.9.1 までの設定には無い
    */
   colors?: Record<string, string>;
+  /**
+   * v3.11.0：手で入れたアイコン（名前 → 状態 → 形式 png・webp・gif。画像は Rust がデータのフォルダの icons\<名前>\<状態>.<形式> に置く）。Dark・Light 共通。
+   * 変えるのは icons_drop・icons_pick・icons_reset・icons_clear・「既定の見た目に戻す」だけ（設定の保存では変わらない）。3.10.0 までの設定には無い
+   */
+  icons?: Record<string, Record<string, string>>;
 }
 
 export interface HotkeyStatus {
@@ -627,10 +638,25 @@ export interface ResolvedSkin {
 }
 
 export interface SkinNotice {
-  /** broken_fallback / safe_mode / safe_mode_second / avatar_fallback（v3.9.0） */
+  /** broken_fallback / safe_mode / safe_mode_second / avatar_fallback（v3.9.0）/ icon_fallback（v3.11.0） */
   code: string;
   id: string | null;
   error: ErrorCode | null;
+  /** v3.11.0：icon_fallback で外した枠の数 */
+  count?: number | null;
+}
+
+/** v3.11.0：手で入れたアイコン（Rust が icons の下で確かめたファイルだけ）。rev は入れ直すたびに変わる印（URL に付けて読み直す） */
+export interface ManualIcon {
+  path: string;
+  still: string | null;
+  rev: string;
+}
+
+/** v3.11.0：設定の「アイコン」の欄に出す、今のウィンドウ・トレイのアイコンの見本（data: URL の PNG） */
+export interface AppIconPreviews {
+  window: string | null;
+  tray: string | null;
 }
 
 export interface SkinState {
@@ -643,6 +669,8 @@ export interface SkinState {
   avatar: string;
   /** v3.9.0：いま画面に出す立ち絵（使う立ち絵を解いたもの。出さないときは null）。画面はスキンの character ではなくこちらを出す */
   character: SkinCharacter | null;
+  /** v3.11.0：手で入れたアイコン（名前 → 状態 → 画像。セーフモードの間は空）。手 → スキン → 今の SVG の順に選ぶ（src\skins\icons.ts） */
+  manualIcons?: Record<string, Record<string, ManualIcon>>;
 }
 
 // ---- 立ち絵（v3.9.0）。Rust 側 skins/avatars.rs と同じ形 ----

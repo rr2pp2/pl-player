@@ -61,7 +61,7 @@ pub async fn avatars_create(app: AppHandle, name: String, playing: String, stopp
     runtime::create(&app, &name, &playing, stopped.as_deref())
 }
 
-/// 作った立ち絵を変える（v3.9.0 直し2回目）。`playing`・`stopped` は差し替える画像の印（無ければそのまま）、
+/// 作った立ち絵を変える（v3.9.0）。`playing`・`stopped` は差し替える画像の印（無ければそのまま）、
 /// `remove_stopped`（画面からは removeStopped）なら停止中を外す。名前が空なら今の名前のまま
 #[tauri::command]
 pub async fn avatars_update(

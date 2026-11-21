@@ -30,7 +30,7 @@ use crate::error::{AppError, AppResult, ErrorKind};
 pub const MAX_AVATARS: usize = 30;
 /// 名前の長さ（文字数）
 pub const NAME_MAX: usize = 40;
-/// v3.9.0（直し2回目）：名前が空で、ファイル名からも名前が作れないときの名前
+/// v3.9.0：名前が空で、ファイル名からも名前が作れないときの名前
 pub const DEFAULT_NAME: &str = "立ち絵";
 /// 置き方（スキンの立ち絵の既定の値と同じ。docs\着せ替え_仕様.md 6章）
 pub const WIDTH_PX: u32 = 180;
@@ -183,7 +183,7 @@ pub struct AvatarSummary {
     pub preview: Option<String>,
     /// 停止中の絵を持つか
     pub has_stopped: bool,
-    /// v3.9.0 直し2回目：「変更」の小窓の見本（静止画のパス。動く画像なら最初の1コマ）。停止中が無ければ None
+    /// v3.9.0：「変更」の小窓の見本（静止画のパス。動く画像なら最初の1コマ）。停止中が無ければ None
     pub playing_preview: Option<String>,
     pub stopped_preview: Option<String>,
     pub animated: bool,
@@ -290,7 +290,7 @@ fn ext_of(file_name: &str) -> Option<&'static str> {
     names::IMAGE_EXTS.iter().copied().find(|e| *e == ext)
 }
 
-/// 名前の既定（v3.9.0 直し2回目。作者の決定）：ファイル名から拡張子を外したもの。名前の決まりに合わなければ、合うように詰める
+/// 名前の既定（v3.9.0。作者の決定）：ファイル名から拡張子を外したもの。名前の決まりに合わなければ、合うように詰める
 /// （40 文字で切る・使えない文字を外す＝名前の見える文字 `is_name_base` と空白だけを残す）。それでも空なら「立ち絵」
 pub fn name_from_file(file_name: &str) -> String {
     let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -556,7 +556,7 @@ fn create_unguarded(dirs: &Dirs, name: &str, playing: &Picked, stopped: Option<&
     if playing.slot != Slot::Playing || stopped.map(|s| s.slot != Slot::Stopped).unwrap_or(false) {
         return Err(skin_error(ErrorKind::AvatarPickExpired, "slot"));
     }
-    // 名前が空なら、再生中の絵のファイル名から作った名前（v3.9.0 直し2回目。断らない）
+    // 名前が空なら、再生中の絵のファイル名から作った名前（v3.9.0。断らない）
     let name = if name.trim().is_empty() { playing.name_hint.clone() } else { check_name(name)? };
     let name = check_name(&name).unwrap_or_else(|_| DEFAULT_NAME.to_string());
     let n = count(dirs);
@@ -643,14 +643,14 @@ pub enum StoppedChange<'a> {
     Remove,
 }
 
-/// 作った立ち絵を変える（v3.9.0 直し2回目。作者の決定）：再生中だけ／停止中だけを差し替える・停止中を外す・名前を変える。
+/// 作った立ち絵を変える（v3.9.0。作者の決定）：再生中だけ／停止中だけを差し替える・停止中を外す・名前を変える。
 /// 名前が空なら今の名前のまま。差し替える絵は新しい名前のファイル（`<状態>-<印>.<形式>`）に書き、全部書けてから avatar.json を
 /// 一時のファイル経由で置き換える。途中で失敗したら書いたものを消し、前の絵と avatar.json はそのまま。置き換えたあとで、使わなくなった絵を消す
 pub fn update(dirs: &Dirs, id: &str, name: &str, playing: Option<&Picked>, stopped: StoppedChange) -> AppResult<AvatarSummary> {
     update_then(dirs, id, name, playing, stopped, || {})
 }
 
-/// `update` と同じ。avatar.json を置き換えたあと、古い絵を消す前に `after_commit` を呼ぶ（直し3回目：使っている立ち絵なら、
+/// `update` と同じ。avatar.json を置き換えたあと、古い絵を消す前に `after_commit` を呼ぶ（使っている立ち絵なら、
 /// 先に画面の絵を新しい絵へ当て直してから古い絵を消す。削除の `runtime::switch_then_delete` と同じ考え）。失敗したときは呼ばない
 pub fn update_then(
     dirs: &Dirs,

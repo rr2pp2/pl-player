@@ -25,7 +25,7 @@ pub fn quit(app: &AppHandle) {
     app.exit(0);
 }
 
-/// v3.10.0（直し2回目）：「既定の見た目に戻す」も「立ち絵を出さない」と同じく別のスレッドへ渡す。中で設定を書く鍵（settings_write）を取り、
+/// v3.10.0：「既定の見た目に戻す」も「立ち絵を出さない」と同じく別のスレッドへ渡す。中で設定を書く鍵（settings_write）を取り、
 /// 設定の zip の読み込みはその鍵を読み込みの間ずっと持つので、メインのスレッドで呼ぶと読み込みが終わるまで固まるため
 fn reset_look_off_main(app: &AppHandle) {
     let app = app.clone();

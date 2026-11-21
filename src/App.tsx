@@ -27,7 +27,7 @@ export default function App() {
         await initSettings();
         await initLibrary();
         await initPlayback();
-        // v3.8.0 段2-2：出力先と表示のモード（通常／詳細）。詳細のまま終了していたら、詳細で開く
+        // v3.8.0：出力先と表示のモード（通常／詳細）。詳細のまま終了していたら、詳細で開く
         await initOutputs();
         // 着せ替え（v3.2.0）：最初に描く前に、スキンの色と文字を当てる
         await initSkins();
@@ -61,7 +61,7 @@ export default function App() {
       <MetadataEditorHost />
       {/* 歌詞の編集画面の上に確認の小窓を出すため、DialogHost より前に置く */}
       <LyricsEditorHost />
-      {/* v3.8.0 段3：遅れを測る小窓（出力のプルダウン・ミキサーから開く。プルダウンが閉じても残るように、ここに置く） */}
+      {/* v3.8.0：遅れを測る小窓（出力のプルダウン・ミキサーから開く。プルダウンが閉じても残るように、ここに置く） */}
       <LatencyHost />
       <DialogHost />
       <Toasts />

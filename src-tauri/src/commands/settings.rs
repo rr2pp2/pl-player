@@ -50,7 +50,7 @@ pub(crate) fn update_and_emit(
     Ok((w, now))
 }
 
-/// 設定の知らせを、その時点の最新の設定で送る（v3.10.0 直し2回目）
+/// 設定の知らせを、その時点の最新の設定で送る（v3.10.0）
 pub(crate) fn emit_settings(app: &AppHandle, state: &AppState) -> AppSettings {
     emit_latest(&state.settings_emit, &state.settings, |s| {
         let _ = app.emit(ev::SETTINGS, s);
@@ -80,7 +80,7 @@ pub async fn settings_get(state: State<'_, AppState>) -> AppResult<AppSettings> 
 /// 設定を保存する。ホットキーが変わっていれば登録し直し、結果（競合）を返す
 #[tauri::command]
 pub async fn settings_set(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> AppResult<AppSettings> {
-    // v3.10.0：画面に変えさせない値（使うスキン・使う立ち絵・手で選んだ色・背景のパス）を戻す元の「今の設定」は、鍵の中で読む
+    // v3.10.0：画面に変えさせない値（使うスキン・使う立ち絵・手で選んだ色・背景のパス。v3.11.0 から手で入れたアイコンも）を戻す元の「今の設定」は、鍵の中で読む
     let bg_dir = state.paths.bg_dir.clone();
     let (w, now) = update_and_emit(&app, &state, |before| Ok(Some(from_screen(settings, before, &bg_dir))))?;
     // ホットキーの登録し直しはメインのスレッドへ渡すので、鍵を外してから
@@ -101,6 +101,9 @@ pub(crate) fn from_screen(s: AppSettings, before: &AppSettings, bg_dir: &Path) -
     // v3.10.0：手で選んだ色も同じ（変えるのは skins_color_set・skins_colors_clear・「既定の見た目に戻す」だけ。
     // 画面が持っている古い写しで、選んだばかりの色を上書きしないため）
     s.skin.colors = before.skin.colors.clone();
+    // v3.11.0：手で入れたアイコンも同じ（変えるのは icons_drop・icons_pick・icons_reset・icons_clear・「既定の見た目に戻す」だけ。
+    // 設定の値と icons\ の中のファイルを一続きで変えるため、画面の写しでは変えない）
+    s.skin.icons = before.skin.icons.clone();
     s
 }
 
@@ -285,7 +288,7 @@ mod tests {
         assert_eq!(s.skin.active_skin_id, crate::skins::names::BUILTIN_ID);
     }
 
-    /// v3.10.0（直し1回目）：画面の保存と手の色の保存が同時に走っても、読んでから書くまでが一続きなので、どちらの変更も落ちない。
+    /// v3.10.0：画面の保存と手の色の保存が同時に走っても、読んでから書くまでが一続きなので、どちらの変更も落ちない。
     /// 画面の保存は手の色を知らない古い写し（手の色なし）を何度も送り、その間に手の色を1つずつ 15 個足す。2つずつ同時に足す形も
     #[test]
     fn concurrent_writes_keep_every_change() {
@@ -336,7 +339,7 @@ mod tests {
         assert_eq!(store::load(&db), now);
     }
 
-    /// v3.10.0（直し2回目）：書く人が何人いても、知らせは読んだ順に並び、最後に届く知らせは最後に書いた値になる
+    /// v3.10.0：書く人が何人いても、知らせは読んだ順に並び、最後に届く知らせは最後に書いた値になる
     /// （書いたあとで emit_latest を通る。送り先はここでは Vec に積むだけ）
     #[test]
     fn last_notice_carries_the_last_write() {

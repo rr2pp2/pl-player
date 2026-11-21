@@ -40,7 +40,7 @@
   /* v3.8.0：3列のときの再生バーの真ん中の列。再生バーの中の幅（grid の内側）の 40%、240〜560px。
      src\layout\playerLayout.ts の PLAYER（centerRatio・centerMin・centerMax）と同じ値（3列にするかの計算に使う。scripts\ui-layout.test.mts で確かめる） */
   --player-center-w: clamp(240px, 40%, 560px);
-  /* v3.8.0 段2-2（同時再生）：寸法は全部スキンから変えさせない（src\skins\tokens.ts と Rust の LOCKED_VARS）。scripts\ui-detail.test.mts で JS と同じ値か確かめる。
+  /* v3.8.0（同時再生）：寸法は全部スキンから変えさせない（src\skins\tokens.ts と Rust の LOCKED_VARS）。scripts\ui-detail.test.mts で JS と同じ値か確かめる。
      出力ボタンの幅：3列は 112px（1段は base.css の :root:has(.player.one-row) で 80px）。src\layout\playerLayout.ts の PLAYER.output3・output1 */
   --player-output-w: 112px;
   /* 出力のプルダウンの幅（窓が狭ければ窓に合わせて縮む） */

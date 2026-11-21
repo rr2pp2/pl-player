@@ -1,4 +1,4 @@
-// v3.8.0 段3：遅れを測る（仕様「同時再生と配信モード」2.3 の段3）。入口のボタン（出力のプルダウンと「詳細」のミキサー）と小窓。
+// v3.8.0：遅れを測る（仕様「同時再生と配信モード」2.3 ）。入口のボタン（出力のプルダウンと「詳細」のミキサー）と小窓。
 // 流れ：押す → 小窓で「クリック音が配信・録画に乗るので、止めてから測ってください」と断り、録る所を見せる → 「測る」 →
 //       出力ごとに「届くまでの遅れ」と「入れる値」（または「測れませんでした：理由」） → 「この値を入れる」で遅らせ量に入れる
 // - 測るのは曲を止めているときだけ。流している間は入口も「測る」も押せず、理由を出す（吹き出しと文字）。測る途中で流し始めたら Rust がやめる
@@ -33,7 +33,7 @@ const dialogOpen = createStore(false);
 const picked: Record<string, string> = {};
 
 /**
- * 測定の番号（測るたびに増やす。「やめる」はこの番号で指す。検査1回目の指摘1：「測る」の直後の「やめる」が先に着いても効く）。
+ * 測定の番号（測るたびに増やす。「やめる」はこの番号で指す。：「測る」の直後の「やめる」が先に着いても効く）。
  * 画面を読み込み直しても前より大きくなるよう、今の時刻（マイクロ秒ほど）から始める（メーターの番号と同じ作り）
  */
 let runSeq = 0;
@@ -49,7 +49,7 @@ export function LatencyButton(props: { onOpen?: () => void; showReason?: boolean
   const blocked = latencyBlocked(v, pb.status === "playing");
   const reasonId = useId();
   // 理由を文字でも出すとき（プルダウン）は、その見える文をボタンの aria-describedby で指し、吹き出しの読み上げ用の文は付けない
-  // （同じ理由を2回読ませない。直し2回目）。文字で出さないとき（ミキサー）は、吹き出しの読み上げ用の文で伝える
+  // （同じ理由を2回読ませない）。文字で出さないとき（ミキサー）は、吹き出しの読み上げ用の文で伝える
   const visibleReason = props.showReason === true && blocked !== null;
   return (
     <>
@@ -97,7 +97,7 @@ function LatencyDialog(props: { onClose: () => void }) {
     api.latencySetup().then(
       (s) => {
         if (!alive.current) return;
-        // 今の一覧に無い録る所の選び直し（そのデバイスを抜いた）は捨てて、自動に戻す（検査1回目の指摘3）
+        // 今の一覧に無い録る所の選び直し（そのデバイスを抜いた）は捨てて、自動に戻す
         for (const r of s.rows) {
           const k = picked[r.name];
           if (k !== undefined && selectedCapture(r.autoCapture, s.inputs, k) !== k) delete picked[r.name];

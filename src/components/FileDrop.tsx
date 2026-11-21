@@ -2,16 +2,21 @@
 //
 // 落とされた場所に data-drop の印がある要素（アルバムアートなど）があれば、その受け手に画像を渡す。
 // 印が無ければ、曲の取り込み（ファイル・フォルダ）として扱う。
+// v3.11.0：設定の「アイコン」の欄の枠（data-drop="icon:<名前>:<状態>"）に落としたものは、取り込みに回さずその枠へ。
+// 枠には落とした位置だけを渡し、パスは Rust が自分で控えたものを使う（複数・フォルダ・ファイルでないものは Rust が断る）。
+// 振り分けの決まりは src\skins\iconSlots.ts の routeDrop（枠の外に落としたものは今までどおり）
 // 画面内の並べ替え（dnd-kit、ポインタ操作）とは別の仕組みなので、互いにぶつからない。
 import { useEffect } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api } from "../ipc/commands";
 import { createStore, useStore } from "../stores/store";
 import { notify } from "../stores/notices";
+import { routeDrop } from "../skins/iconSlots";
 
 export const dropState = createStore<{ active: boolean; zone: string | null }>({ active: false, zone: null });
 
-type Handler = (paths: string[]) => void;
+/** 受け手：落としたパスと、落とした位置（ドロップの知らせのまま。ウィンドウの中の物理ピクセル） */
+type Handler = (paths: string[], position: { x: number; y: number }) => void;
 const zones = new Map<string, Handler>();
 
 /** 受け手を登録する（戻り値で外す） */
@@ -47,9 +52,10 @@ export function useFileDrop() {
           const zone = zoneAt(p.position.x, p.position.y);
           dropState.set({ active: false, zone: null });
           const paths = p.paths ?? [];
-          if (paths.length === 0) return;
-          if (zone) {
-            zones.get(zone)?.(paths);
+          const route = routeDrop(zone, paths.length);
+          if (route === "none") return;
+          if (route === "zone" && zone) {
+            zones.get(zone)?.(paths, { x: p.position.x, y: p.position.y });
             return;
           }
           api.libraryImport(paths).catch((e) => notify({ level: "error", error: e }));

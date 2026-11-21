@@ -377,7 +377,7 @@ impl Renderer {
                 self.popped += d;
                 read_abs += d;
                 avail -= d;
-                // 途中から入った・音が切れて合わせ直した：波形の途中から始まるので、そこからも音を上げる（検査1回目の指摘6）
+                // 途中から入った・音が切れて合わせ直した：波形の途中から始まるので、そこからも音を上げる
                 self.fade_origin = read_abs;
             }
             if read_abs < p {
@@ -397,7 +397,7 @@ impl Renderer {
                 let since = (read_abs + (i / ch) as u64).saturating_sub(self.fade_origin);
                 let w = if since < self.fade_frames { (since + 1) as f32 / self.fade_frames as f32 } else { 1.0 };
                 let x = *v * gain * w;
-                // 数でない値（NaN・無限）はデバイスへ渡さない（f32::clamp は NaN をそのまま返す。検査1回目の指摘5）
+                // 数でない値（NaN・無限）はデバイスへ渡さない（f32::clamp は NaN をそのまま返す）
                 put(frame * ch + i % ch, if x.is_finite() { x } else { 0.0 });
             }
             chunk.commit_all();
@@ -532,7 +532,7 @@ mod tests {
         assert_eq!(run(&mut r, &s, &mut c, 6, 1, false, 1.0), vec![0.25, 0.5, 0.75, 1.0, 1.0, 1.0]);
     }
 
-    /// 遅れて入った出力も、読み捨てたあとの最初のフレームから音を上げる（検査1回目の指摘6）
+    /// 遅れて入った出力も、読み捨てたあとの最初のフレームから音を上げる
     #[test]
     fn late_join_fades_in_from_the_first_played_frame() {
         let (mut r, s, mut p, mut c) = parts(1, 64);
@@ -547,7 +547,7 @@ mod tests {
         assert_eq!(run(&mut r, &s, &mut c, 4, 1, false, 1.0), vec![4.0, 8.5, 13.5, 19.0]);
     }
 
-    /// 数でない値は無音にして出す（メーターも 0。検査1回目の指摘5）
+    /// 数でない値は無音にして出す（メーターも 0）
     #[test]
     fn nan_and_inf_are_sent_as_silence() {
         let (mut r, s, mut p, mut c) = parts(1, 64);

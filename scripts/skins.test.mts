@@ -1,6 +1,7 @@
 // 着せ替え（v3.2.0）の画面側の決まりを確かめる：色と文字の値の確かめ・状態ごとのアイコンの選び方・立ち絵を出す／隠す条件・コントラストの計算。
 // v3.9.0：立ち絵の欄の並び・使う立ち絵の値（Rust と同じ形）・画面が出す立ち絵は Rust が解いたもの。
 // v3.10.0：手で選ぶ色（重なり順・値の確かめ・選び窓の値の作り方・読みやすさの警告・「既定の見た目に戻す」で外れる道）。
+// v3.11.0：手で入れるアイコン（重なり順・枠が Rust と同じ・ドロップの振り分け・欄の作り・保存の道・ビルドした CSS での大きさ）。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
@@ -37,7 +38,8 @@ import {
   validFontName,
   validRgbTriple,
 } from "../src/skins/tokens.ts";
-import { pickIconPath, repeatState, shuffleState, starState, volumeState } from "../src/skins/icons.ts";
+import { pickIconPath, pickLayeredIcon, repeatState, shuffleState, starState, volumeState, withRev } from "../src/skins/icons.ts";
+import { hasManualIcon, ICON_GROUPS, ICON_SLOTS, iconZoneKey, manualIconCount, parseIconZone, routeDrop, SIDEBAR_PX, slotPx } from "../src/skins/iconSlots.ts";
 import {
   characterFits,
   characterFitState,
@@ -206,7 +208,7 @@ test("アイコンの画像の選び方：状態 → default → 無し、テー
   assert.equal(pickIconPath(icons, "IconVolume", "muted", "dark", true), "m-d");
 });
 
-test("立ち絵を出す・隠す：スキン・設定・歌詞画面・曲一覧の側の幅。大きさは 75〜200%（v3.9.0。3.8.1 までは 125%）。専用の幅は窓の幅で決める（直し5回目）", () => {
+test("立ち絵を出す・隠す：スキン・設定・歌詞画面・曲一覧の側の幅。大きさは 75〜200%（v3.9.0。3.8.1 までは 125%）。専用の幅は窓の幅で決める", () => {
   const ch = {
     playing: { path: "playing.webp", still: "playing.first.png" },
     stopped: { path: "stopped.png", still: null },
@@ -226,7 +228,7 @@ test("立ち絵を出す・隠す：スキン・設定・歌詞画面・曲一�
   assert.equal(characterLayout({ ...base, character: null }), null);
   assert.equal(characterLayout({ ...base, visible: false }), null);
   assert.equal(characterLayout({ ...base, view: "lyrics" }), null);
-  // 曲一覧の側が足りないときは、隠す前にまず縮める（直し8回目）。140px まで縮めても残す幅を割るときだけ隠す
+  // 曲一覧の側が足りないときは、隠す前にまず縮める。140px まで縮めても残す幅を割るときだけ隠す
   assert.equal(characterLayout({ ...base, paneWidth: 228 + MIN_LIST_SIDE_PX - 1 })!.widthPx, 215);
   assert.equal(characterLayout({ ...base, paneWidth: 152 + MIN_LIST_SIDE_PX })!.widthPx, 140);
   assert.equal(characterLayout({ ...base, paneWidth: 152 + MIN_LIST_SIDE_PX - 1 }), null);
@@ -344,7 +346,7 @@ test("コントラストの計算は scripts/theme-contrast.mts と同じ（Ligh
   for (const f of [light, dark]) {
     const a = evaluateFile(f);
     const b = evaluate(readTheme(f), {});
-    assert.equal(a.length, 132); // 場面3つ × 44 通り（v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 段2-2 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、段3 で小窓の文字3を足した）
+    assert.equal(a.length, 132); // 場面3つ × 44 通り（v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、で小窓の文字3を足した）
     assert.deepEqual(
       b.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
       a.map((r) => [r.scene, r.name, r.ratio.toFixed(4)]),
@@ -515,7 +517,7 @@ test("立ち絵：画面が出す絵は Rust が「使う立ち絵」から解�
   assert.equal(characterStage({ ...base, character: null }), null);
 });
 
-test("立ち絵（直し1回目）：「既定の見た目に戻す」の隣に「立ち絵を出さない」。立ち絵は残ることを書く。小窓を閉じたら選んだ画像を捨てる", () => {
+test("立ち絵：「既定の見た目に戻す」の隣に「立ち絵を出さない」。立ち絵は残ることを書く。小窓を閉じたら選んだ画像を捨てる", () => {
   const skinsView = readFileSync(fileURLToPath(new URL("../src/views/SettingsSkins.tsx", import.meta.url)), "utf8");
   const reset = skinsView.indexOf("既定の見た目に戻す\n");
   const hide = skinsView.indexOf("立ち絵を出さない\n");
@@ -523,8 +525,8 @@ test("立ち絵（直し1回目）：「既定の見た目に戻す」の隣に�
   // 間に別の欄を挟まない（同じ行の中）
   assert.ok(!skinsView.slice(reset, hide).includes('className="field"'));
   assert.ok(skinsView.includes("onClick={() => void hideAvatar()}"));
-  // v3.10.0：「既定の見た目に戻す」は手で選んだ色も戻す（立ち絵は残す）
-  assert.match(skinsView, /「既定の見た目に戻す」はスキンと手で選んだ色を戻し、立ち絵は残ります/);
+  // v3.10.0：「既定の見た目に戻す」は手で選んだ色も戻す（立ち絵は残す）。v3.11.0 から手で入れたアイコンも
+  assert.match(skinsView, /「既定の見た目に戻す」はスキンと手で選んだ色・手で入れたアイコンを戻し、立ち絵は残ります/);
   assert.match(skinsView, /同じメニューの「立ち絵を出さない」/);
   const store = readFileSync(fileURLToPath(new URL("../src/stores/skin.ts", import.meta.url)), "utf8");
   assert.ok(store.includes("receive(await api.avatarsHide())"));
@@ -538,9 +540,9 @@ test("立ち絵（直し1回目）：「既定の見た目に戻す」の隣に�
   assert.ok(view.includes("useEffect(() => () => void cancelAvatarPick(), [])"));
 });
 
-// ---------------- v3.9.0 直し2回目 ----------------
+// ---------------- v3.9.0 ----------------
 
-test("直し2回目：大きさの上限 200%（下限 75%）。Rust の CHARACTER_SCALE_MIN・MAX と同じ値", () => {
+test("大きさの上限 200%（下限 75%）。Rust の CHARACTER_SCALE_MIN・MAX と同じ値", () => {
   assert.equal(SCALE_MIN, 0.75);
   assert.equal(SCALE_MAX, 2);
   assert.equal(clampScale(2.5), 2);
@@ -555,7 +557,7 @@ test("直し2回目：大きさの上限 200%（下限 75%）。Rust の CHARACT
 });
 
 
-test("直し2回目：立ち絵は高さに合わせて出し、横長の左右は欄で切る（幅で縮めない）。スキンの立ち絵も同じ", () => {
+test("立ち絵は高さに合わせて出し、横長の左右は欄で切る（幅で縮めない）。スキンの立ち絵も同じ", () => {
   assert.deepEqual(characterImageStyle(420), { height: "min(420px, 100%)", width: "auto", maxWidth: "none", flex: "none" });
   assert.equal(characterImageStyle(840).height, "min(840px, 100%)");
   const layer = readFileSync(fileURLToPath(new URL("../src/components/CharacterLayer.tsx", import.meta.url)), "utf8");
@@ -569,7 +571,7 @@ test("直し2回目：立ち絵は高さに合わせて出し、横長の左右�
   assert.ok(img.includes("flex: none"));
 });
 
-test("直し2回目：カード全体を押すと切り替わる。中のボタン（使う・変更・削除）からは二重に走らない。キーボードは Enter・Space", () => {
+test("カード全体を押すと切り替わる。中のボタン（使う・変更・削除）からは二重に走らない。キーボードは Enter・Space", () => {
   const row = { broken: null };
   // クリック
   assert.equal(cardClickSwitches(row, false, false), true);
@@ -597,7 +599,7 @@ test("直し2回目：カード全体を押すと切り替わる。中のボタ�
   assert.ok(view.indexOf("<EditDialog") > gridEnd && view.indexOf("<CreateDialog") > gridEnd && grid < gridEnd);
 });
 
-test("直し2回目：「＋ 立ち絵を追加…」と小窓「立ち絵を追加」。名前は空でよい（Rust がファイル名から作る）。「変更」の小窓", () => {
+test("「＋ 立ち絵を追加…」と小窓「立ち絵を追加」。名前は空でよい（Rust がファイル名から作る）。「変更」の小窓", () => {
   const view = readFileSync(fileURLToPath(new URL("../src/views/SettingsAvatars.tsx", import.meta.url)), "utf8");
   assert.ok(view.includes("＋ 立ち絵を追加…"));
   assert.ok(view.includes('title="立ち絵を追加"') && view.includes('title="立ち絵を変更"'));
@@ -621,10 +623,10 @@ test("直し2回目：「＋ 立ち絵を追加…」と小窓「立ち絵を追
   assert.ok(rustAvatars.includes('pub const DEFAULT_NAME: &str = "立ち絵";'));
 });
 
-// ---------------- v3.9.0 直し3回目 ----------------
+// ---------------- v3.9.0 ----------------
 
 
-test("直し3回目：古い呼び名と上限が残っていない（画面・型）", () => {
+test("古い呼び名と上限が残っていない（画面・型）", () => {
   const skinsView = readFileSync(fileURLToPath(new URL("../src/views/SettingsSkins.tsx", import.meta.url)), "utf8");
   assert.ok(!skinsView.includes("画像から作る"));
   assert.ok(skinsView.includes("「＋ 立ち絵を追加…」"));
@@ -636,10 +638,10 @@ test("直し3回目：古い呼び名と上限が残っていない（画面・�
   }
 });
 
-// ---------------- v3.9.0 直し4回目：専用の幅は絵に左右されない ----------------
+// ---------------- v3.9.0：専用の幅は絵に左右されない ----------------
 
 
-test("直し4回目：欄の幅を決める CSS は固定値だけ（中身の幅に頼らない）。曲一覧の側は同じ値で空ける", () => {
+test("欄の幅を決める CSS は固定値だけ（中身の幅に頼らない）。曲一覧の側は同じ値で空ける", () => {
   const css = readFileSync(fileURLToPath(new URL("../src/theme/base.css", import.meta.url)), "utf8");
   const block = (sel: string) => {
     const i = css.indexOf(`${sel} {`);
@@ -674,9 +676,9 @@ test("直し4回目：欄の幅を決める CSS は固定値だけ（中身の�
   assert.equal((shell.match(/--character-rail-w/g) ?? []).length, 1);
 });
 
-// ---------------- v3.9.0 直し5〜8回目：右の専用の幅（2026-11-19 作者の決定。値は暫定） ----------------
-// 直し5回目：窓の幅で決める（立ち絵ごとの幅を使わない）。直し6回目：詳細でも出す（残す幅 360）。
-// 直し7回目：曲一覧の列は引いた後の幅で決める。直し8回目：足りないときは隠す前にまず縮める
+// ---------------- v3.9.0：右の専用の幅（2026-11-19 作者の決定。値は暫定） ----------------
+// 窓の幅で決める（立ち絵ごとの幅を使わない）。詳細でも出す（残す幅 360）。
+// 曲一覧の列は引いた後の幅で決める。足りないときは隠す前にまず縮める
 
 const SKIN_WIDTHS = [96, 140, 180, 220, 280]; // スキンの widthPx の範囲（96〜280）と、追加した立ち絵の 180
 const imgOf = (tag: string) => ({ path: `${tag}.png`, still: null });
@@ -703,7 +705,7 @@ const shapes = () => {
   return out;
 };
 
-test("直し5〜8回目：定数（18%・140〜480px・暫定）と残す幅（ふだん 634＝3.8.1 の窓 920 で残っていた幅、詳細 360＝DETAIL.listMin。character.ts に写さない）", () => {
+test("定数（18%・140〜480px・暫定）と残す幅（ふだん 634＝3.8.1 の窓 920 で残っていた幅、詳細 360＝DETAIL.listMin。character.ts に写さない）", () => {
   assert.equal(RAIL_WINDOW_RATIO, 0.18);
   assert.equal(RAIL_MIN_PX, 140);
   assert.equal(RAIL_MAX_PX, 480);
@@ -723,7 +725,7 @@ test("直し5〜8回目：定数（18%・140〜480px・暫定）と残す幅（�
   assert.ok(shell.includes("minListPx: characterMinListOf(D),"));
 });
 
-test("直し8回目：専用の幅＝clamp(140, min(窓 × 18% × 大きさ, 曲一覧の側 − 残す幅 − 12), 480)。140 まで縮めても残す幅を割るときだけ隠す", () => {
+test("専用の幅＝clamp(140, min(窓 × 18% × 大きさ, 曲一覧の側 − 残す幅 − 12), 480)。140 まで縮めても残す幅を割るときだけ隠す", () => {
   for (const minList of [MIN_LIST_SIDE_PX, DETAIL.listMin]) {
     for (let pane = 300; pane <= 2600; pane += 7) {
       for (let w = 480; w <= 2560; w += 53) {
@@ -750,7 +752,7 @@ test("直し8回目：専用の幅＝clamp(140, min(窓 × 18% × 大きさ, 曲
   }
 });
 
-test("直し8回目：(1) 窓を1pxずつ広げたとき、ふだんの表示では一度出たら隠れない。詳細で隠れ直すのは、曲一覧の側そのものが狭くなる所（詳細の配置・サイドバー・外の余白）だけ", () => {
+test("(1) 窓を1pxずつ広げたとき、ふだんの表示では一度出たら隠れない。詳細で隠れ直すのは、曲一覧の側そのものが狭くなる所（詳細の配置・サイドバー・外の余白）だけ", () => {
   const found = new Set<string>();
   for (const sh of shapes()) {
     let seen = false;
@@ -787,7 +789,7 @@ test("直し8回目：(1) 窓を1pxずつ広げたとき、ふだんの表示で
   ]);
 });
 
-test("直し8回目：前に隠れていた形（窓 約1220px・サイドバーを開いた詳細／約1060px・たたんだ詳細）と、窓 1400px・100%・詳細の左右で出る", () => {
+test("前に隠れていた形（窓 約1220px・サイドバーを開いた詳細／約1060px・たたんだ詳細）と、窓 1400px・100%・詳細の左右で出る", () => {
   for (const [w, collapsed] of [[1220, false], [1060, true], [1400, false]] as const) {
     for (const slots of [0, 1, 2, 3]) {
       const D = detailOf(w, 800, slots, collapsed, true);
@@ -797,13 +799,13 @@ test("直し8回目：前に隠れていた形（窓 約1220px・サイドバー
       assert.ok(D.listW - l!.railPx >= DETAIL.listMin);
     }
   }
-  // 1220px・開いた詳細：直し7回目までは隠れていた（窓だけで決めた幅 220 + 12 では 360 残らない）。今は縮めて出す
+  // 1220px・開いた詳細：前は隠れていた（窓だけで決めた幅 220 + 12 では 360 残らない）。今は縮めて出す
   const D = detailOf(1220, 800, 2, false, true);
   assert.ok(D.listW - (idealRailWidth(1220, 1) + PAD) < DETAIL.listMin);
   assert.equal(characterFitState(1220, 1, D.listW, DETAIL.listMin), "shrunk");
 });
 
-test("直し6・8回目：(2)(3) 詳細の左右・上下 × 窓 480〜2560px × 大きさ 75〜200% × 出力先の数で、出すときは曲一覧に 360px 残り、曲一覧・ミキサー・立ち絵が重ならない", () => {
+test("(2)(3) 詳細の左右・上下 × 窓 480〜2560px × 大きさ 75〜200% × 出力先の数で、出すときは曲一覧に 360px 残り、曲一覧・ミキサー・立ち絵が重ならない", () => {
   let shownSide = 0;
   let shownStack = 0;
   for (let winW = 480; winW <= 2560; winW += 20) {
@@ -860,7 +862,7 @@ test("直し6・8回目：(2)(3) 詳細の左右・上下 × 窓 480〜2560px ×
   assert.ok(shell.indexOf("<CharacterLayer") < shell.indexOf("</main>") && shell.indexOf("</main>") < shell.indexOf("<Mixer"));
 });
 
-test("直し5・7・8回目：(4) 同じ窓・同じ大きさなら、どの立ち絵（スキンの幅 96〜280・高さ・窓の下限がばらばら）でも、専用の幅も曲一覧の列も同じ", () => {
+test("(4) 同じ窓・同じ大きさなら、どの立ち絵（スキンの幅 96〜280・高さ・窓の下限がばらばら）でも、専用の幅も曲一覧の列も同じ", () => {
   for (const sh of shapes().filter((x) => x.slots <= 1 && (x.winH === 760 || !x.detail))) {
     for (let w = 480; w <= 2560; w += 20) {
       const pane = sh.paneFor(w);
@@ -879,7 +881,7 @@ test("直し5・7・8回目：(4) 同じ窓・同じ大きさなら、どの立�
   }
 });
 
-test("直し7・8回目：曲一覧の列は引いた後の幅（.main − 専用の幅）で決め、出す判断と幅は引く前の幅で決める（引きずり合わない）", () => {
+test("曲一覧の列は引いた後の幅（.main − 専用の幅）で決め、出す判断と幅は引く前の幅で決める（引きずり合わない）", () => {
   let shown = 0;
   for (const sh of shapes().filter((x) => x.slots === 2 && (x.winH === 760 || !x.detail))) {
     for (let w = 480; w <= 2560; w += 10) {
@@ -923,7 +925,7 @@ test("直し7・8回目：曲一覧の列は引いた後の幅（.main − 専�
   assert.ok(sizeSrc.includes("return listLayoutFor(useStore(listPaneWidth));"));
 });
 
-test("直し8回目：(5) 大きさのつまみの下の案内は、実際の出し方（いちばん大きく・縮めて・隠す）と食い違わない", () => {
+test("(5) 大きさのつまみの下の案内は、実際の出し方（いちばん大きく・縮めて・隠す）と食い違わない", () => {
   for (const sh of shapes().filter((x) => x.slots === 1 || !x.detail)) {
     for (const pct of [75, 100, 150, 200]) {
       const sc = pct / 100;
@@ -1146,7 +1148,7 @@ test("v3.10.0：手の色の保存は Rust の窓口だけ・「既定の見た�
   const rsCmd = read("../src-tauri/src/commands/skins.rs");
   assert.match(rsCmd, /pub async fn skins_reset\(app: AppHandle\) -> AppResult<SkinState> \{\r?\n\s+runtime::reset_look\(&app\)/);
   const tray = read("../src-tauri/src/platform/windows/tray.rs");
-  assert.ok(tray.includes("crate::skins::runtime::reset_look(&app)")); // 直し2回目：別のスレッドの中で呼ぶ
+  assert.ok(tray.includes("crate::skins::runtime::reset_look(&app)")); // 別のスレッドの中で呼ぶ
   // 画面から来た設定の保存では、手の色は変わらない
   const rsSettings = read("../src-tauri/src/commands/settings.rs");
   assert.ok(rsSettings.includes("s.skin.colors = before.skin.colors.clone();"));
@@ -1161,9 +1163,9 @@ test("v3.10.0：手の色の保存は Rust の窓口だけ・「既定の見た�
   assert.ok(skinsView.includes("manualCount === 0"));
 });
 
-// ---------------- v3.10.0 直し1回目 ----------------
+// ---------------- v3.10.0 ----------------
 
-test("直し1回目：行に「手で選んだ色／スキンの色／既定の色」の札を出さない（手で変えたかは「戻す」が押せるかで分かる）", () => {
+test("行に「手で選んだ色／スキンの色／既定の色」の札を出さない（手で変えたかは「戻す」が押せるかで分かる）", () => {
   const view = read("../src/views/SettingsColors.tsx");
   assert.ok(!view.includes("SOURCE_TEXT") && !view.includes("color-source"));
   assert.ok(!/"スキンの色"|"既定の色"|"手で選んだ色"/.test(view));
@@ -1171,7 +1173,7 @@ test("直し1回目：行に「手で選んだ色／スキンの色／既定の�
   assert.ok(!read("../src/theme/base.css").includes(".color-source"));
 });
 
-test("直し1回目：濃さのつまみの刻みは保存する桁（0.1%）と同じ。どの濃さでも、つまみの位置と「濃さ N%」の表示がそろう", () => {
+test("濃さのつまみの刻みは保存する桁（0.1%）と同じ。どの濃さでも、つまみの位置と「濃さ N%」の表示がそろう", () => {
   const view = read("../src/views/SettingsColors.tsx");
   assert.ok(view.includes("const ALPHA_STEP_PCT = 0.1;"));
   assert.ok(view.includes("step={ALPHA_STEP_PCT}") && view.includes("value={pctOf(alpha)}") && view.includes("濃さ {pctOf(alpha)}%"));
@@ -1191,7 +1193,7 @@ test("直し1回目：濃さのつまみの刻みは保存する桁（0.1%）と
   }
 });
 
-test("直し1回目：設定を書く道は全部「読む → 直す → 書く」を1つの鍵で一続きにする（全体を書き戻すだけの古い関数は残っていない）", () => {
+test("設定を書く道は全部「読む → 直す → 書く」を1つの鍵で一続きにする（全体を書き戻すだけの古い関数は残っていない）", () => {
   const settingsRs = read("../src-tauri/src/commands/settings.rs");
   const runtimeRs = read("../src-tauri/src/skins/runtime.rs");
   for (const src of [settingsRs, runtimeRs]) assert.ok(!src.includes("store_and_emit"));
@@ -1204,9 +1206,9 @@ test("直し1回目：設定を書く道は全部「読む → 直す → 書く
   assert.ok(read("../src-tauri/src/commands/mod.rs").includes("pub settings_write: Mutex<()>,"));
 });
 
-// ---------------- v3.10.0 直し2回目 ----------------
+// ---------------- v3.10.0 ----------------
 
-test("直し2回目：設定の知らせは最新を読み直して1か所から送る・トレイの「既定の見た目に戻す」は別のスレッドへ渡す（メインのスレッドで書く鍵を待たない）", () => {
+test("設定の知らせは最新を読み直して1か所から送る・トレイの「既定の見た目に戻す」は別のスレッドへ渡す（メインのスレッドで書く鍵を待たない）", () => {
   const settingsRs = read("../src-tauri/src/commands/settings.rs");
   // 設定の知らせを送るのは emit_latest の中の1か所だけ（読み直してから送る）
   assert.equal((settingsRs.match(/app\.emit\(ev::SETTINGS/g) ?? []).length, 1);
@@ -1219,10 +1221,13 @@ test("直し2回目：設定の知らせは最新を読み直して1か所から
   assert.equal((tray.match(/runtime::reset_look\(/g) ?? []).length, 1);
 });
 
-// ---------------- v3.10.0 直し3回目：ビルドした CSS の色を読む ----------------
+// ---------------- v3.10.0：ビルドした CSS の色を読む ----------------
 // ソースの CSS（dark.css・light.css）だけを見るテストでは、ビルドで CSS を小さくする道具が rgba(…) を #rrggbbaa に書き換えることが
 // 見えなかった（画面では半透明の5色が #000000・濃さ 100% と読まれ、読みやすさの警告が黙って0件になっていた）。
 // ここでは vite で一時フォルダへビルドし、できた CSS のテーマの色を、画面と同じ読み取りに通す（npm ci 済みであること）
+
+/** v3.11.0：ビルドした CSS の全文（アイコンの欄の大きさの決まりが、小さくする道具を通っても残ることを確かめる） */
+let BUILT_CSS = "";
 
 /** vite で一時フォルダへビルドし、できた CSS のテーマごとの --c-* の値を返す（一時フォルダは消す） */
 function builtThemeColors(): Record<"dark" | "light", Record<string, string>> {
@@ -1235,6 +1240,7 @@ function builtThemeColors(): Record<"dark" | "light", Record<string, string>> {
     });
     const assets = join(out, "assets");
     const css = readdirSync(assets).filter((f) => f.endsWith(".css")).map((f) => readFileSync(join(assets, f), "utf8")).join("\n");
+    BUILT_CSS = css;
     const block = (theme: string) => {
       const m = new RegExp(`\\[data-theme="?${theme}"?\\]\\s*\\{([^}]*)\\}`).exec(css);
       assert.ok(m, `built CSS has [data-theme=${theme}]`);
@@ -1250,7 +1256,7 @@ function builtThemeColors(): Record<"dark" | "light", Record<string, string>> {
 
 const BUILT = builtThemeColors();
 
-test("直し3回目：ビルドした CSS のテーマの色（半透明の色は #rrggbbaa に書き換わっている）を、画面と同じ読み取りで全部読める", () => {
+test("ビルドした CSS のテーマの色（半透明の色は #rrggbbaa に書き換わっている）を、画面と同じ読み取りで全部読める", () => {
   for (const [theme, file] of [["dark", dark], ["light", light]] as const) {
     const raw = BUILT[theme];
     assert.deepEqual(Object.keys(raw).sort(), [...COLOR_VARS].sort(), theme);
@@ -1281,7 +1287,7 @@ test("直し3回目：ビルドした CSS のテーマの色（半透明の色�
   }
 });
 
-test("直し3回目：ビルドした CSS の既定を基準にしても、読みやすさの警告が出る（色の欄・スキンの取り込みの確認画面）", () => {
+test("ビルドした CSS の既定を基準にしても、読みやすさの警告が出る（色の欄・スキンの取り込みの確認画面）", () => {
   const L = readThemeColors(BUILT.light).colors;
   const D = readThemeColors(BUILT.dark).colors;
   // 何も変えなければ警告なし（既定で元から届かない組み合わせは出さない）
@@ -1302,7 +1308,7 @@ test("直し3回目：ビルドした CSS の既定を基準にしても、読�
   assert.ok(bad.error && bad.rows.length === 0);
 });
 
-test("直し3回目：読むだけで、受け付ける形は広げない（手の色・スキンの値に #rrggbbaa は書けない。Rust の確かめも同じ）", () => {
+test("読むだけで、受け付ける形は広げない（手の色・スキンの値に #rrggbbaa は書けない。Rust の確かめも同じ）", () => {
   assert.equal(readCurrentColor("--c-hover", "#ffffff12"), "rgba(255, 255, 255, 0.071)");
   assert.equal(readCurrentColor("--c-hover", "#0000000b"), "rgba(0, 0, 0, 0.043)");
   assert.equal(readCurrentColor("--c-hover", "#fff8"), "rgba(255, 255, 255, 0.533)");
@@ -1326,4 +1332,239 @@ test("直し3回目：読むだけで、受け付ける形は広げない（手�
   const review = read("../src/views/SkinImportReview.tsx");
   assert.ok(review.includes("contrastWarningsOrError(d.colors, t.tokens)") && review.includes("読みやすさを計算できませんでした"));
   assert.ok(!/catch\s*\{\s*out\.push\(\{ theme, rows: \[\] \}\);/.test(review));
+});
+
+// ---------------- v3.11.0：手で入れるアイコン ----------------
+
+const manualOf = (path: string, still: string | null = null, rev = "r1") => ({ path, still, rev });
+
+test("v3.11.0：重なり順は 今の SVG < スキンのアイコン < 手で入れたアイコン。手のアイコンは Dark・Light 共通・その状態の枠だけ・動きを減らすと最初の1コマ", () => {
+  const skinIcons = {
+    IconPlay: { default: { dark: { path: "skin/play-d.png", still: null }, light: { path: "skin/play-l.png", still: null } } },
+    IconStar: { default: { dark: { path: "skin/star.png", still: null }, light: null }, filled: { dark: { path: "skin/star-f.png", still: null }, light: null } },
+    IconRepeat: { default: { dark: { path: "skin/rep.png", still: null }, light: null } },
+  };
+  const manual = {
+    IconPlay: { default: manualOf("icons/IconPlay/default.gif", "icons/IconPlay/derived/default.png", "abc") },
+    IconStar: { outline: manualOf("icons/IconStar/outline.png") },
+    IconNext: { default: manualOf("icons/IconNext/default.webp") },
+  };
+  // 手 > スキン（テーマに関係なく同じ手のアイコン）
+  for (const theme of ["dark", "light"]) {
+    assert.deepEqual(pickLayeredIcon(manual, skinIcons, "IconPlay", "default", theme, false), { path: "icons/IconPlay/default.gif", rev: "abc" });
+  }
+  assert.deepEqual(pickLayeredIcon(manual, skinIcons, "IconPlay", "default", "dark", true), { path: "icons/IconPlay/derived/default.png", rev: "abc" });
+  // 手のアイコンが無い枠はスキンの選び方のまま（rev は付かない）
+  assert.deepEqual(pickLayeredIcon(manual, skinIcons, "IconStar", "filled", "dark", false), { path: "skin/star-f.png", rev: null });
+  assert.deepEqual(pickLayeredIcon(manual, skinIcons, "IconStar", "outline", "dark", false), { path: "icons/IconStar/outline.png", rev: "r1" });
+  // 状態の分からないところ（default）は、手の状態の枠を使わずスキン → 今の SVG
+  assert.deepEqual(pickLayeredIcon(manual, skinIcons, "IconRepeat", "default", "dark", false), { path: "skin/rep.png", rev: null });
+  assert.equal(pickLayeredIcon(manual, skinIcons, "IconShuffle", "on", "dark", false), null);
+  // スキンが無い（既定のスキン）でも手のアイコンは出る。どちらも無ければ null（今の SVG）
+  assert.deepEqual(pickLayeredIcon(manual, null, "IconNext", "default", "light", false), { path: "icons/IconNext/default.webp", rev: "r1" });
+  assert.equal(pickLayeredIcon(null, null, "IconNext", "default", "light", false), null);
+  // 手のアイコンが無ければ 3.10.0 と同じ選び方
+  for (const [n, st] of [["IconPlay", "default"], ["IconStar", "filled"], ["IconStar", "outline"], ["IconRepeat", "one"], ["IconX", "default"]] as const) {
+    for (const theme of ["dark", "light"]) {
+      const p = pickIconPath(skinIcons, n, st, theme, false);
+      assert.deepEqual(pickLayeredIcon({}, skinIcons, n, st, theme, false), p ? { path: p, rev: null } : null, `${n} ${st} ${theme}`);
+    }
+  }
+  // 入れ直しの印は URL の問い合わせの部分に付ける（asset プロトコルはパスだけを読む）
+  assert.equal(withRev("http://asset.localhost/x.png", "1a-2b"), "http://asset.localhost/x.png?v=1a-2b");
+  assert.equal(withRev("http://asset.localhost/x.png", null), "http://asset.localhost/x.png");
+  assert.equal(withRev(null, "1"), null);
+  // 画面：セーフモードの間は手のアイコンを当てない。URL に印を付ける
+  const store = read("../src/stores/skin.ts");
+  assert.ok(store.includes("const manual = st.safeMode ? null : st.manualIcons ?? null;"));
+  assert.ok(store.includes("withRev(fileUrl(picked.path), picked.rev)"));
+  // Rust：セーフモードの間は画面へ渡さない
+  const rt = read("../src-tauri/src/skins/runtime.rs");
+  assert.ok(/fn refresh_icons[\s\S]*?if safe \{\s*lock\(state\)\.manual_icons = icons::Resolved::new\(\);\s*return;/.test(rt));
+});
+
+/** Rust の manifest.rs の ICONS（名前と状態）を読む */
+function rustIcons(): [string, string[]][] {
+  const rs = read("../src-tauri/src/skins/manifest.rs");
+  const block = rs.slice(rs.indexOf("pub const ICONS"), rs.indexOf("];", rs.indexOf("pub const ICONS")));
+  return [...block.matchAll(/\("(Icon[A-Za-z]+)", &\[([^\]]*)\]\)/g)].map((m) => [m[1], [...m[2].matchAll(/"([a-z]+)"/g)].map((x) => x[1])]);
+}
+
+test("v3.11.0：枠は Rust（skins::icons）と同じ。ボタンのアイコン 34 個（状態のある4つは default を除いた状態ごと）＋ウィンドウ・トレイ。名前は日本語", () => {
+  const icons = rustIcons();
+  assert.equal(icons.length, 34);
+  const want = new Set<string>();
+  for (const [n, states] of icons) {
+    const named = states.filter((s) => s !== "default");
+    for (const s of named.length ? named : ["default"]) want.add(`${n}/${s}`);
+  }
+  want.add("AppWindow/default");
+  want.add("AppTray/default");
+  const got = ICON_SLOTS.map((x) => `${x.name}/${x.state}`);
+  assert.equal(got.length, new Set(got).size, "no duplicates");
+  assert.deepEqual([...got].sort(), [...want].sort());
+  assert.equal(got.length, 43);
+  // Rust の枠の名前（ウィンドウ・トレイ）と状態の決め方
+  const rsIcons = read("../src-tauri/src/skins/icons.rs");
+  assert.ok(rsIcons.includes('pub const APP_WINDOW: &str = "AppWindow";') && rsIcons.includes('pub const APP_TRAY: &str = "AppTray";'));
+  assert.ok(rsIcons.includes("states.iter().copied().filter(|s| *s != DEFAULT_STATE)"));
+  // 場所ごと・日本語の名前・状態の名前は状態のあるものだけ
+  const groups = new Set(ICON_GROUPS.map((g) => g.id));
+  for (const x of ICON_SLOTS) {
+    assert.ok(groups.has(x.group), x.name);
+    assert.ok(/[^\x00-\x7f]/.test(x.label), `${x.name} has a Japanese label`);
+    assert.equal(x.stateLabel !== null, x.state !== "default", `${x.name}/${x.state}`);
+    assert.ok(x.px === SIDEBAR_PX || (x.px >= 14 && x.px <= 32), `${x.name} ${x.px}`);
+  }
+  for (const g of ICON_GROUPS) assert.ok(ICON_SLOTS.some((x) => x.group === g.id), g.id);
+  assert.deepEqual(ICON_SLOTS.filter((x) => x.group === "app").map((x) => x.name), ["AppWindow", "AppTray"]);
+  assert.equal(slotPx(ICON_SLOTS.find((x) => x.name === "IconMusic")!, 26), 26);
+  assert.equal(slotPx(ICON_SLOTS.find((x) => x.name === "IconPlay")!, 26), 22);
+  // 見本は実物と同じ部品で描く：状態の無いボタンのアイコンは全部、部品の表にある
+  const view = read("../src/views/SettingsIcons.tsx");
+  for (const [n, states] of icons) {
+    if (states.length === 1) assert.ok(new RegExp(`^  ${n},$`, "m").test(view), `${n} in PLAIN`);
+  }
+  for (const n of ["IconStar", "IconVolume", "IconRepeat", "IconShuffle"]) assert.ok(view.includes(`case "${n}":`), n);
+  // 数え方
+  assert.equal(manualIconCount({ IconPlay: { default: "png" }, IconStar: { filled: "gif", outline: "png" } }), 3);
+  assert.equal(manualIconCount(undefined), 0);
+  assert.ok(hasManualIcon({ IconStar: { filled: "gif" } }, "IconStar", "filled"));
+  assert.ok(!hasManualIcon({ IconStar: { filled: "gif" } }, "IconStar", "outline"));
+});
+
+test("v3.11.0：ドロップの振り分け。アイコンの枠の上はその枠へ（取り込みに回さない）。枠の外は今までどおり（受け手・取り込み・何もしない）", () => {
+  const icon = iconZoneKey("IconStar", "filled");
+  assert.equal(icon, "icon:IconStar:filled");
+  assert.deepEqual(parseIconZone(icon), { name: "IconStar", state: "filled" });
+  for (const bad of [null, "", "bg", "album", "icon:", "icon:IconStar", "icon:a:b:c", "xicon:IconStar:filled"]) assert.equal(parseIconZone(bad), null, String(bad));
+  // 枠の上：ファイル1つでも、複数・何も無い（ファイルでないもの）でも枠へ（断るのは Rust）
+  for (const n of [0, 1, 2, 30]) assert.equal(routeDrop(icon, n), "zone", String(n));
+  // 枠の外：3.10.0 と同じ（パスが無ければ何もしない・ほかの受け手・取り込み）
+  assert.equal(routeDrop(null, 0), "none");
+  assert.equal(routeDrop(null, 1), "import");
+  assert.equal(routeDrop(null, 5), "import");
+  assert.equal(routeDrop("bg", 0), "none");
+  assert.equal(routeDrop("bg", 1), "zone");
+  assert.equal(routeDrop("album", 3), "zone");
+  // 画面：FileDrop は routeDrop で振り分け、受け手に落とした位置を渡す。取り込みの呼び方は変えていない
+  const fd = read("../src/components/FileDrop.tsx");
+  assert.ok(fd.includes("const route = routeDrop(zone, paths.length);"));
+  assert.ok(fd.includes('if (route === "none") return;'));
+  assert.ok(fd.includes("zones.get(zone)?.(paths, { x: p.position.x, y: p.position.y });"));
+  assert.equal((fd.match(/api\.libraryImport\(paths\)/g) ?? []).length, 1);
+  // 枠の受け手は位置だけを Rust へ渡す（パスは渡さない）
+  const view = read("../src/views/SettingsIcons.tsx");
+  assert.ok(view.includes("void dropIcon(slot.name, slot.state, pos.x, pos.y);"));
+  assert.ok(view.includes("data-drop={key}"));
+  const cmds = read("../src/ipc/commands.ts");
+  assert.ok(cmds.includes('iconsDrop: (name: string, state: string, x: number, y: number) => invoke<SkinState>("icons_drop", { name, state, x, y }),'));
+  assert.ok(!/icons_(drop|pick)", \{[^}]*path/.test(cmds));
+  // Rust：パスはウィンドウの知らせで控えたものだけ（窓口は位置を受ける。パスの引数は無い）
+  const rsCmd = read("../src-tauri/src/commands/icons.rs");
+  assert.ok(rsCmd.includes("pub async fn icons_drop(app: AppHandle, name: String, state: String, x: f64, y: f64)"));
+  assert.ok(rsCmd.includes("let path = icons::take_drop(x, y).map_err(icons::for_screen)?;"));
+  assert.ok(!/fn icons_\w+\([^)]*path: String/.test(rsCmd));
+  const lib = read("../src-tauri/src/lib.rs");
+  assert.ok(lib.includes("if let WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = event {"));
+  assert.ok(lib.includes("skins::icons::record_drop(paths, position.x, position.y);"));
+  for (const c of ["icons_pick", "icons_drop", "icons_reset", "icons_clear", "icons_app_preview"]) assert.ok(lib.includes(`commands::icons::${c},`), c);
+});
+
+test("v3.11.0：欄の作り（場所ごとの一覧・枠を押すとファイルを選ぶ・枠ごとの「戻す」・全部戻すは確認あり・セーフモード）。色の欄と立ち絵の欄の間", () => {
+  const view = read("../src/views/SettingsIcons.tsx");
+  // 枠はボタン（キーボードでも押せる）。押すと Rust がファイルを選ぶ画面を出す
+  assert.ok(view.includes('className="icon-slot-frame"') && view.includes("onClick={() => void pickIcon(slot.name, slot.state)}"));
+  assert.ok(view.includes("disabled={props.safe || !props.manual} onClick={() => void resetIcon(slot.name, slot.state)}"));
+  assert.ok(view.includes('"手で入れたアイコンを全部戻す"') && view.includes("confirmDialog(") && view.includes("disabled={count === 0}"));
+  assert.ok(view.includes("セーフモード") && view.includes('code: "icon_safe_mode"'));
+  // 実際の大きさ：枠の中の見本は --slot-px で描く
+  assert.ok(view.includes('style={{ ["--slot-px" as any]: `${props.px}px` }}'));
+  const skinsView = read("../src/views/SettingsSkins.tsx");
+  const c = skinsView.indexOf("<ColorsField />");
+  const i = skinsView.indexOf("<IconsField />");
+  const a = skinsView.indexOf("<AvatarsField />");
+  assert.ok(c > 0 && c < i && i < a);
+  // 「既定の見た目に戻す」の確認に、手で入れたアイコンの数を出す（無いときは 3.10.0 と同じ文）
+  assert.ok(skinsView.includes("手で入れたアイコン（${manualIcons} 個。入れた画像も消えます）"));
+  assert.ok(skinsView.includes("manualCount === 0 && manualIcons === 0"));
+  // 外のライブラリを足していない
+  const pkg = JSON.parse(read("../package.json"));
+  assert.deepEqual(Object.keys(pkg.dependencies).sort(), ["@dnd-kit/core", "@dnd-kit/sortable", "@tanstack/react-virtual", "@tauri-apps/api", "@tauri-apps/plugin-global-shortcut", "react", "react-dom"]);
+});
+
+test("v3.11.0：保存は Rust の窓口だけ・画面から来た設定の保存では変わらない・「既定の見た目に戻す」は手のアイコンも外して画像を消す・置き場所と画面が読める範囲", () => {
+  const rsSettings = read("../src-tauri/src/commands/settings.rs");
+  assert.ok(rsSettings.includes("s.skin.icons = before.skin.icons.clone();"));
+  const rt = read("../src-tauri/src/skins/runtime.rs");
+  assert.ok(/pub\(crate\) fn reset_look_settings[\s\S]*?s\.skin\.icons\.clear\(\);/.test(rt));
+  assert.ok(rt.includes("plain.skin.icons = reset.skin.icons;"));
+  assert.ok(/pub fn reset_look[\s\S]*?let r = reset\(app\);\s*remove_icon_files_if_cleared\(&state\);/.test(rt));
+  // ファイルを置くのと設定に書くのは files_lock の中で一続き
+  assert.ok(/icons::write\(&dirs\(&state\), &prepared\)\.map_err\(icons::for_screen\)\?;\s*update_settings\(/.test(rt));
+  // 設定のバックアップ：選択は入れて読み込む（項目の無い zip ではこの PC のまま）、画像は入れない
+  const backup = read("../src-tauri/src/settings/backup.rs");
+  assert.ok(backup.includes('skin_field_in_zip(entries, "icons")'));
+  assert.ok(backup.includes("if let Some(i) = zip_icons {"));
+  assert.ok(/fn wanted\(name: &str\) -> bool \{[\s\S]*?\}/.exec(backup)![0].indexOf("icons") < 0);
+  // 置き場所は icons\<名前>\<状態>.<形式>。画面が読めるのは icons の下（icons-staging は読めない）
+  const conf = JSON.parse(read("../src-tauri/tauri.conf.json"));
+  assert.ok(conf.app.security.assetProtocol.scope.includes("$APPDATA/icons/**"));
+  assert.ok(!JSON.stringify(conf.app.security.assetProtocol.scope).includes("icons-staging"));
+  assert.equal(conf.identifier, "jp.local.plplayer3");
+  const mod = read("../src-tauri/src/skins/mod.rs");
+  assert.ok(mod.includes('icons: data_dir.join("icons"),') && mod.includes('icon_staging: data_dir.join("icons-staging"),'));
+  const rsIcons = read("../src-tauri/src/skins/icons.rs");
+  assert.ok(rsIcons.includes('format!("{name}/{state}.{ext}")'));
+  // 画像の確かめはスキンと同じ images::check。アプリのアイコンは静止画だけ
+  assert.ok(rsIcons.includes("images::check(&data, &inner)") && rsIcons.includes("an application icon must be a still image"));
+  // トレイの「既定の見た目に戻す」は今までどおり別のスレッドで（reset_look の中で手のアイコンも外れる）
+  const tray = read("../src-tauri/src/platform/windows/tray.rs");
+  assert.equal((tray.match(/runtime::reset_look\(/g) ?? []).length, 1);
+});
+
+test("v3.11.0：ビルドした CSS でも、枠の中の見本はその場所の大きさ（--slot-px）で描く（スキン・手の画像 img.skin-icon の 20px より強い）", () => {
+  assert.ok(BUILT_CSS.length > 0);
+  // 小さくする道具は空白を詰めるので、空白を外して比べる（子孫の空白も消えるので、選び方は ".icon-slot-frame.icon" の形になる）
+  const flat = BUILT_CSS.replace(/\s+/g, "");
+  const rules = [...flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").some((sel) => sel === ".icon-slot-frameimg.skin-icon"));
+  assert.ok(rules.length > 0, "built CSS keeps the slot size rule for skin images");
+  assert.ok(rules.some((r) => r[1].split(",").includes(".icon-slot-frame.icon") && r[2].includes("width:var(--slot-px,20px)") && r[2].includes("height:var(--slot-px,20px)")), rules.map((r) => r[0]).join(" | "));
+});
+
+test("v3.11.0：枠の名前は切らずに折り返し、状態（入・切・オン・オフ・全曲・1曲など）は別の行に必ず出す。ビルドした CSS でも省略記号にしない", () => {
+  const view = read("../src/views/SettingsIcons.tsx");
+  assert.ok(view.includes('<span className="icon-slot-label">{slot.label}</span>'));
+  assert.ok(view.includes('{slot.stateLabel ? <span className="icon-slot-state">{slot.stateLabel}</span> : null}'));
+  // 同じ名前の枠は、状態の名前で見分けられる（名前＋状態の組は重ならない・状態の名前は短い）
+  const shown = ICON_SLOTS.map((x) => `${x.label}/${x.stateLabel ?? ""}`);
+  assert.equal(new Set(shown).size, shown.length);
+  for (const x of ICON_SLOTS) if (x.stateLabel) assert.ok(x.stateLabel.length <= 3, x.stateLabel);
+  const rule = (css: string, sel: string) => {
+    const flat = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+    return [...flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]).join(";");
+  };
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    for (const sel of [".icon-slot-name", ".icon-slot-label", ".icon-slot-state"]) {
+      const body = rule(css, sel);
+      assert.ok(body.length > 0, sel);
+      assert.ok(!body.includes("text-overflow:ellipsis") && !body.includes("overflow:hidden"), `${sel}: ${body}`);
+    }
+    assert.ok(rule(css, ".icon-slot-name").includes("flex-direction:column"));
+    assert.ok(rule(css, ".icon-slot-label").includes("overflow-wrap:anywhere"));
+  }
+});
+
+test("v3.11.0 見本スキン：くもくじら・ペンギンの両テーマの色は、ビルドした CSS の既定を基準にしても読みやすさの警告が出ない（取り込みの確認画面と同じ）", () => {
+  for (const dir of ["kumokujira", "penguin"]) {
+    const skin = JSON.parse(read(`../samples/${dir}/skin.json`));
+    for (const theme of ["dark", "light"] as const) {
+      const base = readThemeColors(BUILT[theme]).colors;
+      const r = contrastWarningsOrError(base, skin.parts.appearance.themes[theme].tokens);
+      assert.equal(r.error, null, `${dir} ${theme}`);
+      assert.deepEqual(r.rows.map((x) => `${x.scene} ${x.name} ${x.ratio.toFixed(2)}`), [], `${dir} ${theme}`);
+      // 色の値は手の色・スキンと同じ形の確かめに通る（取り込みで断られない）
+      for (const [n, v] of Object.entries(skin.parts.appearance.themes[theme].tokens)) assert.equal(validColorToken(n, String(v)) !== null, true, `${dir} ${theme} ${n}`);
+    }
+  }
 });

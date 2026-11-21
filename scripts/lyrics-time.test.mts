@@ -26,7 +26,7 @@ type T = L & { text: string };
 /** 時刻と本文から行を作る（本文が "" なら「消す」合図） */
 const at = (timeMs: number, text: string): T => ({ timeMs, text, kind: text === "" ? "clear" : "lyric" });
 
-test("1回目の検査 3：補正は 0 にそろえる前に足す", () => {
+test("補正は 0 にそろえる前に足す", () => {
   // 元 0.2秒・offset +500ms → Rust は timeMs = -300 を返す。補正 +300ms → max(0, 0) = 0（以前の実装は 300）
   assert.equal(shownTime({ timeMs: -300 }, 300), 0);
   assert.equal(shownTime({ timeMs: -300 }, 400), 100);
@@ -303,9 +303,9 @@ test("括弧：まとまりでは行ごとに数える（閉じていない括�
   assert.equal(cut[cut.length - 1].sub, true);
 });
 
-// ---- 直し1回目（検査1回目の指摘）。歌詞はダミーの文 ----
+// ---- 歌詞はダミーの文 ----
 
-test("括弧（直し1）：顔文字の「:)」と番号の「1)」は括弧にしない", () => {
+test("括弧：顔文字の「:)」と番号の「1)」は括弧にしない", () => {
   // 開きの無い閉じ括弧でも、直前が : ; = か数字なら本体のまま（行全体が薄くならない）
   assert.deepEqual(splitParens("hello :)"), [{ text: "hello :)", sub: false }]);
   assert.equal(sp("またね ;)"), "またね ;)");
@@ -327,7 +327,7 @@ test("括弧（直し1）：顔文字の「:)」と番号の「1)」は括弧に
 /** 片割れのサロゲートがあるか */
 const loneSurrogate = (s: string) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
 
-test("上限で切る（直し1）：絵文字の途中・結合文字の途中で切らない", () => {
+test("上限で切る：絵文字の途中・結合文字の途中で切らない", () => {
   // 3文字目で切ると絵文字の前半だけが残る位置 → 絵文字ごと落とす
   assert.equal(partsText(rangeParts([at(0, "ab😀c")], 0, 0, 3)), "ab…");
   assert.equal(partsText(rangeParts([at(0, "ab😀c")], 0, 0, 4)), "ab😀…");
@@ -357,10 +357,10 @@ test("上限で切る（直し1）：絵文字の途中・結合文字の途中�
   assert.equal(safeCut("", 3), 0);
 });
 
-// ---- v3.1.0 直し1回目：歌詞をネットから取るときの打ち切りの文を、原因ごとに分ける（src/messages/ja.ts） ----
+// ---- v3.1.0：歌詞をネットから取るときの打ち切りの文を、原因ごとに分ける（src/messages/ja.ts） ----
 import { errorMessage, inboxReportText, lyricsFetchAbortMessage, lyricsFetchDoneText, lyricsFetchProgressText, lyricsWarning } from "../src/messages/ja.ts";
 
-test("歌詞の取得（直し1）：エラーが続いたときの文は、最後のエラーで原因を分ける", () => {
+test("歌詞の取得：エラーが続いたときの文は、最後のエラーで原因を分ける", () => {
   const net = lyricsFetchAbortMessage("too_many_errors", "timeout");
   assert.match(net, /ネットにつながっているか/);
   const http4 = lyricsFetchAbortMessage("too_many_errors", "http_404");
@@ -392,7 +392,7 @@ test("歌詞の取得（直し1）：エラーが続いたときの文は、最�
   assert.doesNotMatch(done.detail, /ネットにつながっているか/);
 });
 
-test("歌詞の取得（直し2）：送る曲を選んでいる間は「準備中」の進み具合を出す", () => {
+test("歌詞の取得：送る曲を選んでいる間は「準備中」の進み具合を出す", () => {
   const p = {
     running: true, finished: false, preparing: true, prepareTotal: 5000, prepareDone: 1200, mode: "missing" as const, total: 0,
     done: 0, synced: 0, plain: 0, instrumental: 0, notFound: 0, tooLarge: 0, errors: 0, kept: 0, hasTag: 0, noMetadata: 0,

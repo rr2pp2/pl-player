@@ -1,4 +1,4 @@
-// v3.8.0 段3：遅れを測る（仕様「同時再生と配信モード」2.3 の段3）の画面の側を確かめる。
+// v3.8.0：遅れを測る（仕様「同時再生と配信モード」2.3 ）の画面の側を確かめる。
 //   - 入口のボタンを押せるか（流している間・鳴らせる出力先が2つ未満は押せず、理由を出す）
 //   - 結果の1行に出すもの（届くまでの遅れ・入れる値・測れませんでした：理由）、「この値を入れる」で送るもの
 //   - 録る所の選び方（自動の印・選び直しだけを送る）
@@ -163,7 +163,7 @@ test("録る所：名前から選んだものに「（自動）」。先頭は�
   ]);
 });
 
-test("指摘3：選び直した録音デバイスが今の一覧に無い（抜いた）なら、選び直しを捨てて自動に戻す。見た目と送る値が食い違わない", () => {
+test("選び直した録音デバイスが今の一覧に無い（抜いた）なら、選び直しを捨てて自動に戻す。見た目と送る値が食い違わない", () => {
   const inputs = [{ id: "in-1", name: "架空のマイク" }];
   const auto = { kind: "loopback" as const };
   assert.equal(selectedCapture(auto, inputs, undefined), "loopback");
@@ -181,7 +181,7 @@ test("指摘3：選び直した録音デバイスが今の一覧に無い（抜�
   assert.match(dlg, /captureChoices\(setup\.rows, choice, setup\.inputs\)/);
 });
 
-test("指摘4：録る所を開けないときは、Windows のマイクへのアクセスも確かめるよう添える。Windows が断ったとき（capture_denied）は専用の文", () => {
+test("録る所を開けないときは、Windows のマイクへのアクセスも確かめるよう添える。Windows が断ったとき（capture_denied）は専用の文", () => {
   assert.match(FAIL_TEXT.capture_open, /マイクへのアクセス/);
   assert.match(FAIL_TEXT.capture_denied, /マイクへのアクセス/);
   assert.match(read("src-tauri/src/audio/latency/run.rs"), /cpal::ErrorKind::PermissionDenied => FailCode::CaptureDenied/);
@@ -214,7 +214,7 @@ test("文言：作者の決めた断り・測れる範囲・仮想ケーブル�
   assert.equal(LATENCY_TEXT.apply, "この値を入れる");
   assert.match(LATENCY_TEXT.how, /いちばん遅く届く出力先に揃える/);
   assert.match(LATENCY_TEXT.how, /今の遅らせ量は、測るときには使いません/);
-  // 指摘2：時間は「通常は」。いちばん長いときの目安も書く
+  // 時間は「通常は」。いちばん長いときの目安も書く
   assert.match(LATENCY_TEXT.how, /通常は約 6 秒/);
   assert.match(LATENCY_TEXT.how, /長くて 15 秒ほど/);
   assert.match(LATENCY_TEXT.measuring, /通常は約 6 秒/);
@@ -224,7 +224,7 @@ test("文言：作者の決めた断り・測れる範囲・仮想ケーブル�
 test("画面の組み立て：入口はプルダウンとミキサーの2か所。小窓は App の直下。閉じたら測るのをやめる。流している間は「測る」も押せない", () => {
   const ob = read("src/layout/OutputButton.tsx");
   assert.match(ob, /<div className="output-pop-foot">\s*<LatencyButton showReason onOpen=\{props\.onLatency\}/);
-  // プルダウンは開いたまま小窓を重ねない（押したら閉じる）。「詳細を開く」などの下の段は置かない（段2-2 の決まりのまま）
+  // プルダウンは開いたまま小窓を重ねない（押したら閉じる）。「詳細を開く」などの下の段は置かない（決まりのまま）
   assert.match(ob, /<OutputPopup onLatency=\{\(\) => close\(false\)\} \/>/);
   assert.ok(!/詳細を開く|配信モードを開く|設定を開く/.test(ob));
   const mx = read("src/layout/Mixer.tsx");
@@ -235,7 +235,7 @@ test("画面の組み立て：入口はプルダウンとミキサーの2か所�
   // 押せないボタンは aria-disabled（フォーカスでき、吹き出しで理由が出る）。押しても何もしない
   assert.match(dlg, /aria-disabled=\{blocked \? true : undefined\}/);
   assert.match(dlg, /if \(blocked\) return;\s*props\.onOpen\?\.\(\);\s*dialogOpen\.set\(true\);/);
-  // 指摘1：「やめる」は測定の番号で指す（閉じたとき・「やめる」のどちらも）
+  // 「やめる」は測定の番号で指す（閉じたとき・「やめる」のどちらも）
   assert.match(dlg, /if \(measuring\.current\) void api\.latencyCancel\(run\.current\)/);
   assert.match(dlg, /const my = nextRun\(\);\s*run\.current = my;/);
   assert.match(dlg, /\.latencyMeasure\(my,/);
@@ -261,7 +261,7 @@ test("Rust：流している間は始めない・測る間に流し始めたら�
 
 test("見た目：測れませんでした・押せない理由は危険の色の太字（文でも伝える）。小窓の中は切らずに折り返す。色の変数は足さない", () => {
   const css = read("src/theme/base.css");
-  const at = css.indexOf("v3.8.0 段3：遅れを測る");
+  const at = css.indexOf("v3.8.0：遅れを測る");
   assert.ok(at >= 0);
   const part = css.slice(at);
   assert.match(part, /\.latency-blocked,\n\.latency-fail \{\n  font-weight: 700;\n  color: var\(--c-danger\);/);
@@ -294,7 +294,7 @@ test("公開リポジトリ：遅れを測る部分に、作者の機器の製�
   }
 });
 
-test("直し2回目：プルダウンで押せない理由を文字でも出すときは、その見える文を aria-describedby で指し、吹き出しの読み上げ用の文は付けない（2回読ませない）", () => {
+test("プルダウンで押せない理由を文字でも出すときは、その見える文を aria-describedby で指し、吹き出しの読み上げ用の文は付けない（2回読ませない）", () => {
   const dlg = read("src/layout/LatencyDialog.tsx");
   assert.match(dlg, /const visibleReason = props\.showReason === true && blocked !== null;/);
   assert.match(dlg, /<Tip text=\{blocked\} delay=\{300\} className="inline" describe=\{blocked !== null && !visibleReason\}>/);

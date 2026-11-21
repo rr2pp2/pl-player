@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(mf_audio::open_readers(), 0);
     }
 
-    /// v3.1.2（検査1回目）：Media Foundation の DLL が無い Windows（N エディション）の代わりに、無いものとして振る舞わせる。
+    /// v3.1.2：Media Foundation の DLL が無い Windows（N エディション）の代わりに、無いものとして振る舞わせる。
     /// HE-AAC だけ非対応形式になり、Media Foundation の関数は呼ばれない（数が増えない）。AAC-LC など Symphonia の道はそのまま
     #[test]
     fn he_aac_is_unsupported_without_media_foundation() {

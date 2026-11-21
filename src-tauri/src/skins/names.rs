@@ -341,7 +341,7 @@ mod tests {
         assert!(asset_path("icons/").is_err());
     }
 
-    /// Windows 標準の PowerShell 5.1 の zip は区切りが `\`（壊す担当の検査2回目の1）。読み替えたあとも危ない名前は断る
+    /// Windows 標準の PowerShell 5.1 の zip は区切りが `\`。読み替えたあとも危ない名前は断る
     #[test]
     fn backslash_separators() {
         let z = |n: &[u8], utf8: bool| zip_name(n, utf8).into_owned();

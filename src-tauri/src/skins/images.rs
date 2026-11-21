@@ -242,6 +242,16 @@ pub fn preview_data_url(png_or_image: &[u8], name: &str, max: u32) -> Option<Str
     Some(format!("data:image/png;base64,{}", base64(&out)))
 }
 
+/// RGBA の画素を PNG の data: URL にする。縦横 `max` を超えれば縮める
+/// （v3.11.0：設定の「アイコン」の欄に出す、今のアプリ・トレイのアイコンの見本）
+pub fn rgba_data_url(rgba: Vec<u8>, w: u32, h: u32, max: u32) -> Option<String> {
+    let img = DynamicImage::ImageRgba8(image::RgbaImage::from_raw(w, h, rgba)?);
+    let img = if w > max || h > max { img.resize(max, max, image::imageops::FilterType::Lanczos3) } else { img };
+    let mut out = Vec::new();
+    DynamicImage::ImageRgba8(img.to_rgba8()).write_to(&mut Cursor::new(&mut out), ImageFormat::Png).ok()?;
+    Some(format!("data:image/png;base64,{}", base64(&out)))
+}
+
 /// 標準の base64（依存を足さないための最小限）
 pub fn base64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -85,7 +85,7 @@ export function avatarNameReady(name: string): boolean {
 }
 
 /**
- * 「追加」「保存」を押せる名前か（v3.9.0 直し2回目）。空のままでもよい（追加では再生中の絵のファイル名から作った名前、
+ * 「追加」「保存」を押せる名前か（v3.9.0）。空のままでもよい（追加では再生中の絵のファイル名から作った名前、
  * 変更では今の名前を Rust が使う）。入れたなら 1〜40 文字
  */
 export function avatarNameOk(name: string): boolean {
@@ -93,7 +93,7 @@ export function avatarNameOk(name: string): boolean {
 }
 
 /**
- * カードを押したときに、その立ち絵へ切り替えるか（v3.9.0 直し2回目）。カードの中のボタン（使う・変更・削除）から来たクリックは
+ * カードを押したときに、その立ち絵へ切り替えるか（v3.9.0）。カードの中のボタン（使う・変更・削除）から来たクリックは
  * ボタン自身が処理するので切り替えない（二重に走らせない）。読めない立ち絵・使っている立ち絵では何もしない
  */
 export function cardClickSwitches(row: Pick<AvatarRow, "broken">, active: boolean, fromButton: boolean): boolean {

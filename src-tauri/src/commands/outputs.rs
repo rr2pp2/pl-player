@@ -22,7 +22,7 @@ use crate::playback::outputs::{DeviceRef, Mode, NAME_MAX_CHARS};
 use crate::playback::OutputsView;
 
 /// メーターの送り役（同時に1つだけ。番号が変わったら前のものは止まる）。
-/// v3.8.0 段2-2（検査1回目の指摘3）：開始と停止は画面が付けた通し番号（seq。開始・停止のたびに増える）で順番を決める。
+/// v3.8.0：開始と停止は画面が付けた通し番号（seq。開始・停止のたびに増える）で順番を決める。
 /// コマンドは非同期なので「開始→停止→開始」の実行が入れ替わりうる。いちばん大きい番号だけが効き、遅れて着いた古い開始・停止は何もしない
 #[derive(Default)]
 pub struct MeterControl {
@@ -190,7 +190,7 @@ pub async fn meter_stop(state: State<'_, AppState>, seq: u64) -> AppResult<()> {
 mod tests {
     use super::MeterControl;
 
-    /// 開始・停止の実行が入れ替わっても、いちばん新しい番号だけが効く（段2-2 検査1回目の指摘3）
+    /// 開始・停止の実行が入れ替わっても、いちばん新しい番号だけが効く
     #[test]
     fn meter_start_stop_order() {
         // 順番どおり：開始1 → 停止2 → 開始3

@@ -23,7 +23,7 @@ pub const OUTPUTS_VERSION: u32 = 1;
 /// 外した出力先を覚える数（13.5 の10。暫定）
 pub const REMEMBER_MAX: usize = 32;
 pub const NAME_MAX_CHARS: usize = 256;
-/// zip の outputs.json の大きさの上限（検査1回目の指摘9：ばらす前に断る）。3枠＋覚え 32 件を、名前と ID を上限の長さにして
+/// zip の outputs.json の大きさの上限。3枠＋覚え 32 件を、名前と ID を上限の長さにして
 /// 整形して書いても 150KB ほど。その数倍の余裕
 pub const OUTPUTS_JSON_MAX_BYTES: usize = 1 << 20;
 pub const ID_MAX_CHARS: usize = 512;
@@ -444,7 +444,7 @@ impl OutputsDoc {
         Ok(())
     }
 
-    /// 遅れを測った結果をまとめて入れる（v3.8.0 段3）。`(枠, 測ったときのデバイスの設定, 遅らせ量)`。
+    /// 遅れを測った結果をまとめて入れる（v3.8.0）。`(枠, 測ったときのデバイスの設定, 遅らせ量)`。
     /// 測ったときと同じデバイスの枠にだけ入れる（差し替えた・外した枠に、別の機器の値を入れない）。入れた枠を返す。
     /// 範囲の外の値が1つでもあれば、どれも入れずに断る
     pub fn apply_measured_delays(&mut self, items: &[(usize, Option<String>, u32)]) -> Result<Vec<usize>, OpError> {
@@ -548,7 +548,7 @@ mod tests {
         SavedPlayback { volume, device_id: device.map(|s| s.to_string()), ..Default::default() }
     }
 
-    /// 遅れを測った結果を入れる（v3.8.0 段3）：測ったときと同じデバイスの枠にだけ。外した枠・差し替えた枠には入れない。
+    /// 遅れを測った結果を入れる（v3.8.0）：測ったときと同じデバイスの枠にだけ。外した枠・差し替えた枠には入れない。
     /// 範囲の外の値があれば、どれも入れない
     #[test]
     fn measured_delays_go_only_to_the_same_device() {
@@ -715,7 +715,7 @@ mod tests {
         assert_eq!(d.replace_device(2, dev("x"), 0), Err(OpError::NoSlot));
     }
 
-    /// 検査2回目の指摘B：同じデバイスを選び直しただけなら「差し替え」ではない（司令塔は枠の状態を消さない）。
+    /// ：同じデバイスを選び直しただけなら「差し替え」ではない（司令塔は枠の状態を消さない）。
     /// 名前が同じでも ID が違えば差し替え。既定のデバイス同士は同じ
     #[test]
     fn reselecting_the_same_device_is_not_a_change() {

@@ -76,7 +76,7 @@ pub async fn lyrics_fetch_start(app: AppHandle, state: State<'_, AppState>, mode
     std::thread::spawn(move || {
         let state = app2.state::<AppState>();
         let ctl = &state.lyrics_fetch;
-        // 途中で落ちても、終わりの知らせを必ず出し、処理中の印を外す（直し1回目）
+        // 途中で落ちても、終わりの知らせを必ず出し、処理中の印を外す
         let app3 = app2.clone();
         let guard = online::DoneGuard::new(ctl, move |d: &FetchDone| {
             let _ = app3.emit(ev::LYRICS_FETCH_DONE, d);

@@ -17,7 +17,7 @@ export function hex(s: string): RGB {
 }
 
 /** `rgba(r, g, b, a)`・`rgb(r, g, b)`・`#rrggbb`・`#rgb`・`r, g, b`（--c-*-rgb の形）。
- *  v3.10.0（直し3回目）：`#rrggbbaa`・`#rgba` も読む（ビルドした CSS では半透明の色がこの形に書き換わっている） */
+ *  v3.10.0：`#rrggbbaa`・`#rgba` も読む（ビルドした CSS では半透明の色がこの形に書き換わっている） */
 export function color(s: string): RGBA {
   const t = s.trim();
   const ha = /^#([0-9a-f]{4}|[0-9a-f]{8})$/i.exec(t);
@@ -66,7 +66,7 @@ export function scenes(dim = DEFAULT_DIM, ui = DEFAULT_UI): Scene[] {
 
 export type Check = { name: string; fg: RGB; bg: RGB; min: number };
 
-/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 44 通り。v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 段2-2 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、段3 で遅れを測る小窓の文字3を足した） */
+/** 1つの場面の組み合わせ（scripts\theme-contrast.mts の checks と同じ 44 通り。v3.7.0 で輪郭2・お気に入りの星3、v3.8.0 でメーターの帯6・最大の線5・出力ボタンの縁1と「!」1、で遅れを測る小窓の文字3を足した） */
 export function checks(t: Record<string, string>, s: Scene): Check[] {
   const bgColor = color(t["--c-bg"]).rgb;
   const base = s.image ?? bgColor;
@@ -111,7 +111,7 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "--c-favorite（星）／オンのボタンの面", fg: text("--c-favorite"), bg: favOn(panel), min: 3 });
   out.push({ name: "--c-favorite（星）／選んだ行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(selected), min: 3 });
   out.push({ name: "--c-favorite（星）／指を乗せた行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(hover), min: 3 });
-  // v3.8.0 段2-2：メーターの帯（図 3:1）。緑 --c-ok・黄 --c-favorite・赤 --c-danger を、ミキサー（パネル）と出力のプルダウン（メニュー）の面で
+  // v3.8.0：メーターの帯（図 3:1）。緑 --c-ok・黄 --c-favorite・赤 --c-danger を、ミキサー（パネル）と出力のプルダウン（メニュー）の面で
   for (const [label, bottom] of [
     ["パネル", panel],
     ["メニュー（0.92）", menu],
@@ -129,7 +129,7 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "メーター 最大の線の縁／赤の帯 --c-danger", fg: edge, bg: text("--c-danger"), min: 3 });
   out.push({ name: "線 --c-danger（出力ボタンの縁）／パネル", fg: text("--c-danger"), bg: panel, min: 3 });
   out.push({ name: "出力ボタンの「!」 --c-primary／印の地（パネルの色）", fg: text("--c-primary"), bg: panelRgb, min: 4.5 });
-  // v3.8.0 段3：遅れを測る小窓（.modal：パネルの色を 0.97。下は .modal-backdrop の黒 0.45）
+  // v3.8.0：遅れを測る小窓（.modal：パネルの色を 0.97。下は .modal-backdrop の黒 0.45）
   const modal = over(over(overlay, [0, 0, 0], 0.45), panelRgb, 0.97);
   out.push({ name: "--c-primary／小窓（0.97）", fg: text("--c-primary"), bg: modal, min: 4.5 });
   out.push({ name: "--c-secondary／小窓（0.97）", fg: text("--c-secondary"), bg: modal, min: 4.5 });
@@ -151,7 +151,7 @@ export function evaluate(base: Record<string, string>, skin: Record<string, stri
  */
 /**
  * 警告を計算する（画面用）。読めない色で投げたときは、黙って空にせず error に理由を返す
- * （v3.10.0 直し3回目。前は呼び出し側が例外を捨て、警告が0件に見えていた）
+ * （v3.10.0。前は呼び出し側が例外を捨て、警告が0件に見えていた）
  */
 export function contrastWarningsOrError(base: Record<string, string>, skin: Record<string, string>): { rows: Result[]; error: string | null } {
   try {

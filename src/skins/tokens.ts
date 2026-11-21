@@ -38,7 +38,7 @@ export const DURATION_VARS = ["--dur-hover", "--dur-panel", "--dur-page", "--dur
 
 /** スキンから変えさせない（当てるときにも外す）。Rust（src-tauri\src\skins\tokens.rs）の LOCKED_VARS と同じ並び。
  *  v3.8.0：再生バーの真ん中の列の幅 --player-center-w を足した（3列と1段の切り替えの計算 src\layout\playerLayout.ts が前提にする）。
- *  v3.8.0 段2-2：出力ボタン・出力のプルダウン・ミキサー・メーターの寸法を足した（再生バーの計算と、詳細の配置の計算 src\layout\detailLayout.ts が前提にする） */
+ *  v3.8.0：出力ボタン・出力のプルダウン・ミキサー・メーターの寸法を足した（再生バーの計算と、詳細の配置の計算 src\layout\detailLayout.ts が前提にする） */
 export const LOCKED_VARS = [
   "--sidebar-w",
   "--sidebar-w-collapsed",
@@ -337,7 +337,7 @@ function hexWithAlpha(v: string): string | null {
 }
 
 /**
- * 画面で今当たっている色（テーマの既定）を読む（v3.10.0 直し3回目）。ビルドのときに CSS を小さくする道具が
+ * 画面で今当たっている色（テーマの既定）を読む（v3.10.0）。ビルドのときに CSS を小さくする道具が
  * `rgba(255, 255, 255, 0.07)` を `#ffffff12` のような8桁の16進に書き換えるので、受け付ける形（validColorToken）に加えて
  * `#rrggbbaa`・`#rgba` を読み、今までの形（`rgba(r, g, b, a)`。a は小数3桁。濃さ 1 なら `#rrggbb`）にそろえる。
  * 読むだけで、手の色・スキンの値として受け付ける形（validColorToken と Rust の確かめ）は広げない。読めなければ null

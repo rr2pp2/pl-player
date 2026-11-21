@@ -1,6 +1,6 @@
 //! 見本の立ち絵「くじら」（v3.9.1）のテスト。新しく入れた人は選ぶ・上げた人は選ばない・消したら戻らない・30 体の上限・
 //! 入れられなかったら次の起動でもう一度・印を書けなければ作らない・作業中の印のまま落ちたら入れ直さない・設定の zip の読み込みで印が変わらない・ほかの立ち絵と同じに扱えること。
-//! あわせて、配布の zip に入れるスキンの見本（くもくじら）が今のアプリの取り込みを通ること。
+//! あわせて、配布の zip に入れるスキンの見本（くもくじら・ペンギン。v3.11.0 から全部入り）が今のアプリの取り込みを通り、アイコンが全部使われること。
 
 use std::fs;
 use std::path::PathBuf;
@@ -334,51 +334,120 @@ fn fresh_install_is_told_by_the_library_db() {
     assert!(!is_fresh_install(&b));
 }
 
-/// 配布の zip の「見本」に入れるスキン（くもくじら）の中身。scripts\release-samples.mts の `sampleSkinEntries` と同じ並び・同じファイル
-fn sample_skin_zip() -> Vec<u8> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("samples");
-    let read = |p: &str| fs::read(root.join(p)).unwrap();
-    zip(&[
-        Z::file("skin.json", &read("kumokujira/skin.json")).deflated(),
-        Z::file("app/window.png", &read("kumokujira/app/window.png")).deflated(),
-        Z::file("character/playing.png", KUJIRA_PLAYING).deflated(),
-        Z::file("character/stopped.png", KUJIRA_STOPPED).deflated(),
-    ])
+/// 見本のスキン（v3.11.0 から2つ）：samples\ の中のフォルダ・id・名前・フォルダの外から足すファイル（zip の中の名前, samples\ からの場所）。
+/// scripts\release-samples.mts の `SAMPLE_SKINS` と同じ
+const SAMPLE_SKINS: [(&str, &str, &str, &[(&str, &str)]); 2] = [
+    ("kumokujira", "kumokujira-sample", "くもくじら（見本）", &[("character/playing.png", "kujira/playing.png"), ("character/stopped.png", "kujira/stopped.png")]),
+    ("penguin", "penguin-sample", "ペンギン（見本）", &[]),
+];
+
+fn samples_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("samples")
 }
 
-fn check_sample_skin(bytes: &[u8], tag: &str) {
+fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+    for e in fs::read_dir(dir).unwrap().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let rel = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
+        if e.path().is_dir() {
+            walk(&e.path(), &rel, out);
+        } else {
+            out.push(rel);
+        }
+    }
+}
+
+/// 配布の zip の「見本」に入れるスキンの中身（zip の中の名前, samples\ からの場所）。scripts\release-samples.mts の `skinFileList` と同じ決まり：
+/// フォルダの中のファイル全部と足すファイル。skin.json を先頭に、残りは zip の中の名前の順
+fn sample_skin_files(dir: &str, extra: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut names = vec![];
+    walk(&samples_root().join(dir), "", &mut names);
+    let mut files: Vec<(String, String)> = names.into_iter().map(|n| (n.clone(), format!("{dir}/{n}"))).collect();
+    files.extend(extra.iter().map(|(n, r)| (n.to_string(), r.to_string())));
+    files.sort_by(|a, b| (a.0 != "skin.json", &a.0).cmp(&(b.0 != "skin.json", &b.0)));
+    files
+}
+
+fn sample_skin_zip(dir: &str, extra: &[(&str, &str)]) -> Vec<u8> {
+    let items: Vec<Z> = sample_skin_files(dir, extra)
+        .into_iter()
+        .map(|(name, rel)| Z::file(&name, &fs::read(samples_root().join(rel.replace('/', std::path::MAIN_SEPARATOR_STR))).unwrap()).deflated())
+        .collect();
+    zip(&items)
+}
+
+/// 見本のスキンを今のアプリの取り込みに通す。警告なし・34 個のアイコン（状態ごと）とウィンドウ・トレイのアイコンが全部使われる・
+/// 両テーマの色が確かめに通る（読みやすさの警告は画面が出すもので、取り込みを止めない。色の値の形が違えばここで断られる）
+fn check_sample_skin(bytes: &[u8], tag: &str, id: &str, name: &str) {
     let d = dirs(tag);
-    let (insp, staged) = package::inspect_bytes(bytes, &d, VER).unwrap();
+    let (insp, staged) = package::inspect_bytes(bytes, &d, VER).unwrap_or_else(|e| panic!("{id}: {:?} {}", e.kind, e.detail));
     assert!(!insp.conflict);
-    assert!(insp.warnings.is_empty(), "{:?}", insp.warnings);
+    assert!(insp.warnings.is_empty(), "{id}: {:?}", insp.warnings);
     assert!(insp.ignored.is_empty() && !insp.unwrapped);
-    assert_eq!(insp.id, "kumokujira-sample");
-    assert_eq!(insp.name, "くもくじら（見本）");
+    assert_eq!(insp.id, id);
+    assert_eq!(insp.name, name);
     assert!(insp.description.starts_with("スキン作りの見本。"), "{}", insp.description);
     assert!(insp.parts.appearance && insp.parts.application && insp.parts.character && !insp.parts.animated);
-    assert_eq!(insp.file_count, 4);
+    // v3.11.0：全部入り。skin.json・ボタンのアイコン 41 枚（34 個の状態ごと）・ウィンドウとトレイ・立ち絵2枚
+    assert_eq!(insp.parts.icons, 34, "{id}");
+    assert_eq!(insp.file_count, 1 + 41 + 2 + 2, "{id}");
+    // 両テーマの色が入っている（形の違う値なら inspect_bytes が断る）
+    let a = insp.appearance.as_ref().unwrap();
+    assert!(a.dark.as_ref().map(|t| !t.tokens.is_empty()).unwrap_or(false), "{id}: dark");
+    assert!(a.light.as_ref().map(|t| !t.tokens.is_empty()).unwrap_or(false), "{id}: light");
     package::commit(&staged, &d, VER).unwrap();
     package::discard(&staged);
-    let inst = package::load(&d, "kumokujira-sample", VER).unwrap();
-    let c = inst.resolve().character.unwrap();
+    let inst = package::load(&d, id, VER).unwrap();
+    let r = inst.resolve();
+    // 34 個のアイコンの、状態ごとの絵が全部使われる（拒まれたり落とされたりしない）。手で入れるアイコンの枠と同じ数
+    for (n, s) in crate::skins::icons::all_slots() {
+        if crate::skins::icons::is_app(n) {
+            continue;
+        }
+        let t = r.icons.get(n).and_then(|m| m.get(s)).unwrap_or_else(|| panic!("{id}: icon {n}/{s} is missing"));
+        assert!(t.dark.is_some() && t.light.is_some(), "{id}: {n}/{s}");
+    }
+    assert_eq!(r.icons.values().map(|m| m.len()).sum::<usize>(), 41, "{id}");
+    // ウィンドウとトレイのアイコンは、それぞれの絵（静止画で、正方形に整えられる）
+    let (w, wrel) = inst.app_icon_exact(false).unwrap();
+    let (t, trel) = inst.app_icon_exact(true).unwrap();
+    assert_eq!((wrel.as_str(), trel.as_str()), ("app/window.png", "app/tray.png"));
+    assert_eq!(crate::skins::images::app_icon_rgba(&fs::read(&w).unwrap(), &wrel, 256).unwrap().1, 256);
+    assert_eq!(crate::skins::images::app_icon_rgba(&fs::read(&t).unwrap(), &trel, 64).unwrap().1, 64);
+    let c = r.character.unwrap();
     assert_eq!((c.playing.width, c.playing.height, c.width_px, c.max_height_px), (450, 950, 220, 420));
-    assert!(inst.app_icon_file(false).is_some());
     // 取り込んだスキンの立ち絵として選べる
-    assert_eq!(avatars::check_choice(&d, "skin:kumokujira-sample", VER).unwrap(), "skin:kumokujira-sample");
+    assert_eq!(avatars::check_choice(&d, &format!("skin:{id}"), VER).unwrap(), format!("skin:{id}"));
 }
 
-/// スキンの見本は、今のアプリの確かめを警告なしで通る
+/// スキンの見本（くもくじら・ペンギン）は、今のアプリの確かめを警告なしで通る
 #[test]
 fn sample_skin_imports() {
-    check_sample_skin(&sample_skin_zip(), "skin");
+    for (dir, id, name, extra) in SAMPLE_SKINS {
+        check_sample_skin(&sample_skin_zip(dir, extra), &format!("skin-{dir}"), id, name);
+    }
+    // くじらの立ち絵は samples\kujira\ の1か所だけ（くもくじらのフォルダには置かない）。ペンギンの立ち絵はアプリに埋め込まない
+    assert!(!samples_root().join("kumokujira").join("character").exists());
+    let src = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join("skins").join("sample.rs")).unwrap();
+    assert!(!src.contains("penguin"));
+    // 埋め込んだくじらの絵が、くもくじらの zip の絵と同じ
+    let files = sample_skin_files("kumokujira", SAMPLE_SKINS[0].3);
+    assert!(files.iter().any(|(n, r)| n == "character/playing.png" && r == "kujira/playing.png"));
+    assert_eq!(fs::read(samples_root().join("kujira").join("playing.png")).unwrap(), KUJIRA_PLAYING);
+    assert_eq!(fs::read(samples_root().join("kujira").join("stopped.png")).unwrap(), KUJIRA_STOPPED);
 }
 
-/// 配布の zip に入れたスキンの見本（npm run release が作ったもの）を、今のアプリの確かめに通す。
-/// 走らせ方：`PL_SAMPLE_SKIN_ZIP=<release\PL-Player-<版>\見本\くもくじら.zip> cargo test --lib skins::sample::tests::release_sample_skin_imports -- --ignored`
+/// 配布の zip に入れたスキンの見本（npm run release が作ったもの）を、今のアプリの確かめに通す。どちらの zip でもよい（id で見分ける）。
+/// 走らせ方：`PL_SAMPLE_SKIN_ZIP=<release\PL-Player-<版>\見本\くもくじら.zip か ペンギン.zip> cargo test --lib skins::sample::tests::release_sample_skin_imports -- --ignored`
 #[test]
 #[ignore]
 fn release_sample_skin_imports() {
     let p = PathBuf::from(std::env::var("PL_SAMPLE_SKIN_ZIP").expect("PL_SAMPLE_SKIN_ZIP"));
-    check_sample_skin(&fs::read(&p).unwrap(), "release-skin");
-    println!("ok: {}", p.file_name().unwrap().to_string_lossy());
+    let bytes = fs::read(&p).unwrap();
+    let d = dirs("release-skin-peek");
+    let (insp, staged) = package::inspect_bytes(&bytes, &d, VER).unwrap();
+    package::discard(&staged);
+    let (_, id, name, _) = SAMPLE_SKINS.iter().find(|s| s.1 == insp.id).unwrap_or_else(|| panic!("not a sample skin: {}", insp.id));
+    check_sample_skin(&bytes, "release-skin", id, name);
+    println!("ok: {} ({id})", p.file_name().unwrap().to_string_lossy());
 }

@@ -174,7 +174,7 @@ fn powershell51(entries: Vec<Z>) -> Vec<Z> {
         .collect()
 }
 
-/// Windows 標準の PowerShell 5.1 で作った zip（区切りが `\`）を取り込める。読み替えたあとも危ない名前は断る（壊す担当の検査2回目の1）
+/// Windows 標準の PowerShell 5.1 で作った zip（区切りが `\`）を取り込める。読み替えたあとも危ない名前は断る
 #[test]
 fn powershell51_backslash_zips() {
     let id = "shape-sample";
@@ -255,7 +255,7 @@ fn powershell51_backslash_zips() {
     assert_eq!(kind(&d, &with(ascii("icons\\setup.exe", b"MZ"))), ErrorKind::SkinExecutable);
 }
 
-/// 外すフォルダの項目 `X/` に中身があれば断る（外さないときと同じ。壊す担当の検査2回目の2）。
+/// 外すフォルダの項目 `X/` に中身があれば断る（外さないときと同じ）。
 /// フォルダの外にも項目があるときは「全部が1つのフォルダの下にない」と知らせる（同じく3）
 #[test]
 fn wrapper_folder_entry_and_outside_items() {
@@ -299,7 +299,7 @@ fn wrapper_folder_entry_and_outside_items() {
     assert_eq!(kind(&d, &v), ErrorKind::SkinPathUnsafe);
 }
 
-/// deflate のデータの後ろにごみが付いた項目（圧縮後の大きさの申告が実際より大きい）を断る（壊す担当の検査1回目の5）
+/// deflate のデータの後ろにごみが付いた項目（圧縮後の大きさの申告が実際より大きい）を断る
 #[test]
 fn deflate_with_trailing_bytes_is_refused() {
     let d = dirs("trail");
@@ -315,7 +315,7 @@ fn deflate_with_trailing_bytes_is_refused() {
     package::discard(&staged);
 }
 
-/// 正式の場所へ移したあとで読めなかったら、正式の場所に残さない（壊す担当の検査1回目の3）
+/// 正式の場所へ移したあとで読めなかったら、正式の場所に残さない
 #[test]
 fn commit_that_cannot_be_loaded_leaves_nothing() {
     let d = dirs("commit-fail");
@@ -332,7 +332,7 @@ fn commit_that_cannot_be_loaded_leaves_nothing() {
     assert_eq!(fs::read_dir(&d.staging).map(|r| r.count()).unwrap_or(0), 0);
 }
 
-/// 取り込みの確かめが2本同時に来ても、確認待ちは1つで、一時の場所も1つだけ（壊す担当の検査1回目の2）
+/// 取り込みの確かめが2本同時に来ても、確認待ちは1つで、一時の場所も1つだけ
 #[test]
 fn two_inspections_at_once_leave_one_staging_folder() {
     use super::runtime::{inspect_one_at_a_time, Runtime};
@@ -460,7 +460,7 @@ fn outline_and_favorite_colors_are_skinnable() {
     assert_eq!(kind(&d2, &[Z::file("skin.json", &serde_json::to_vec(&m).unwrap())]), ErrorKind::SkinManifestInvalid);
 }
 
-/// zip の中の名前を断るときの `detail`（壊す担当の検査5回目のあとの直し）。U+202E・タグ文字・制御文字・UTF-8 でないバイト・
+/// zip の中の名前を断るときの `detail`。U+202E・タグ文字・制御文字・UTF-8 でないバイト・
 /// とても長い名前を、ふつうの項目・リンク・暗号化の印の付いた項目・外すフォルダ・外にはみ出した形に入れて、
 /// どの `detail` も見える文字と U+0020 だけで、全体は `DETAIL_MAX_CHARS` まで、名前は `NAME_SHOWN_MAX` までであること。
 /// 網（`guard`）を通したものと通さないものが同じ＝作る箇所ごとに `shown` を通していて、網に頼っていない。
@@ -525,7 +525,7 @@ fn error_details_from_zip_names_are_escaped_and_cut() {
     }
 }
 
-/// 確認画面に渡す警告は、種類ごとに3件まで。超えた分の数も渡す（壊す担当の検査5回目のあとの直し）
+/// 確認画面に渡す警告は、種類ごとに3件まで。超えた分の数も渡す
 #[test]
 fn inspection_caps_warnings_per_code() {
     let d = dirs("warncap");

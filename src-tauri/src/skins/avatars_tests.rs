@@ -144,7 +144,7 @@ fn pick_file_reads_only_files() {
     assert!(!e.detail.contains("missing") && !e.detail.contains("plp-avatar"), "{}", e.detail);
 }
 
-/// 直し2回目：名前の既定はファイル名。決まりに合わなければ詰める（40 文字で切る・使えない文字を外す）。それでも空なら「立ち絵」
+/// 名前の既定はファイル名。決まりに合わなければ詰める（40 文字で切る・使えない文字を外す）。それでも空なら「立ち絵」
 #[test]
 fn names_from_file_names() {
     assert_eq!(name_from_file("Pose 1.png"), "Pose 1");
@@ -180,7 +180,7 @@ fn names_from_file_names() {
     }
 }
 
-/// 直し2回目：名前を空のまま作ったら、再生中の絵のファイル名を名前にする（断らない）。空白だけも同じ
+/// 名前を空のまま作ったら、再生中の絵のファイル名を名前にする（断らない）。空白だけも同じ
 #[test]
 fn empty_name_takes_the_file_name() {
     let d = dirs("noname");
@@ -595,7 +595,7 @@ fn picks_are_taken_by_token() {
     assert!(slots.iter().all(|x| x.is_none()));
 }
 
-/// 直し1回目：使っている立ち絵（スキンの立ち絵を含む）を消すときは、先に切り替えて（画面が絵を手放して）から消す。
+/// 使っている立ち絵（スキンの立ち絵を含む）を消すときは、先に切り替えて（画面が絵を手放して）から消す。
 /// 消せなかったら切り替えを戻す。使っていなければ切り替えない
 #[test]
 fn delete_switches_away_first() {
@@ -632,7 +632,7 @@ fn delete_switches_away_first() {
     }
 }
 
-/// 直し1回目：画像を選んで確かめている間に取り消されたら（小窓の「キャンセル」）、あとから届いた画像は置かずに捨てる
+/// 画像を選んで確かめている間に取り消されたら（小窓の「キャンセル」）、あとから届いた画像は置かずに捨てる
 #[test]
 fn picks_after_cancel_are_dropped() {
     use crate::skins::runtime::{clear_picks, store_pick, Runtime};
@@ -660,7 +660,7 @@ fn picks_after_cancel_are_dropped() {
     assert!(g < d);
 }
 
-/// 直し1回目：「立ち絵を出さない」（設定・タスクトレイ）。「使う」で「出さない」を選んだのと同じ道で、作った立ち絵は消さない。
+/// 「立ち絵を出さない」（設定・タスクトレイ）。「使う」で「出さない」を選んだのと同じ道で、作った立ち絵は消さない。
 /// タスクトレイのメニューはメインのスレッドで走るので、別のスレッドへ渡して画面（WebView）を通らずに済ませる
 #[test]
 fn hide_avatar_keeps_avatars_and_tray_hands_off_the_main_thread() {
@@ -717,7 +717,7 @@ fn files_in(dir: &std::path::Path) -> Vec<String> {
     out
 }
 
-/// 直し2回目：「変更」。再生中だけ・停止中だけを差し替える・停止中を外す・名前を変える。差し替えた絵は新しい名前で書き
+/// 「変更」。再生中だけ・停止中だけを差し替える・停止中を外す・名前を変える。差し替えた絵は新しい名前で書き
 /// （画面の URL が変わる＝動く画像も読み直される）、使わなくなった絵は消す。確かめは追加と同じ（同じ pick）
 #[test]
 fn update_replaces_one_image_at_a_time() {
@@ -777,7 +777,7 @@ fn update_replaces_one_image_at_a_time() {
     assert_eq!(left_in(&d.avatar_staging), 0);
 }
 
-/// 直し2回目：「変更」で途中で失敗しても、前の絵と avatar.json が残る（書いたものは消す）
+/// 「変更」で途中で失敗しても、前の絵と avatar.json が残る（書いたものは消す）
 #[test]
 fn failed_update_keeps_the_old_images() {
     let d = dirs("update-fail");
@@ -799,7 +799,7 @@ fn failed_update_keeps_the_old_images() {
     assert!(update(&d, &a.id, "New", Some(&g), StoppedChange::Keep).is_ok());
 }
 
-/// 直し2回目：差し替えた名前の形（`<状態>-<16 桁>.<形式>`）だけを受け、ほかの形は読むときに断る
+/// 差し替えた名前の形（`<状態>-<16 桁>.<形式>`）だけを受け、ほかの形は読むときに断る
 #[test]
 fn replaced_file_names_are_checked() {
     assert!(image_file_ok("playing.png", Slot::Playing));
@@ -830,7 +830,7 @@ fn replaced_file_names_are_checked() {
     assert_eq!(load(&d, &a.id).unwrap_err().kind, ErrorKind::AvatarBroken);
 }
 
-/// 直し2回目：「変更」の印。指した枠だけを取り出し、指さない枠は残す。どれかが合わなければ何も取り出さない
+/// 「変更」の印。指した枠だけを取り出し、指さない枠は残す。どれかが合わなければ何も取り出さない
 #[test]
 fn update_picks_take_only_named_slots() {
     use crate::skins::runtime::take_some;
@@ -855,14 +855,14 @@ fn update_picks_take_only_named_slots() {
     let body = &body[..body.find("\n}\n").unwrap()];
     assert!(body.contains("take_some(&mut lock(&state).picks, playing, stopped)"));
     assert!(body.contains("refresh_character(app, &state, false)"));
-    // 直し3回目：解き直しと通知は、avatar.json を置き換えたあと・古い絵を消す前に呼ぶ関数（after_commit）の中だけ
+    // 解き直しと通知は、avatar.json を置き換えたあと・古い絵を消す前に呼ぶ関数（after_commit）の中だけ
     let hook = body.find("let after_commit = ||").unwrap();
     let call = body.find("avatars::update_then(").unwrap();
     assert!(hook < call && body[hook..call].contains("refresh_character(app, &state, false)") && body[hook..call].contains("emit(app, &state)"));
     assert_eq!(body.matches("refresh_character(").count(), 1);
 }
 
-/// 直し3回目：「変更」で差し替えるとき、avatar.json を置き換えた直後（古い絵を消す前）に呼び出し側の処理を走らせる。
+/// 「変更」で差し替えるとき、avatar.json を置き換えた直後（古い絵を消す前）に呼び出し側の処理を走らせる。
 /// その時点では avatar.json は新しい絵を指し、古い絵はまだ残っている。失敗したときは呼ばない
 #[test]
 fn update_hook_runs_before_old_images_are_removed() {

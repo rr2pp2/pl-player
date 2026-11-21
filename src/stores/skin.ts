@@ -3,12 +3,13 @@
 // - v3.10.0：手で選んだ色（設定の skin.colors）をスキンの色の上に重ねる。手の色が無ければ 3.9.1 と同じ（何も足さない）。
 //   セーフモードの間は手の色も当てない（既定の見た目）
 // - 「動きを減らす」（prefers-reduced-motion）を見張り、変わったらすぐ反映する（動く画像の代わりに最初の1コマを読む）
+// - v3.11.0：手で入れたアイコン（Rust が確かめて SkinState.manualIcons で渡す）をスキンのアイコンの上に重ねる。セーフモードの間は当てない
 import { api } from "../ipc/commands";
 import { fileUrl, on } from "../ipc/events";
-import type { AvatarList, PickedImage, ResolvedSkin, SkinCharacter, SkinInspection, SkinState } from "../ipc/types";
+import type { AppIconPreviews, AvatarList, PickedImage, ResolvedSkin, SkinCharacter, SkinInspection, SkinState } from "../ipc/types";
 import { skinNoticeText } from "../messages/ja";
 import { applyCssVars, layeredCssVars, manualColorVars } from "../skins/tokens";
-import { pickIconPath } from "../skins/icons";
+import { pickLayeredIcon, withRev } from "../skins/icons";
 import { settings } from "./settings";
 import { playback } from "./playback";
 import { createStore, useStore } from "./store";
@@ -121,13 +122,14 @@ export async function applySkin(id: string) {
   }
 }
 
-/** 「既定の見た目に戻す」：スキンを既定にし、手で選んだ色も外す（v3.10.0）。立ち絵は残す */
+/** 「既定の見た目に戻す」：スキンを既定にし、手で選んだ色も外す（v3.10.0）。v3.11.0 から手で入れたアイコンも外す。立ち絵は残す */
 export async function resetSkin() {
   try {
     receive(await api.skinsReset());
   } catch (e) {
     fail(e);
   }
+  void loadAppIconPreviews();
 }
 
 // ---------------- 手で選ぶ色（v3.10.0） ----------------
@@ -257,7 +259,7 @@ export async function chooseAvatar(choice: string) {
   }
 }
 
-/** 立ち絵を出さない（v3.9.0 直し1回目。avatars_use の "none" と同じ道。作った立ち絵は消さない） */
+/** 立ち絵を出さない（v3.9.0。avatars_use の "none" と同じ道。作った立ち絵は消さない） */
 export async function hideAvatar() {
   try {
     receive(await api.avatarsHide());
@@ -275,7 +277,7 @@ export async function deleteAvatar(id: string) {
   void loadAvatars();
 }
 
-/** 作った立ち絵を変える（v3.9.0 直し2回目。差し替え・停止中を外す・名前）。使っている立ち絵なら、Rust が画面の絵も当て直す。断られたら理由を出して false */
+/** 作った立ち絵を変える（v3.9.0。差し替え・停止中を外す・名前）。使っている立ち絵なら、Rust が画面の絵も当て直す。断られたら理由を出して false */
 export async function updateAvatar(id: string, name: string, playing: string | null, stopped: string | null, removeStopped: boolean): Promise<boolean> {
   try {
     await api.avatarsUpdate(id, name, playing, stopped, removeStopped);
@@ -314,11 +316,72 @@ export async function createAvatar(name: string, playing: string, stopped: strin
   }
 }
 
-/** アイコンの画像の URL（スキンに無ければ null。呼び出し側は今の SVG を出す） */
+/**
+ * アイコンの画像の URL（手で入れたアイコン → スキンのアイコン の順。どちらも無ければ null。呼び出し側は今の SVG を出す）。
+ * v3.11.0：手のアイコンは同じファイルの名前のまま入れ直すので、Rust が付けた印（rev）を URL に足して読み直させる
+ */
 export function useSkinIcon(name: string, state: string): string | null {
-  const skin = useSkin();
+  const st = useStore(skinState);
   const theme = useStore(currentTheme);
   const reduce = useStore(reducedMotion);
-  if (!skin) return null;
-  return fileUrl(pickIconPath(skin.icons, name, state, theme, reduce));
+  if (!st) return null;
+  const manual = st.safeMode ? null : st.manualIcons ?? null;
+  const picked = pickLayeredIcon(manual, st.skin?.icons ?? null, name, state, theme, reduce);
+  return picked ? withRev(fileUrl(picked.path), picked.rev) : null;
+}
+
+// ---------------- 手で入れるアイコン（v3.11.0） ----------------
+
+/** 今のウィンドウ・トレイのアイコンの見本（設定の「アイコン」の欄が開いている間だけ読む） */
+export const appIconPreviews = createStore<AppIconPreviews | null>(null);
+
+export async function loadAppIconPreviews() {
+  try {
+    appIconPreviews.set(await api.iconsAppPreview());
+  } catch {
+    appIconPreviews.set(null);
+  }
+}
+
+/** 入れたあと・戻したあと：状態を当て、アプリのアイコンの見本を読み直す */
+function receiveIcons(s: SkinState) {
+  receive(s);
+  void loadAppIconPreviews();
+}
+
+/** 枠を押したとき：Rust がファイルを選ぶ画面を出す。断られたら理由を出す */
+export async function pickIcon(name: string, state: string) {
+  try {
+    const s = await api.iconsPick(name, state);
+    if (s) receiveIcons(s);
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** 枠に落としたとき：落とした位置（ドロップの知らせのまま）だけを渡す。パスは Rust が自分で控えたものを使う */
+export async function dropIcon(name: string, state: string, x: number, y: number) {
+  try {
+    receiveIcons(await api.iconsDrop(name, state, x, y));
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** 枠の「戻す」 */
+export async function resetIcon(name: string, state: string) {
+  try {
+    receiveIcons(await api.iconsReset(name, state));
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** 「手で入れたアイコンを全部戻す」（スキン・手の色・立ち絵は変えない） */
+export async function clearIcons() {
+  try {
+    receiveIcons(await api.iconsClear());
+  } catch (e) {
+    fail(e);
+  }
 }

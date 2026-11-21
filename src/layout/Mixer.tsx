@@ -1,4 +1,4 @@
-// v3.8.0 段2-2：詳細（仕様の「配信モード」）のミキサー（仕様 6.2〜6.4。OBS の音声ミキサーに寄せる）。
+// v3.8.0：詳細（仕様の「配信モード」）のミキサー（仕様 6.2〜6.4。OBS の音声ミキサーに寄せる）。
 // 出力先ごとに1行。左右のときも上下のときも同じ形の行を縦に並べる（3行まで。行の寸法は src\layout\detailLayout.ts の MIXER）。
 //   上の段：アイコン・名前（長ければ「…」）・全体の音量に従わない印・状態（切断中／開けません／重複）・音割れの印・今の大きさの dB・オン/オフ・「…」
 //   下の段：メーター（左右2本・色の帯・直前の最大の線・-60〜0 dB の目盛り）・音量つまみ・%
@@ -50,7 +50,7 @@ function DeviceList(props: { slot: number | null; current?: string | null; onPic
 
 /**
  * 遅らせ量（0〜1000 ミリ秒、1 ミリ秒刻み）。打ち終えて 0.3 秒で送る（Rust はその出力だけ入り直すので、打つたびには送らない）。
- * 入力欄にフォーカスがある間は、Rust から戻ってきた値で欄を書き換えない（打っている途中の桁を消さない。段2-2 検査1回目の指摘5）。
+ * 入力欄にフォーカスがある間は、Rust から戻ってきた値で欄を書き換えない（打っている途中の桁を消さない）。
  * 欄の文字を値にそろえるのは、離れたとき・Enter のときと、ほかの所（別の操作）で値が変わったとき（フォーカスが無いとき）だけ
  */
 function DelayField(props: { s: OutputSlotView }) {
@@ -214,7 +214,7 @@ function MixerRow(props: { s: OutputSlotView }) {
         <button
           className={"icon-btn small" + (s.on ? "" : " is-off")}
           onClick={() => api.outputSetOn(s.slot, !s.on).catch(fail)}
-          // 読み上げの名前は固定し、オンかどうかは aria-pressed だけで伝える（名前と状態を二重に読ませない。段2-2 検査1回目の指摘7）。
+          // 読み上げの名前は固定し、オンかどうかは aria-pressed だけで伝える（名前と状態を二重に読ませない）。
           // 吹き出し（title）は仕様 2.4 の「この出力をオフにする」
           aria-label={`${name}：オン`}
           aria-pressed={s.on}
@@ -296,7 +296,7 @@ export function Mixer(props: { scrolls: boolean }) {
     <section className={"mixer panel" + (props.scrolls ? " scrolls" : "")} aria-label="出力のミキサー">
       <div className="mixer-head">
         <h2 className="mixer-title">出力</h2>
-        {/* v3.8.0 段3：遅れを測る。押せないとき（流している・鳴らせる出力先が2つ未満）は、理由を吹き出しで出す */}
+        {/* v3.8.0：遅れを測る。押せないとき（流している・鳴らせる出力先が2つ未満）は、理由を吹き出しで出す */}
         <LatencyButton />
         <AddButton />
       </div>

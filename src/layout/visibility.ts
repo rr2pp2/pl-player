@@ -14,7 +14,7 @@ export interface UiLike {
 export const PLAYER_BUTTONS = [
   { id: "shuffle", label: "シャッフル" },
   { id: "repeat", label: "リピート" },
-  // v3.8.0 段2-2：出力ボタン（同時再生の出力先。全体の音量の左）。3.7.0 までの設定には値が無いので出す
+  // v3.8.0：出力ボタン（同時再生の出力先。全体の音量の左）。3.7.0 までの設定には値が無いので出す
   { id: "outputs", label: "出力先" },
   { id: "volume", label: "音量（ミュートと音量の帯）" },
   { id: "lyricsRow", label: "流れる歌詞の列のオン・オフ" },

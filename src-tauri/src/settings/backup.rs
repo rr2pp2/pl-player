@@ -12,6 +12,10 @@
 //! v3.9.0：着せ替えの設定のうち、使う立ち絵の選択（`skin.avatar`）だけは読み込む（立ち絵の画像は入らない）
 //!
 //! v3.10.0：手で選んだ色（`skin.colors`）も読み込む（置き換える）。項目の無い zip（3.9.1 まで）では、この PC の手の色を変えない
+//!
+//! v3.11.0：手で入れたアイコンは、立ち絵と同じ扱い。どの枠に入れたか（`skin.icons`）は入り、画像は入らない。読み込むと zip の値に
+//! 置き換える（項目の無い zip（3.10.0 まで）では、この PC の手のアイコンを変えない）。この PC に画像の無い枠は、呼び出し側
+//! （skins::runtime::after_settings_import）が外して知らせる（ここではファイルを見ない）
 
 use std::fs;
 use std::path::Path;
@@ -198,6 +202,11 @@ fn colors_in_zip(entries: &[zip::Entry]) -> bool {
     skin_field_in_zip(entries, "colors")
 }
 
+/// v3.11.0：zip の settings.json に、手で入れたアイコンの項目（`skin.icons`）があるか
+fn icons_in_zip(entries: &[zip::Entry]) -> bool {
+    skin_field_in_zip(entries, "icons")
+}
+
 /// 読み込み。設定は戻り値で返し、呼び出し側が保存・反映する。
 /// ライブラリのフォルダは記録だけ足す（取り込み直しは呼び出し側が行う）。
 ///
@@ -234,6 +243,9 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     // v3.10.0：手で選んだ色も同じく、項目があれば zip の値（15 個の名前と決まった値の形だけ残す。オブジェクトでなければ空）。
     // 項目が無い（3.9.1 までの zip）は None で、この PC の手の色を変えない
     let zip_colors = colors_in_zip(entries).then(|| crate::skins::colors::normalize(&settings.skin.colors));
+    // v3.11.0：手で入れたアイコンも同じく、項目があれば zip の値（入れられる枠と形式だけ残す。オブジェクトでなければ空）。
+    // 項目が無い（3.10.0 までの zip）は None で、この PC の手のアイコンを変えない
+    let zip_icons = icons_in_zip(entries).then(|| crate::skins::icons::normalize(&settings.skin.icons));
     let folders: Vec<FolderOut> = json_entry(entries, "library.json")?.unwrap_or_default();
     let favs: Vec<String> = json_entry(entries, "favorites.json")?.unwrap_or_default();
     let pls: Vec<PlaylistOut> = json_entry(entries, "playlists.json")?.unwrap_or_default();
@@ -260,7 +272,7 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
         }
     }
     let mut settings = settings.sanitize();
-    // v3.1.0（直し1回目）：「歌詞をネットから取る」は、読み込んだ値を使わず常にオフにする。
+    // v3.1.0：「歌詞をネットから取る」は、読み込んだ値を使わず常にオフにする。
     // 他人から受け取った zip で、気づかないうちに通信がオンにならないように（オンにするのは設定画面でだけ）
     settings.lyrics_online = false;
     // v3.3.0：行の「ごみ箱へ移す」ボタンも同じ。曲ファイルを動かす操作のボタンなので、受け取った zip で気づかないうちに行に出ないように
@@ -321,6 +333,11 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     if let Some(c) = zip_colors {
         skin.colors = c;
     }
+    // v3.11.0：手で入れたアイコン（どの枠に入れたか）。zip に項目があれば置き換え、無ければこの PC のまま。
+    // 画像は zip に入らないので、この PC に無い枠は after_settings_import が外す
+    if let Some(i) = zip_icons {
+        skin.icons = i;
+    }
     settings.skin = skin;
     store::save(db, &settings)?;
     let folder_list = folders.into_iter().map(|f| (f.path, f.recursive)).collect();
@@ -376,7 +393,7 @@ mod tests {
         assert_eq!(s2.theme, "light");
         // v3.0.2：流れる歌詞の列のオン・オフも書き出し・読み込みに入る
         assert!(!s2.ui.lyrics_row);
-        // v3.1.0（直し1回目）：書き出しには入るが、読み込みでは常にオフ（オンの zip でも）
+        // v3.1.0：書き出しには入るが、読み込みでは常にオフ（オンの zip でも）
         assert!(std::str::from_utf8(&zip::read(&mut fs::File::open(&zip_path).unwrap(), &|_| true).unwrap().into_iter().find(|e| e.name == "settings.json").unwrap().data).unwrap().contains("\"lyricsOnline\": true"));
         assert!(!s2.lyrics_online);
         assert!(!store::load(&b).lyrics_online);
@@ -656,7 +673,7 @@ mod tests {
     }
 
     /// v3.9.0：使う立ち絵の選択は zip の値を使う（ほかの着せ替えの設定はこの PC の値のまま）。値が無い zip（3.8.1 まで）は
-    /// この PC の今の選択を変えない（直し1回目の作者の決定）。値があって壊れていれば「スキンの立ち絵」。立ち絵の画像は zip に入らない
+    /// この PC の今の選択を変えない（作者の決定）。値があって壊れていれば「スキンの立ち絵」。立ち絵の画像は zip に入らない
     /// （この PC に無い立ち絵を指していたときに戻すのは skins::runtime::after_settings_import。決まりは skins::avatars::resolve のテスト）
     #[test]
     fn import_takes_avatar_choice_from_zip() {
@@ -791,6 +808,74 @@ mod tests {
             let want: crate::skins::colors::Colors = want.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
             assert_eq!(r.settings.skin.colors, want, "{name}");
             assert_eq!(store::load(&b).skin.colors, want, "{name}: saved");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// v3.11.0：手で入れたアイコンは立ち絵と同じ扱い。どの枠に入れたか（skin.icons）は zip に入り、画像は入らない。
+    /// 読み込むと置き換わる（空の組なら外れる）。項目の無い zip（3.10.0 まで）ではこの PC のまま。壊れた値でも zip は断らない
+    /// （この PC に画像の無い枠を外して知らせるのは skins::runtime::after_settings_import。決まりは skins::icons::resolve のテスト）
+    #[test]
+    fn import_manual_icon_choice_from_zip() {
+        let tmp = tmp_dir("icons");
+        let icons_of = |pairs: &[(&str, &str, &str)]| {
+            let mut i = crate::skins::icons::Icons::new();
+            for (n, st, e) in pairs {
+                crate::skins::icons::set(&mut i, n, st, Some(e));
+            }
+            i
+        };
+        let mine_db = |tag: &str| {
+            let b = Db::open_memory(tag).unwrap();
+            let mut mine = AppSettings::default();
+            mine.skin.active_skin_id = "quiet-paper".into();
+            mine.skin.icons = icons_of(&[("IconPause", "default", "gif")]);
+            store::save(&b, &mine).unwrap();
+            (b, mine)
+        };
+        let a = Db::open_memory("backup_icons_a").unwrap();
+        let mut s = AppSettings::default();
+        s.theme = "light".into();
+        s.skin.icons = icons_of(&[("IconPlay", "default", "png"), ("IconStar", "filled", "webp"), ("AppTray", "default", "png")]);
+        let (entries, _) = export_entries(&a, &s, &tmp.join("no-bg")).unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&entries.iter().find(|e| e.name == "settings.json").unwrap().data).unwrap();
+        assert_eq!(j["skin"]["icons"], serde_json::json!({"AppTray": {"default": "png"}, "IconPlay": {"default": "png"}, "IconStar": {"filled": "webp"}}));
+        // 画像は入らない（zip に入るのは決まったファイルと背景だけ）
+        assert!(entries.iter().all(|e| !e.name.starts_with("icons")), "{:?}", entries.iter().map(|e| &e.name).collect::<Vec<_>>());
+        // 読み込み：置き換わる。スキンの選択はこの PC のまま
+        let (b, mine) = mine_db("backup_icons_b");
+        let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+        assert_eq!(r.settings.skin.icons, s.skin.icons);
+        assert_eq!(store::load(&b).skin.icons, s.skin.icons);
+        assert_eq!(r.settings.skin.active_skin_id, mine.skin.active_skin_id);
+        // 手のアイコンの無い PC から書き出した zip（空の組）：外れる
+        let (entries, _) = export_entries(&a, &AppSettings::default(), &tmp.join("no-bg")).unwrap();
+        let (b, _) = mine_db("backup_icons_empty");
+        assert!(import_entries(&b, &entries, &tmp.join("bgs")).unwrap().settings.skin.icons.is_empty());
+        // 項目の無い zip（3.10.0 までの形・skin ごと無い形）：この PC のまま
+        let v3100 = br##"{"theme":"light","skin":{"activeSkinId":"from-other-pc","avatar":"skin","characterVisible":true,"characterScale":1.2,"safeModeNextStart":false,"colors":{"--c-bg":"#000000"}}}"##;
+        let no_skin = br#"{"theme":"light"}"#;
+        for (i, json) in [&v3100[..], &no_skin[..]].into_iter().enumerate() {
+            let (b, mine) = mine_db(&format!("backup_icons_old_{i}"));
+            let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap();
+            assert_eq!(r.settings.theme, "light", "{i}");
+            assert_eq!(r.settings.skin.icons, mine.skin.icons, "{i}");
+            assert_eq!(store::load(&b).skin.icons, mine.skin.icons, "{i}");
+        }
+        // 壊れた値：zip は断らない。入れられる枠と形式だけが入る・オブジェクトでなければ手のアイコンなし
+        let cases: [(&str, &[u8], &[(&str, &str, &str)]); 4] = [
+            ("mixed", br#"{"theme":"light","skin":{"icons":{"IconPlay":{"default":"PNG"},"IconStar":{"default":"png"},"IconNope":{"default":"png"},"IconNext":{"default":"exe"}}}}"#, &[("IconPlay", "default", "png")]),
+            ("text", br#"{"theme":"light","skin":{"icons":"IconPlay"}}"#, &[]),
+            ("null", br#"{"theme":"light","skin":{"icons":null}}"#, &[]),
+            ("array", br#"{"theme":"light","skin":{"icons":[["IconPlay","default","png"]]}}"#, &[]),
+        ];
+        for (name, json, want) in cases {
+            let (b, _) = mine_db(&format!("backup_icons_bad_{name}"));
+            let entries = vec![manifest(), zip::Entry { name: "settings.json".into(), data: json.to_vec() }];
+            let r = import_entries(&b, &entries, &tmp.join("bgs")).unwrap_or_else(|e| panic!("{name}: {}", e.detail));
+            assert_eq!(r.settings.skin.icons, icons_of(want), "{name}");
+            assert_eq!(store::load(&b).skin.icons, icons_of(want), "{name}: saved");
         }
         let _ = fs::remove_dir_all(&tmp);
     }

@@ -2,6 +2,7 @@
 
 pub mod avatars;
 pub mod devices;
+pub mod icons;
 pub mod latency;
 pub mod library;
 pub mod lyrics;
@@ -65,7 +66,7 @@ pub struct AppState {
     /// （commands::settings::update_and_emit）。読んでから書くまでの間に別の書き込みが入ると、片方の変更（手で選んだ色など）が
     /// 古い値に戻るため。鍵を持っている間は DB に書くだけで、メインのスレッド・Runtime の鍵・再生の司令塔を待たない。知らせは鍵を外してから
     pub settings_write: Mutex<()>,
-    /// v3.10.0（直し2回目）：設定の知らせ（`pl://settings`）を送る人どうしの鍵。鍵の中で最新の設定を読み直してから送るので、
+    /// v3.10.0：設定の知らせ（`pl://settings`）を送る人どうしの鍵。鍵の中で最新の設定を読み直してから送るので、
     /// 知らせは読んだ順に並び、最後に届く知らせは最後に書いた値になる（commands::settings::emit_latest）。
     /// settings_write とは入れ子にしない（書く鍵を外してから取る）
     pub settings_emit: Mutex<()>,
@@ -79,7 +80,7 @@ pub struct AppState {
     pub legacy_reread: crate::library::legacy_reread::Control,
     /// v3.8.0：メーターの送り役（同時に1つだけ）
     pub meter: outputs::MeterControl,
-    /// v3.8.0 段3：遅れを測る（同時に1つだけ・やめる）
+    /// v3.8.0：遅れを測る（同時に1つだけ・やめる）
     pub latency: latency::LatencyControl,
 }
 

@@ -1,4 +1,4 @@
-// v3.8.0 段2-2：同時再生の画面の側（出力ボタン・出力のプルダウン・上の帯の「詳細」・詳細の配置・ミキサー・メーター・設定画面）を確かめる。
+// v3.8.0：同時再生の画面の側（出力ボタン・出力のプルダウン・上の帯の「詳細」・詳細の配置・ミキサー・メーター・設定画面）を確かめる。
 //   - 窓の幅 480〜2560px・高さ 480〜1440px で、はみ出し・重なり・再生ボタンのずれが無いこと（仕様 10章。レイアウトの計算を純粋な関数にして当てる）
 //   - 詳細の左右／上下の切り替わりと、曲一覧の行の数・流れる歌詞の列を自動で隠す決まり
 //   - 寸法の変数（CSS）と JS の値が同じこと・スキンから変えさせない変数（Rust と画面の LOCKED_VARS）
@@ -155,7 +155,7 @@ test("出力ボタン：高さ 40px・幅は --player-output-w（3列 112px・1�
   assert.match(rule(".output-btn-text"), /text-overflow: ellipsis;/);
 });
 
-test("スキンから変えさせない変数：Rust（skins\\tokens.rs）と画面（src\\skins\\tokens.ts）の両方に、段2-2 の5つが同じ並びで入り、着せ替えの仕様にも書いてある", () => {
+test("スキンから変えさせない変数：Rust（skins\\tokens.rs）と画面（src\\skins\\tokens.ts）の両方に、5つが同じ並びで入り、着せ替えの仕様にも書いてある", () => {
   const rs = read("src-tauri/src/skins/tokens.rs");
   const m = rs.match(/pub const LOCKED_VARS: \[&str; (\d+)\] = \[([\s\S]*?)\];/);
   assert.ok(m);
@@ -216,7 +216,7 @@ test("再生バー（出力ボタンあり）：窓の幅 480〜2560px の1px �
       }
     }
   }
-  // 作者の決定：出力ボタン（112px）を出していても、全体の音量を「···」へ移して3列を保つので、3列は段1 と同じ再生バーの幅 728px（窓 748px）から。
+  // 作者の決定：出力ボタン（112px）を出していても、全体の音量を「···」へ移して3列を保つので、3列は出力ボタンが無いときと同じ再生バーの幅 728px（窓 748px）から。
   // 全体の音量が右の列に並ぶのは 1068px（窓 1088px）から（scripts\ui-layout.test.mts）
   assert.equal(firstThree, 728);
   assert.equal(playerLayout(727, () => true, PLAYER.output3).mode, "one");
@@ -378,7 +378,7 @@ test("モード切替：通常／コンパクト／詳細。詳細なら詳細�
   const ui = { compactList: "off", compactAuto: true };
   assert.equal(currentViewMode(ui, 500, false), "compact");
   assert.deepEqual(pressMode(ui, 500, 900, true, "normal"), { settings: { compactList: "off", compactAuto: true }, detail: false });
-  // 詳細でないとき（今の幅＝抜けたあとの幅）は、段1 と同じ（自動でコンパクトになっている幅で「通常」→ 自動をオフ）
+  // 詳細でないとき（今の幅＝抜けたあとの幅）は、と同じ（自動でコンパクトになっている幅で「通常」→ 自動をオフ）
   assert.deepEqual(pressMode(ui, 500, 500, false, "normal"), { settings: { compactList: "off", compactAuto: false }, detail: false });
   // どの組み合わせでも、押したあと（詳細なら抜けたあとの幅で）押したモードに見える
   for (const cl of ["off", "always", "narrow", undefined]) {
@@ -529,7 +529,7 @@ test("メーター（画面）：React の再描画を起こさない作り。�
   for (const sel of [".meter-bar", ".meter-fill", ".meter-hold"]) assert.ok(!/transition/.test(rule(sel)), sel);
   const st = read("src/stores/outputs.ts");
   assert.match(st, /const want = listeners\.size > 0 && document\.visibilityState === "visible";/);
-  // 開始・停止には通し番号（段2-2 検査1回目の指摘3）。開始の失敗は、あとから別の開始・停止をしていなければ試し直す
+  // 開始・停止には通し番号。開始の失敗は、あとから別の開始・停止をしていなければ試し直す
   assert.match(st, /api\.meterStart\(my, onFrame\)\.catch\(\(\) => \{\s*\/\/[^\n]*\n\s*if \(startSeq !== my\) return;/);
   assert.match(st, /retryTimer = window\.setTimeout\(sync, METER_RETRY_MS\);/);
   assert.match(st, /void api\.meterStop\(nextSeq\(\)\)/);
@@ -668,9 +668,9 @@ test("設定画面（7章）：再生デバイスの欄は、出力先のデバ�
   assert.match(ja, /toggleDetail: "詳細表示の切替",/);
 });
 
-// ---------- 段2-2 の直し1回目（検査1回目の指摘） ----------
+// ----------  ----------
 
-test("指摘2：出力先が1つで切断中・開けません・重複なら、ボタンの見える文字が状態になる（名前は吹き出しと読み上げ）。鳴らせない出力があれば「!」の印と危険の色の縁", () => {
+test("出力先が1つで切断中・開けません・重複なら、ボタンの見える文字が状態になる（名前は吹き出しと読み上げ）。鳴らせない出力があれば「!」の印と危険の色の縁", () => {
   for (const [st, word] of [
     ["disconnected", "切断中"],
     ["unavailable", "開けません"],
@@ -689,7 +689,7 @@ test("指摘2：出力先が1つで切断中・開けません・重複なら、
   assert.ok(!/color: var\(--c-danger\)/.test(rule(".output-btn.alert .output-btn-text")));
 });
 
-// ---------- 段2-2 の直し2回目（検査2回目の N1・N2） ----------
+// ----------  ----------
 
 test("N1：鳴らせない出力のアイコンの角に「!」を重ねる（1段でアイコンが3つ並ぶときも。幅は増やさない）。読み上げ・吹き出しは今のまま", () => {
   const many = outputButtonModel({ slots: [slot(0), slot(1, { status: "unavailable" }), slot(2, { status: "disconnected" })] });
@@ -732,7 +732,7 @@ test("N2：3列で出力先が1つだけのとき、状態の文字（切断中�
   for (const word of Object.values(STATUS_TEXT)) {
     assert.ok([...word!].length * fs <= inner, `${word}: ${[...word!].length * fs} > ${inner}`);
   }
-  // いちばん長い「開けません」は 5字 × 16 ＝ 80px（94px に 14px の余り）。アイコンを残すと 94 − 20 − 6 ＝ 68px で入らなかった（検査2回目の N2）
+  // いちばん長い「開けません」は 5字 × 16 ＝ 80px（94px に 14px の余り）。アイコンを残すと 94 − 20 − 6 ＝ 68px で入らなかった
   assert.equal(Math.max(...Object.values(STATUS_TEXT).map((w) => [...w!].length)) * fs, 80);
   assert.ok(5 * fs > inner - 20 - 6);
   // 名前のとき（鳴っている・1つ）はアイコンを残す
@@ -740,7 +740,7 @@ test("N2：3列で出力先が1つだけのとき、状態の文字（切断中�
   assert.deepEqual([okOne.kind, okOne.alert, okOne.text], ["one", false, "出力0の機器"]);
 });
 
-test("指摘1・6：出力ごとの音量つまみは、保存を待っている間に消えても保存を送る。ホイールは passive でない受け口で止めて、枠を送らない（全体の音量のつまみも消えるときに保存）", () => {
+test("出力ごとの音量つまみは、保存を待っている間に消えても保存を送る。ホイールは passive でない受け口で止めて、枠を送らない（全体の音量のつまみも消えるときに保存）", () => {
   const ob = read("src/layout/OutputButton.tsx");
   assert.match(ob, /\(\) => \(\) => \{\s*if \(timer\.current === undefined\) return;\s*window\.clearTimeout\(timer\.current\);\s*timer\.current = undefined;\s*void api\.outputCommitVolume\(\)/);
   assert.match(ob, /timer\.current = undefined;\s*setLocal\(null\);\s*void api\.outputCommitVolume\(\)/);
@@ -752,7 +752,7 @@ test("指摘1・6：出力ごとの音量つまみは、保存を待っている
   assert.equal((vc.match(/timer\.current = undefined;\s*setLocal\(null\);/g) ?? []).length, 2);
 });
 
-test("指摘4・10：デバイスの変化の知らせは、一覧を見ている部品がある間だけ受ける。起動時は先に知らせを受け始めてから今の全部を引く（引いている間に来た変化を、古い結果で上書きしない）", () => {
+test("デバイスの変化の知らせは、一覧を見ている部品がある間だけ受ける。起動時は先に知らせを受け始めてから今の全部を引く（引いている間に来た変化を、古い結果で上書きしない）", () => {
   const st = read("src/stores/outputs.ts");
   assert.match(st, /export function watchDevices\(\): \(\) => void/);
   assert.match(st, /if \(deviceUsers > 0 \|\| !deviceUnlisten\) return;[\s\S]*void p\.then\(\(un\) => un\(\)\);/);
@@ -763,7 +763,7 @@ test("指摘4・10：デバイスの変化の知らせは、一覧を見てい�
   assert.match(init, /if \(!pushed\) outputs\.set\(v\);/);
 });
 
-test("指摘5・7・11：遅らせ量の欄は打っている間に戻りの値で書き換えない。オン/オフの読み上げの名前は固定で、状態は aria-pressed。小窓の最初の操作で Shift+Tab を押すとボタンへ戻る", () => {
+test("遅らせ量の欄は打っている間に戻りの値で書き換えない。オン/オフの読み上げの名前は固定で、状態は aria-pressed。小窓の最初の操作で Shift+Tab を押すとボタンへ戻る", () => {
   const mx = read("src/layout/Mixer.tsx");
   assert.match(mx, /useEffect\(\(\) => \{\s*if \(document\.activeElement === input\.current\) return;\s*setText\(String\(props\.s\.delayMs\)\);\s*\}, \[props\.s\.delayMs\]\);/);
   assert.match(mx, /const go = \(\) => \{\s*if \(now\) setText\(String\(ms\)\);/);
@@ -774,7 +774,7 @@ test("指摘5・7・11：遅らせ量の欄は打っている間に戻りの値�
   assert.match(pop, /if \(first && document\.activeElement === first\) \{\s*e\.preventDefault\(\);\s*close\.current\(true\);/);
 });
 
-test("指摘8：直前の最大の線は --c-primary にパネルの色の 1px の縁（帯の色の上でも溝の上でも見える。組み合わせは theme-contrast で計算）", () => {
+test("直前の最大の線は --c-primary にパネルの色の 1px の縁（帯の色の上でも溝の上でも見える。組み合わせは theme-contrast で計算）", () => {
   const h = rule(".meter-hold");
   assert.match(h, /background: var\(--c-primary\);/);
   assert.match(h, /box-shadow: 0 0 0 1px rgb\(var\(--c-panel-rgb\)\);/);
@@ -782,7 +782,7 @@ test("指摘8：直前の最大の線は --c-primary にパネルの色の 1px �
   for (const n of ["最大の線 --c-primary／溝の中（パネル）", "最大の線 --c-primary／線の縁（パネルの色）", "最大の線の縁／黄の帯 --c-favorite"]) assert.ok(tc.includes(n), n);
 });
 
-test("指摘9：ミキサーの上の段は、いちばん混む場合（380px のミキサー・「個別」・「開けません」・dB・スキンで文字 +2px）でも名前に 48px が残り、ボタンの列と重ならない", () => {
+test("ミキサーの上の段は、いちばん混む場合（380px のミキサー・「個別」・「開けません」・dB・スキンで文字 +2px）でも名前に 48px が残り、ボタンの列と重ならない", () => {
   assert.match(rule(".mixer-row-top"), /overflow: hidden;/);
   assert.match(rule(".mixer-row-top .output-name"), new RegExp(`min-width: ${MIXER.nameMin}px;`));
   assert.match(rule(".meter-db"), new RegExp(`width: ${MIXER.dbW}px;`));

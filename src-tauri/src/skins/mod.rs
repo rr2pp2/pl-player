@@ -10,12 +10,14 @@
 //! - avatars：登録した立ち絵（v3.9.0。画像を選ぶだけで作る。画面の呼び名は「立ち絵」）と、使う立ち絵の選び方
 //! - sample：見本の立ち絵「くじら」を一度だけ入れる（v3.9.1）
 //! - colors：手で選ぶ色（v3.10.0。設定の `skin.colors`。スキンの色の上に重ねる。値の確かめは tokens と同じ）
+//! - icons：手で入れるアイコン（v3.11.0。設定の `skin.icons` と、データのフォルダの `icons\<名前>\<状態>.<形式>`。スキンのアイコンの上に重ねる）
 //!
 //! 仕様の全文は docs\着せ替え_仕様.md。
 
 pub mod avatars;
 pub mod colors;
 pub mod grapheme_base;
+pub mod icons;
 pub mod images;
 pub mod json;
 pub mod manifest;
@@ -63,6 +65,10 @@ pub struct Dirs {
     pub avatars: PathBuf,
     /// v3.9.0：立ち絵を作っている途中の一時の場所（画面からは読めない。起動のときに消す）
     pub avatar_staging: PathBuf,
+    /// v3.11.0：手で入れたアイコン（`<名前>\<状態>.<形式>`。画面が asset で読める）
+    pub icons: PathBuf,
+    /// v3.11.0：手で入れるアイコンを書いている途中の一時の場所（画面からは読めない。起動のときに消す）
+    pub icon_staging: PathBuf,
 }
 
 impl Dirs {
@@ -72,6 +78,8 @@ impl Dirs {
             staging: data_dir.join("skins-staging"),
             avatars: data_dir.join("avatars"),
             avatar_staging: data_dir.join("avatars-staging"),
+            icons: data_dir.join("icons"),
+            icon_staging: data_dir.join("icons-staging"),
         }
     }
 }

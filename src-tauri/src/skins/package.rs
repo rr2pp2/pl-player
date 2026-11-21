@@ -675,6 +675,14 @@ impl Installed {
         Some((PathBuf::from(abs(&self.dir, rel)), rel.clone()))
     }
 
+    /// v3.11.0：スキンが書いたアプリのアイコンの画像だけ（トレイが無くてもウィンドウの画像に代えない）。
+    /// 手で入れたアイコンと重ねるときに使う（skins::runtime::app_icon_sources）
+    pub fn app_icon_exact(&self, tray: bool) -> Option<(PathBuf, String)> {
+        let a = self.manifest.application.as_ref()?;
+        let rel = if tray { a.tray.as_ref() } else { a.window.as_ref() }?;
+        Some((PathBuf::from(abs(&self.dir, rel)), rel.clone()))
+    }
+
     pub fn resolve(&self) -> ResolvedSkin {
         let m = &self.manifest;
         let icons = m

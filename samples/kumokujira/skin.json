@@ -5,7 +5,7 @@
   "name": "くもくじら（見本）",
   "version": "1.0.0",
   "author": "PL Player",
-  "description": "スキン作りの見本。雲に乗ったくじらの立ち絵・夜の海の色（Dark のテーマ）・ウィンドウのアイコンが入っています。絵は図形だけで描いたもの",
+  "description": "スキン作りの見本。雲に乗ったくじらの立ち絵、夜の海の色（Dark）と昼の海の色（Light）、ボタンのアイコン全部（34 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
   "minAppVersion": "3.7.0",
   "parts": {
     "appearance": {
@@ -13,13 +13,34 @@
         "dark": {
           "tokens": {
             "--c-bg": "#0d1720",
-            "--c-panel-rgb": "20, 36, 50",
+            "--c-panel-rgb": "16, 30, 42",
             "--c-accent": "#8fd8ec",
             "--c-accent-contrast": "#06161d",
-            "--c-secondary": "#a3bccd",
+            "--c-secondary": "#b4c9d8",
             "--c-hover": "#1b3446",
             "--c-selected": "#21425a",
-            "--c-favorite": "#ffd56b"
+            "--c-favorite": "#ffd56b",
+            "--c-border": "rgba(255, 255, 255, 0.10)",
+            "--c-outline": "rgba(255, 255, 255, 0.48)",
+            "--c-danger": "#ff98a3"
+          },
+          "shadow": "soft"
+        },
+        "light": {
+          "tokens": {
+            "--c-bg": "#eaf3fa",
+            "--c-panel-rgb": "250, 253, 255",
+            "--c-overlay-rgb": "240, 247, 252",
+            "--c-primary": "#0b1826",
+            "--c-secondary": "#344759",
+            "--c-accent": "#164a7a",
+            "--c-accent-contrast": "#ffffff",
+            "--c-hover": "rgba(22, 74, 122, 0.06)",
+            "--c-selected": "rgba(22, 74, 122, 0.12)",
+            "--c-border": "rgba(11, 24, 38, 0.54)",
+            "--c-outline": "rgba(11, 24, 38, 0.54)",
+            "--c-input": "rgba(22, 74, 122, 0.03)",
+            "--c-favorite": "#735300"
           },
           "shadow": "soft"
         }
@@ -28,8 +49,60 @@
         "--radius": 14
       }
     },
+    "icons": {
+      "IconMusic": "icons/IconMusic.png",
+      "IconUser": "icons/IconUser.png",
+      "IconDisc": "icons/IconDisc.png",
+      "IconTag": "icons/IconTag.png",
+      "IconClockPlus": "icons/IconClockPlus.png",
+      "IconHistory": "icons/IconHistory.png",
+      "IconStar": {
+        "outline": "icons/IconStar/outline.png",
+        "filled": "icons/IconStar/filled.png"
+      },
+      "IconList": "icons/IconList.png",
+      "IconQueue": "icons/IconQueue.png",
+      "IconSettings": "icons/IconSettings.png",
+      "IconSearch": "icons/IconSearch.png",
+      "IconPlus": "icons/IconPlus.png",
+      "IconFolderPlus": "icons/IconFolderPlus.png",
+      "IconFilePlus": "icons/IconFilePlus.png",
+      "IconPlay": "icons/IconPlay.png",
+      "IconPause": "icons/IconPause.png",
+      "IconNext": "icons/IconNext.png",
+      "IconPrev": "icons/IconPrev.png",
+      "IconShuffle": {
+        "off": "icons/IconShuffle/off.png",
+        "on": "icons/IconShuffle/on.png"
+      },
+      "IconRepeat": {
+        "off": "icons/IconRepeat/off.png",
+        "all": "icons/IconRepeat/all.png",
+        "one": "icons/IconRepeat/one.png"
+      },
+      "IconVolume": {
+        "muted": "icons/IconVolume/muted.png",
+        "zero": "icons/IconVolume/zero.png",
+        "low": "icons/IconVolume/low.png",
+        "high": "icons/IconVolume/high.png"
+      },
+      "IconX": "icons/IconX.png",
+      "IconTrash": "icons/IconTrash.png",
+      "IconEdit": "icons/IconEdit.png",
+      "IconImage": "icons/IconImage.png",
+      "IconSidebar": "icons/IconSidebar.png",
+      "IconRefresh": "icons/IconRefresh.png",
+      "IconFolder": "icons/IconFolder.png",
+      "IconChevron": "icons/IconChevron.png",
+      "IconBars": "icons/IconBars.png",
+      "IconLyrics": "icons/IconLyrics.png",
+      "IconBack": "icons/IconBack.png",
+      "IconLyricsRow": "icons/IconLyricsRow.png",
+      "IconRanking": "icons/IconRanking.png"
+    },
     "application": {
-      "window": "app/window.png"
+      "window": "app/window.png",
+      "tray": "app/tray.png"
     },
     "character": {
       "states": {

@@ -194,7 +194,7 @@ pub fn import(db: &Db, lyrics_dir: &Path) -> AppResult<InboxReport> {
     let stamp = store::local_stamp(db).unwrap_or_else(|_| "00000000-000000".into());
 
     // 曲 ID ごとにまとめる（.lrc と .txt の両方があるかを見るため）。
-    // 1回目の検査の指摘：数字の文字列のままでまとめていたので、`02.lrc` と `2.txt` が別の曲として両方取り込まれていた。
+    // 数字の文字列のままでまとめていたので、`02.lrc` と `2.txt` が別の曲として両方取り込まれていた。
     // 数に直してからまとめる。i64 に収まらない数字（どの曲 ID にも当たらない）は別に持つ
     let mut by_id: BTreeMap<i64, Vec<(PathBuf, String)>> = BTreeMap::new();
     let mut out_of_range: Vec<PathBuf> = Vec::new();
@@ -429,7 +429,7 @@ mod tests {
         assert_eq!(names(&dir, "processed").len(), 1);
     }
 
-    /// 1回目の検査 2：先頭の0が違うだけの名前（`02.lrc` と `2.txt`）は同じ曲 ID。両方 rejected へ
+    /// 先頭の0が違うだけの名前（`02.lrc` と `2.txt`）は同じ曲 ID。両方 rejected へ
     #[test]
     fn leading_zeros_are_the_same_track() {
         let (db, dir, ids) = setup("zeros", 2);

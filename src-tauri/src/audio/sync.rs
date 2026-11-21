@@ -322,7 +322,7 @@ impl StreamTiming {
         Some(line.x_for(t_ns - self.origin_ns as f64 + self.latency_offset()))
     }
 
-    /// 位置の当てはめの傾き（1フレームの ns）。遅れを測る機能の記録用（v3.8.0 段3。名目との差で、狙いの見積もりの確かさを見る）
+    /// 位置の当てはめの傾き（1フレームの ns）。遅れを測る機能の記録用（v3.8.0。名目との差で、狙いの見積もりの確かさを見る）
     pub fn fit_slope(&self) -> Option<f64> {
         self.fit.fit().map(|l| l.slope)
     }

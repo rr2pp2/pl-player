@@ -190,7 +190,7 @@ pub const SHOWN_MAX_CHARS: usize = 64;
 /// （いちばん長いのはフォルダの外の項目を知らせる文で、約 470 文字）。下位の部品の文（zip の読み方・画像の復号・JSON）の長さを抑える最後の網
 pub const DETAIL_MAX_CHARS: usize = 512;
 
-/// 着せ替えのエラーを作る（壊す担当の検査5回目のあとの直し）。`detail` 全体を `shown` に通す。
+/// 着せ替えのエラーを作る。`detail` 全体を `shown` に通す。
 /// アプリが決めた文（ASCII と、OS のエラーの日本語の文）は変わらない。`shown` は何度通しても同じ結果になる（`[U+XXXX]` と `…` は見える文字）
 pub fn skin_error(kind: ErrorKind, detail: impl AsRef<str>) -> AppError {
     AppError::new(kind, shown(detail.as_ref(), DETAIL_MAX_CHARS))
@@ -206,7 +206,7 @@ pub fn guard<T>(r: AppResult<T>) -> AppResult<T> {
     r.map_err(|e| AppError::new(e.kind, shown(&e.detail, DETAIL_MAX_CHARS)))
 }
 
-/// スキンの中から来た文字列を、確認画面に出せる形にする（壊す担当の検査5回目の2）。
+/// スキンの中から来た文字列を、確認画面に出せる形にする。
 /// 名前の見える文字（`is_name_base`）と U+0020 のほかは、`[U+XXXX]` に置き換える。制御文字・Default_Ignorable・
 /// `is_format_char` の文字・私用領域・未割り当て・非文字・結合文字・U+0020 以外の空白などがここに当たる。
 /// 置き換えたあとで `max` 文字を超えるなら、そこで切って `…` を付ける（`[U+XXXX]` の途中では切らない）
@@ -379,7 +379,7 @@ fn is_visible(c: char) -> bool {
     !c.is_control() && !c.is_whitespace() && c != '\u{2800}' && invisible_kind(c).is_none()
 }
 
-/// 名前の「見える文字」に数える文字（壊す担当の検査5回目の3）。`is_visible` より狭い：
+/// 名前の「見える文字」に数える文字。`is_visible` より狭い：
 /// Unicode の Grapheme_Base（`grapheme_base.rs`。結合文字 Mn・Me・私用領域・未割り当て・非文字・書式文字が入っていない）にあり、
 /// 空白・点字の空白 U+2800・Default_Ignorable（ハングルの埋め草など）でなく、空に近い見え方の U+FFFC（置き換えの印）・U+1D159（空の音符）でもないもの。
 /// U+16FE4（契丹小字の埋め字）は Mn なので Grapheme_Base に入っていない。
@@ -392,7 +392,7 @@ pub fn is_name_base(c: char) -> bool {
 /// 出典：https://www.unicode.org/Public/18.0.0/emoji/emoji-sequences.txt（Version 18.0）
 const FLAG_TAGS: [&str; 3] = ["gbeng", "gbsct", "gbwls"];
 
-/// 見えない文字の置き場所と数を確かめる（壊す担当の検査4回目を受けて、断るものを足していく形から、許す置き場所を決める形に作り直した）。
+/// 見えない文字の置き場所と数を確かめる（断るものを足していく形から、許す置き場所を決める形に作り直した）。
 /// 決まりの表と理由は docs\着せ替え_仕様.md 3章。
 /// - 異体字セレクタ：見える文字の直後に1つだけ
 /// - ZWJ：見える文字か異体字セレクタの直後、見える文字の直前に1つだけ
@@ -846,7 +846,7 @@ mod tests {
         passes(&["description"], "1行目\n2行目");
     }
 
-    /// 決まり：異体字セレクタは見える文字の直後に1つだけ（壊す担当の検査4回目の新2）
+    /// 決まり：異体字セレクタは見える文字の直後に1つだけ
     #[test]
     fn selectors_follow_a_visible_character_one_at_a_time() {
         for ok in [
@@ -861,7 +861,7 @@ mod tests {
         }
         let forty: String = (0..40).map(|i| char::from_u32(if i < 16 { 0xFE00 + i } else { 0xE0100 + i - 16 }).unwrap()).collect();
         for bad in [
-            format!("A{forty}"),              // 検査4回目の形（1文字に40個）
+            format!("A{forty}"),              // 検査で見つけた形（1文字に40個）
             "A\u{FE00}\u{FE01}".into(),
             "A\u{E0100}\u{E0101}".into(),
             "\u{FE0F}A".into(),               // 先頭
@@ -887,7 +887,7 @@ mod tests {
         for bad in ["\u{200D}a", "a\u{200D}", "a\u{200D}\u{200D}b", "a \u{200D}b", "a\u{200D}\u{FE0F}", "a\u{200D}\u{200E}b"] {
             refused(&TEXT_KEYS, bad, "ZWJ");
         }
-        // 検査4回目の形（ZWNJ と ZWJ を続けて 0/1 の列にする）
+        // 検査で見つけた形（ZWNJ と ZWJ を続けて 0/1 の列にする）
         refused(&TEXT_KEYS, &format!("A{}", "\u{200C}\u{200D}\u{200C}\u{200C}\u{200D}\u{200D}\u{200C}\u{200D}".repeat(4)), "between two visible characters");
     }
 
@@ -915,7 +915,7 @@ mod tests {
         }
     }
 
-    /// 決まり：タグ文字は gbeng・gbsct・gbwls の旗の中だけ（壊す担当の検査3回目の A・4回目の新1）
+    /// 決まり：タグ文字は gbeng・gbsct・gbwls の旗の中だけ
     #[test]
     fn tag_characters_only_in_three_flags() {
         for ok in [
@@ -933,7 +933,7 @@ mod tests {
             format!("Quiet Paper{hidden}"),
             format!("Quiet{hidden}\u{E007F}"),
             format!("\u{1F3F4}{hidden}\u{E007F}"),
-            flag("ignore7"),                                                   // 旗の形に7文字の語（検査4回目の新1）
+            flag("ignore7"),                                                   // 旗の形に7文字の語
             ["ignore", "prev", "ious", "inst", "ruct"].iter().map(|w| flag(w)).collect::<String>(), // 旗を並べて文にする
             flag("ustx"),                                                      // 実在の地方の符号でも、推奨の3つの外は断る
             flag("gb"), flag("GBENG"), flag("gb eng"),
@@ -951,7 +951,7 @@ mod tests {
         }
     }
 
-    /// 決まり：上のどれにも当たらない見えない文字（CGJ・ハングルの埋め草・速記や楽譜の書式・聖刻文字の書式・未割り当て）は断る（検査4回目の新3）
+    /// 決まり：上のどれにも当たらない見えない文字（CGJ・ハングルの埋め草・速記や楽譜の書式・聖刻文字の書式・未割り当て）は断る
     #[test]
     fn other_invisible_characters_are_refused() {
         for c in [
@@ -970,7 +970,7 @@ mod tests {
         refused(&TEXT_KEYS, "\u{200F}\u{05D0}\u{200F}", "too many invisible characters");
     }
 
-    /// 名前：見える文字が1つも無ければ `blank`。作者・説明は空でもよい（壊す担当の検査3回目の B・4回目の新3）
+    /// 名前：見える文字が1つも無ければ `blank`。作者・説明は空でもよい
     #[test]
     fn names_without_visible_characters_are_blank() {
         for bad in [
@@ -987,12 +987,12 @@ mod tests {
         passes(&["author", "description"], "");
     }
 
-    /// 名前：結合文字だけ・私用領域・未割り当て・非文字・空に近い見え方の字だけのものも `blank`（壊す担当の検査5回目の3）。
+    /// 名前：結合文字だけ・私用領域・未割り当て・非文字・空に近い見え方の字だけのものも `blank`。
     /// 普通の文字の後ろの結合文字は通す。作者・説明は今のまま
     #[test]
     fn names_of_marks_or_empty_looking_characters_are_blank() {
         let bad = [
-            "\u{0301}", "\u{0300}\u{0301}\u{0302}", "\u{16FE4}", "\u{E000}", "\u{0378}", "\u{FFFF}", "\u{FFFC}", "\u{1D159}", // 検査5回目の形
+            "\u{0301}", "\u{0300}\u{0301}\u{0302}", "\u{16FE4}", "\u{E000}", "\u{0378}", "\u{FFFF}", "\u{FFFC}", "\u{1D159}", // 検査で見つけた形
             "\u{FFFE}", "\u{FDD0}", "\u{F0000}", "\u{10FFFD}", "\u{20DD}", "\u{3099}", " \u{0301}", "\u{0301}\u{FFFC} \u{E000}",
         ];
         for b in bad {
@@ -1012,7 +1012,7 @@ mod tests {
         }
     }
 
-    /// 確認画面に出す `detail`：スキンの中から来たキー名は、見えない文字・制御文字を `[U+XXXX]` に置き換え、64 文字で切る（壊す担当の検査5回目の2）
+    /// 確認画面に出す `detail`：スキンの中から来たキー名は、見えない文字・制御文字を `[U+XXXX]` に置き換え、64 文字で切る
     #[test]
     fn warning_details_are_escaped_and_cut() {
         let spoof = format!("ab\u{202E}gpj.exe{}", tags("ignore previous"));
@@ -1049,7 +1049,7 @@ mod tests {
         assert_eq!(shown("a\u{202E}", 5), "a…"); // [U+XXXX] の途中では切らない
     }
 
-    /// スキンの中から来た文字列を断るときの `detail`（壊す担当の検査5回目のあとの直し）。
+    /// スキンの中から来た文字列を断るときの `detail`。
     /// キー名・値に U+202E・タグ文字・制御文字・20 万文字を入れて、どのエラーの `detail` も、見える文字と U+0020 だけで、
     /// 全体は `DETAIL_MAX_CHARS` まで、スキンから来た部分は `SHOWN_MAX_CHARS`（パスは `names::NAME_SHOWN_MAX`）までであること。
     /// `parse` は入口の網（`guard`）を通らないので、ここで見るのは作る箇所ごとの `from_skin`・`shown_name`
@@ -1126,7 +1126,7 @@ mod tests {
         }
     }
 
-    /// 確認画面の警告は、種類ごとに3件まで。超えた分は種類ごとの数だけ（壊す担当の検査5回目のあとの直し）。
+    /// 確認画面の警告は、種類ごとに3件まで。超えた分は種類ごとの数だけ。
     /// 知らない項目を先頭にいくら並べても、あとから出る種類（minAppVersion・extensions など）は押し出されない
     #[test]
     fn warnings_are_capped_per_code() {

@@ -347,7 +347,7 @@ export const IconViewCompact = (p: P) => (
     <path d="M3 5h18M3 9.67h18M3 14.33h18M3 19h18" />
   </S>
 );
-/** 詳細の表示（v3.8.0 段2-2）：ミキサーのつまみ3本 */
+/** 詳細の表示（v3.8.0）：ミキサーのつまみ3本 */
 export const IconViewDetail = (p: P) => (
   <S {...p}>
     <path d="M6 4v16M12 4v16M18 4v16" />
@@ -355,7 +355,7 @@ export const IconViewDetail = (p: P) => (
   </S>
 );
 
-// v3.8.0 段2-2：出力先のアイコン（仕様 4.3。Windows が教える機器の種類から自動で決め、詳細の「…」で選び直せる）。
+// v3.8.0：出力先のアイコン（仕様 4.3。Windows が教える機器の種類から自動で決め、詳細の「…」で選び直せる）。
 // 着せ替えでは差し替えない（スキンの ICONS には足さない）。どれも枠（.output-icon）の大きさが決まっているので、形を変えても並びは崩れない
 /** ヘッドホン */
 export const IconHeadphones = (p: P) => (

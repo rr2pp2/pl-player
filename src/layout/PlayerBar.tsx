@@ -5,7 +5,7 @@
 //   3列：左＝ジャケット・曲名・アーティスト（・今の歌詞の1行）／中＝操作のボタンとシークバー（再生ボタンは中央に固定）／右＝全体の音量・歌詞のボタン・「···」
 //   1段：上の縁にシークバーの細い線／左＝ジャケット・曲名・今の時間 / 長さ／中＝前・再生・次／右＝「···」（全体の音量・シャッフル・リピート・歌詞のボタン）
 //   入りきらないボタンは「···」へ。設定で隠したボタンは「···」にも出さない。
-//   出力ボタン（v3.8.0 段2-2。OutputButton.tsx）は右の列の全体の音量の左に、固定幅で入れる（playerLayout の outputW。1段ではアイコンだけ）。
+//   出力ボタン（v3.8.0。OutputButton.tsx）は右の列の全体の音量の左に、固定幅で入れる（playerLayout の outputW。1段ではアイコンだけ）。
 //   設定の「再生バーのボタン」で隠せる（visibility.ts の outputs）。隠したら幅も取らない。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

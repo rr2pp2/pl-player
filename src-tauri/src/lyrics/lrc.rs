@@ -167,7 +167,7 @@ fn classify(inner: &str) -> Bracket<'_> {
 
 /// 行の中の `<mm:ss.xx>`（語ごとの時刻）を外す。
 ///
-/// 1回目の検査の指摘：`<` のたびに残り全部から `>` を探していたため、閉じない `<` が並ぶ行で
+/// `<` のたびに残り全部から `>` を探していたため、閉じない `<` が並ぶ行で
 /// 二次時間になっていた（1MiB で 21秒）。`<` の直後を時刻に使う文字（数字・`:`・`.`）の間だけ読み、
 /// その次が `>` なら外す、という形にして、各文字を高々2回しか見ないようにした。
 fn strip_word_times(s: &str) -> String {
@@ -284,7 +284,7 @@ pub fn parse(raw: &str) -> ParsedLyrics {
                 reordered = true;
             }
             running_max = Some(running_max.map_or(line_min, |m| m.max(line_min)));
-            // 1回目の検査の指摘：時刻の数だけ本文を複製していたため、時刻7万個＋長い本文で数十GBを要求し得た。
+            // 時刻の数だけ本文を複製していたため、時刻7万個＋長い本文で数十GBを要求し得た。
             // 1行の時刻は 100 個まで、2つ目からの複製は合計 4MiB まで（どちらも超えたら警告）
             if times.len() > MAX_TIMES_PER_LINE {
                 times.truncate(MAX_TIMES_PER_LINE);
@@ -502,7 +502,7 @@ mod tests {
         assert!(p.warnings.contains(&warn::OFFSET_CLAMPED.to_string()));
     }
 
-    /// 1回目の検査 1a：閉じない `<` が 1MiB 並んでも、すぐ終わる（以前は 21秒）
+    /// 閉じない `<` が 1MiB 並んでも、すぐ終わる（以前は 21秒）
     #[test]
     fn unclosed_angle_brackets_are_linear() {
         let line = "<".repeat(MAX_TEXT_BYTES);
@@ -521,7 +521,7 @@ mod tests {
         assert!(t.elapsed() < std::time::Duration::from_secs(2));
     }
 
-    /// 1回目の検査 1b：1行に時刻が多数＋長い本文でも、複製を上限で止める
+    /// 1行に時刻が多数＋長い本文でも、複製を上限で止める
     #[test]
     fn many_times_with_long_text_are_bounded() {
         // 指摘の再現（[00:01.00] ＋ [00:02]×20000 ＋ 本文 30万字。約 1.04MB で 1MiB 以内）
@@ -543,7 +543,7 @@ mod tests {
         assert!(!parse("[00:01][00:02][00:03]x").warnings.contains(&warn::TIMESTAMPS_TRUNCATED.to_string()));
     }
 
-    /// 1回目の検査 1c：offset の最小値・最大値で桁あふれしない（debug ビルドのテストで panic しない）
+    /// offset の最小値・最大値で桁あふれしない（debug ビルドのテストで panic しない）
     #[test]
     fn extreme_offsets_do_not_overflow() {
         let p = parse("[offset:-9223372036854775808]\n[00:01.00]a");

@@ -56,6 +56,12 @@ export const errorText: Record<ErrorCode, string> = {
   avatar_not_found: "その立ち絵はありません（削除したか、取り込んだスキンに立ち絵がありません）。",
   avatar_broken: "立ち絵のファイルを読めません（消えた・壊れた など）。削除して作り直してください。",
   avatar_pick_expired: "選んだ画像の確認が古くなりました。もう一度画像を選んでください。",
+  // 手で入れるアイコン（v3.11.0）。画像の中身で断るときは、スキンの取り込みと同じ skin_image_invalid・skin_image_limit の文。大きすぎるときは avatar_too_large の文
+  icon_slot_invalid: "そのアイコンの枠はありません。何も変えていません。",
+  icon_image_format: "アイコンに使える画像は PNG・WebP・GIF（動く画像も。アプリのアイコンは動かない画像だけ）です。",
+  icon_drop_invalid: "アイコンの枠に落とせるのは、画像のファイル1つだけです（複数・フォルダ・ファイルでないものは受けません）。",
+  icon_broken: "手で入れたアイコンの画像を読めません（消えた・壊れた など）。入れ直してください。",
+  icon_safe_mode: "既定の見た目で動いている間（セーフモード）は、アイコンを入れられません。",
   // 曲をごみ箱へ移す（v3.3.0）。断ったときは、その曲のファイルもライブラリも変えていない
   track_not_in_library: "その曲はライブラリにありません（もう外したか、一覧が古い可能性があります）。何も移していません。",
   trash_not_allowed: "ライブラリの曲ファイルとして確かめられなかったので、ごみ箱へ移しませんでした（音声ファイルでない・フォルダ・リンク）。",
@@ -213,7 +219,7 @@ function errorAdvice(code: string | null): string {
   return "";
 }
 
-/** 打ち切りの文。too_many_errors は最後のエラーの記号で原因を分ける（直し1回目） */
+/** 打ち切りの文。too_many_errors は最後のエラーの記号で原因を分ける */
 export function lyricsFetchAbortMessage(aborted: string, lastError: string | null): string {
   if (aborted !== "too_many_errors") return lyricsFetchAbortText[aborted] ?? aborted;
   const cause = lastError ? `（最後は「${lyricsFetchErrorText(lastError)}」）` : "";
@@ -368,6 +374,12 @@ export function skinNoticeText(n: SkinNotice): { level: "info" | "error"; text: 
         level: "error",
         text: "使う立ち絵に選んでいた絵が見つからないか読めなかったので、「スキンの立ち絵」に戻しました。",
         detail: n.error ? errorText[n.error] ?? "" : "",
+      };
+    case "icon_fallback":
+      return {
+        level: "error",
+        text: `手で入れたアイコンのうち ${n.count ?? 0} 個は、画像が見つからないか読めなかったので外しました（スキンのアイコンか、元のアイコンに戻ります）。`,
+        detail: "画像のファイルが消えたか、壊れています。設定のバックアップ（zip）には画像が入らないので、別の PC で書き出した zip を読み込んだときもこうなります。「設定 → 着せ替え」の「アイコン」の欄で入れ直してください。",
       };
     default:
       return { level: "info", text: n.code, detail: "" };

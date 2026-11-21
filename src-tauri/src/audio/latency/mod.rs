@@ -1,4 +1,4 @@
-//! 遅れを測る（v3.8.0 段3。仕様「同時再生と配信モード」2.3 の段3）。
+//! 遅れを測る（v3.8.0。仕様「同時再生と配信モード」2.3 ）。
 //!
 //! Windows は機器ごとの鳴るまでの遅れを教えない（GetStreamLatency が 0。仕様 13.3）うえ、仮想ケーブルの出口に届くまでの遅れは
 //! 開くたびに 16〜33ms と変わる（13.3）ので、耳で合わせるのは難しい。そこで、出力ごとにクリックを鳴らして録り、
@@ -122,7 +122,7 @@ pub enum FailCode {
     CaptureBusy,
     CaptureFormat,
     CaptureOpen,
-    /// 録るデバイスを開くのを Windows が断った（マイクへのアクセスの設定。仮想ケーブルの出口も録音デバイスとして開くため。検査1回目の指摘4）
+    /// 録るデバイスを開くのを Windows が断った（マイクへのアクセスの設定。仮想ケーブルの出口も録音デバイスとして開くため）
     CaptureDenied,
     /// 開くのに時間がかかりすぎた
     OpenTimeout,
@@ -206,7 +206,7 @@ pub fn paired_input_name(output_name: &str) -> Option<String> {
     Some(format!("{}Output{}", &output_name[..i], &output_name[i + word.len()..]))
 }
 
-/// 録る所を名前から決める：対になる録音デバイスがあればそれ、無ければその出力のループバック（仕様 2.3 の段3）
+/// 録る所を名前から決める：対になる録音デバイスがあればそれ、無ければその出力のループバック（仕様 2.3 ）
 pub fn pick_capture(output_name: &str, inputs: &[DeviceInfo]) -> CaptureSource {
     paired_input_name(output_name)
         .and_then(|want| inputs.iter().find(|d| d.name == want))

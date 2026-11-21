@@ -5,7 +5,7 @@
 // マウスを乗せる・キーボードで選ぶと文字の吹き出し（Tip）、読み上げには aria-label で名前を渡す
 // （吹き出しの文は名前と同じなので、Tip の読み上げ用の文は付けない＝describe={false}。同じ名前を二重に読ませない）。
 // ファイル・フォルダの文字を隠す幅も、曲一覧の側の幅で決める（.topbar.narrow。3.7.0 まではウィンドウの幅 720px 未満）。
-// v3.8.0 段2-2：モード切替に「詳細」（仕様の「配信モード」）を足した。詳細かどうかは Rust が持つ（api.viewModeSet。pl://outputs で戻る）。
+// v3.8.0：モード切替に「詳細」（仕様の「配信モード」）を足した。詳細かどうかは Rust が持つ（api.viewModeSet。pl://outputs で戻る）。
 //   詳細で「通常」「コンパクト」を押すと詳細を抜けて押したほうになり、設定は詳細を抜けたあとの曲一覧の側の幅で決める（density.ts の pressMode）。
 //   詳細では、歌詞の画面を開いていても検索欄を出す（仕様 6.1。曲を探してキューに足せるように）。歌詞の画面で打ち始めたら「すべての曲」へ移って探す
 import { useEffect, useRef, useState } from "react";
@@ -61,7 +61,7 @@ function ViewModeSwitch(props: { width: number; labels: boolean }) {
 export function TopBar() {
   const r = useStore(route);
   const prog = useStore(importProgress);
-  // v3.9.0 直し7回目：曲一覧の実際の幅（立ち絵の専用の幅を引いたもの）は自動のコンパクトに、上の帯の文字は .main の幅（上の帯は立ち絵の上にもかかる）で決める
+  // v3.9.0：曲一覧の実際の幅（立ち絵の専用の幅を引いたもの）は自動のコンパクトに、上の帯の文字は .main の幅（上の帯は立ち絵の上にもかかる）で決める
   const listW = useStore(listPaneWidth);
   const mainW = useStore(mainPaneWidth);
   const narrow = listLayoutFor(mainW).topbarNarrow;
@@ -69,7 +69,7 @@ export function TopBar() {
   const timer = useRef<number | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 画面を移ったら検索語を消す。v3.8.0 段2-2：歌詞の画面で打ち始めて「すべての曲」へ移ったときだけは、打った語を持っていく
+  // 画面を移ったら検索語を消す。v3.8.0：歌詞の画面で打ち始めて「すべての曲」へ移ったときだけは、打った語を持っていく
   const carry = useRef<string | null>(null);
   useEffect(() => {
     if (carry.current !== null) {

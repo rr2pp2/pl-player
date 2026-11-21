@@ -42,3 +42,37 @@ export function pickIconPath(icons: IconTable | null | undefined, name: string, 
   if (!a) return null;
   return reducedMotion && a.still ? a.still : a.path;
 }
+
+/** v3.11.0：手で入れたアイコン（Rust が確かめたもの。Dark・Light 共通） */
+export interface ManualIconLike {
+  path: string;
+  still: string | null;
+  rev: string;
+}
+export type ManualIconTable = Record<string, Record<string, ManualIconLike>>;
+
+/**
+ * v3.11.0：出す画像。重なり順は 今の SVG（null）< スキンのアイコン < 手で入れたアイコン。
+ * 手のアイコンはその状態の枠だけを見る（状態のあるアイコンに default の枠は無い）。無ければスキンの選び方（pickIconPath）。
+ * rev は手のアイコンのときだけ（ファイルの名前が同じまま入れ直すので、URL に付けて読み直す）。
+ * セーフモードの間は、呼び出し側が手のアイコンもスキンも渡さない
+ */
+export function pickLayeredIcon(
+  manual: ManualIconTable | null | undefined,
+  icons: IconTable | null | undefined,
+  name: string,
+  state: string,
+  theme: string,
+  reducedMotion: boolean,
+): { path: string; rev: string | null } | null {
+  const m = manual?.[name]?.[state];
+  if (m) return { path: reducedMotion && m.still ? m.still : m.path, rev: m.rev };
+  const p = pickIconPath(icons, name, state, theme, reducedMotion);
+  return p ? { path: p, rev: null } : null;
+}
+
+/** URL に入れ直しの印を付ける（asset プロトコルは問い合わせの部分を読まないので、ファイルはそのまま。画面の読み直しだけが起きる） */
+export function withRev(url: string | null, rev: string | null): string | null {
+  if (!url) return null;
+  return rev ? `${url}?v=${encodeURIComponent(rev)}` : url;
+}

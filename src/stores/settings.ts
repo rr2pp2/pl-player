@@ -51,7 +51,7 @@ export const settings = createStore<AppSettings>({
   closeToTray: true,
   rescanOnStart: false,
   lyricsOnline: false,
-  skin: { activeSkinId: "builtin:default", characterVisible: true, avatar: "skin", characterScale: 1, safeModeNextStart: false, colors: {} },
+  skin: { activeSkinId: "builtin:default", characterVisible: true, avatar: "skin", characterScale: 1, safeModeNextStart: false, colors: {}, icons: {} },
 });
 
 export const hotkeyStatus = createStore<HotkeyStatus[]>([]);

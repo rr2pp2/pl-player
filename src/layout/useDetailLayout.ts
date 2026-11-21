@@ -1,4 +1,4 @@
-// v3.8.0 段2-2：詳細（仕様の「配信モード」）の配置を、今の窓の大きさ・設定・出力先の数で決める（AppShell が使う）。
+// v3.8.0：詳細（仕様の「配信モード」）の配置を、今の窓の大きさ・設定・出力先の数で決める（AppShell が使う）。
 // 決まりは src\layout\detailLayout.ts（純粋な関数）。ここでは、そこへ渡す曲一覧の行の高さ（density.ts）と再生バーの高さ（playerLayout.ts）を組み立てる。
 // 詳細でなければ null（画面の作りを今のまま変えない）。
 import type { AppSettings } from "../ipc/types";
@@ -11,7 +11,7 @@ import { registered } from "./outputs";
 import { PLAYER, playerLayout } from "./playerLayout";
 import { playerButtonShown } from "./visibility";
 
-/** detailLayout に渡す値（窓の幅を変えて計算し直せるよう、フックから分けた。v3.9.0 直し6回目：立ち絵の案内が使う） */
+/** detailLayout に渡す値（窓の幅を変えて計算し直せるよう、フックから分けた。v3.9.0：立ち絵の案内が使う） */
 export function detailInputFor(winW: number, winH: number, settings: AppSettings, collapsed: boolean, lyricsRow: boolean, slots: number): DetailInput {
   // 再生バーが3列か1段か（高さ 80・76）は、出力ボタンの幅だけで決まる（ほかのボタンは右の列の最低幅に入れていない）
   const outputW = playerButtonShown(settings.ui, "outputs") ? PLAYER.output3 : 0;
@@ -32,12 +32,12 @@ export function useDetailLayout(size: { width: number; height: number }, setting
   return detailLayout(detailInputFor(size.width, size.height, settings, collapsed, lyricsRow, registered(ov).length));
 }
 
-/** 立ち絵（v3.9.0 直し5・6回目）：隠すかを決める曲一覧の側の幅（専用の幅を取る前）。詳細ならミキサーの左（上下のときは中央の幅）、そうでなければ中央の幅 */
+/** 立ち絵（v3.9.0）：隠すかを決める曲一覧の側の幅（専用の幅を取る前）。詳細ならミキサーの左（上下のときは中央の幅）、そうでなければ中央の幅 */
 export function characterPaneOf(winW: number, D: DetailLayout | null, collapsed: boolean): number {
   return D ? D.listW : centerWidth(winW, collapsed);
 }
 
-/** 立ち絵：曲一覧の側に残す幅（隠す境目）。詳細なら詳細の配置が曲一覧に必ず残す幅（DETAIL.listMin。直し6回目。作者の決定「詳細でも出す」）、そうでなければ 634 */
+/** 立ち絵：曲一覧の側に残す幅（隠す境目）。詳細なら詳細の配置が曲一覧に必ず残す幅（DETAIL.listMin。作者の決定「詳細でも出す」）、そうでなければ 634 */
 export function characterMinListOf(D: DetailLayout | null): number {
   return D ? DETAIL.listMin : MIN_LIST_SIDE_PX;
 }

@@ -194,6 +194,12 @@ pub struct SkinSettings {
     /// オブジェクトでない値は空（`de_colors`。設定全体は既定に戻さない）
     #[serde(default, deserialize_with = "de_colors")]
     pub colors: crate::skins::colors::Colors,
+    /// v3.11.0：手で入れたアイコン（名前 → 状態 → 形式。`skins::icons`）。画像はデータのフォルダの `icons\<名前>\<状態>.<形式>`。
+    /// Dark・Light 共通の1組で、スキンのアイコンの上に重ねる。変えるのは「アイコン」の欄の窓口と「既定の見た目に戻す」だけ
+    /// （画面から来た設定の保存では変わらない）。3.10.0 までの設定には無い（空＝手のアイコンなし。見た目は変わらない）。
+    /// 知らない枠・形式は捨てる（`sanitize`）。オブジェクトでない値は空（`de_icons`。設定全体は既定に戻さない）
+    #[serde(default, deserialize_with = "de_icons")]
+    pub icons: crate::skins::icons::Icons,
 }
 
 impl Default for SkinSettings {
@@ -205,8 +211,15 @@ impl Default for SkinSettings {
             character_scale: 1.0,
             safe_mode_next_start: false,
             colors: Default::default(),
+            icons: Default::default(),
         }
     }
+}
+
+/// v3.11.0：手で入れたアイコン。どんな JSON の値でも受け、オブジェクトでなければ空・形の違う値は捨てる（枠と形式の確かめは `sanitize`）
+fn de_icons<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::skins::icons::Icons, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(crate::skins::icons::from_json(&v))
 }
 
 /// v3.10.0：手で選んだ色。どんな JSON の値でも受け、オブジェクトでなければ空・文字でない値は捨てる（名前と値の確かめは `sanitize`）
@@ -349,6 +362,8 @@ impl AppSettings {
         sk.set_avatar(&avatar);
         // v3.10.0：手で選んだ色。15 個の名前と、スキンの色と同じ値の形だけを残し、形をそろえる
         sk.colors = crate::skins::colors::normalize(&sk.colors);
+        // v3.11.0：手で入れたアイコン。入れられる枠（ICONS の状態ごと・ウィンドウ・トレイ）と png・webp・gif だけを残す
+        sk.icons = crate::skins::icons::normalize(&sk.icons);
         self
     }
 }
@@ -357,7 +372,7 @@ impl AppSettings {
 ///
 /// 画面から来た設定・書き出しのときに当てる。ファイルには触らず、文字だけで決める
 /// （`..`・相対パス・ほかのフォルダ・ネットワーク上の場所は false）。大文字小文字と区切り（`/` と `\`）の違いは同じとみなす。
-/// v3.1.1 直し1回目：Windows の予約デバイス名（`CON`・`NUL`・`COM1` など。拡張子つきも）と、末尾が `.` か空白の名前も false
+/// v3.1.1：Windows の予約デバイス名（`CON`・`NUL`・`COM1` など。拡張子つきも）と、末尾が `.` か空白の名前も false
 /// （`backgrounds\CON` を書き出しで読むと、ファイルではなく端末を開いて止まりうる）
 pub fn background_in_dir(path: &str, bg_dir: &std::path::Path) -> bool {
     use std::path::{Component, Path};
@@ -368,7 +383,7 @@ pub fn background_in_dir(path: &str, bg_dir: &std::path::Path) -> bool {
     let (Some(parent), Some(name)) = (p.parent(), p.file_name()) else {
         return false;
     };
-    // v3.1.1 直し2回目（検査2回目の指摘B）：`:` を含む名前は断る（`NUL:` のようなデバイス名と、代替データストリーム `x.png:ads`）
+    // v3.1.1：`:` を含む名前は断る（`NUL:` のようなデバイス名と、代替データストリーム `x.png:ads`）
     let name = name.to_string_lossy();
     if name.contains(':') || is_reserved_device_name(&name) {
         return false;
@@ -849,7 +864,7 @@ mod tests {
         }
     }
 
-    /// v3.1.1 直し1回目：予約デバイス名の背景は受けない（書き出しで端末を開かない）
+    /// v3.1.1：予約デバイス名の背景は受けない（書き出しで端末を開かない）
     #[test]
     fn background_rejects_reserved_device_names() {
         let bg = std::path::Path::new(r"C:\data\backgrounds");
@@ -860,7 +875,7 @@ mod tests {
             assert!(is_reserved_device_name(bad), "{bad}");
             assert!(!background_in_dir(&format!(r"C:\data\backgrounds\{bad}"), bg), "{bad}");
         }
-        // v3.1.1 直し2回目（検査2回目の指摘B）：`:` を含む名前（`NUL:`・`CON:`・代替データストリーム）
+        // v3.1.1：`:` を含む名前（`NUL:`・`CON:`・代替データストリーム）
         for bad in ["NUL:", "CON:", "con:.png", "COM1:", "bg-0123.png:ads", "bg.png:Zone.Identifier:$DATA", "x:y"] {
             assert!(!background_in_dir(&format!(r"C:\data\backgrounds\{bad}"), bg), "{bad}");
         }

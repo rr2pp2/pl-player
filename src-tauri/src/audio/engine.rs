@@ -60,7 +60,7 @@ pub enum Internal {
     /// `serial` はストリームの番号（閉じたストリームの遅れた知らせを見分ける）
     StreamError { slot: usize, serial: u64, kind: cpal::ErrorKind, msg: String },
     DevicesChanged,
-    /// デバイスを開く役（別のスレッド）からの結果（検査1回目の指摘4：開くのに時間がかかっても、ほかの出力を止めない）。
+    /// デバイスを開く役（別のスレッド）からの結果。
     /// `present` は、開けなかったときにそのデバイスが一覧にあったか（一覧にある＝開けません／無い＝切断中。13.5 の12）
     Opened { slot: usize, serial: u64, result: Result<Box<OutputStream>, OpenFail>, present: bool },
 }

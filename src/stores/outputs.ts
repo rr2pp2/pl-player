@@ -1,4 +1,4 @@
-// v3.8.0 段2-2：出力先（同時再生）と表示のモード（通常／詳細）の写し、メーターの受け口。正しい状態は Rust 側にある。
+// v3.8.0：出力先（同時再生）と表示のモード（通常／詳細）の写し、メーターの受け口。正しい状態は Rust 側にある。
 //
 // - 出力先の設定を書くのは Rust だけ（画面は api.output* の細かい操作を送るだけ）。変わるたびに pl://outputs で全部が来る
 //   （グローバルホットキーで詳細を切り替えたときも、これで届く）
@@ -24,7 +24,7 @@ export const outputs = createStore<OutputsView>({
 export const isDetail = (v: OutputsView): boolean => v.mode === "detail";
 
 /**
- * 起動時：先に知らせを受け始めてから、今の全部を引く（引いている間に来た変化を取りこぼさない。段2-2 検査1回目の指摘10）。
+ * 起動時：先に知らせを受け始めてから、今の全部を引く（引いている間に来た変化を取りこぼさない）。
  * 引いている間に知らせが来ていたら、そちらのほうが新しいので、引いた結果は使わない
  */
 export async function initOutputs() {
@@ -58,7 +58,7 @@ export function loadDevices(): Promise<void> {
 
 /**
  * 一覧を見始める（返した関数で止める）。最初の1つで一覧を引き、デバイスの変化の知らせを受け始める。
- * 最後の1つが止めたら知らせの受け口を外す（画面が出ていない間は引き直さない。段2-2 検査1回目の指摘4。3.7.0 の設定画面と同じ）
+ * 最後の1つが止めたら知らせの受け口を外す（画面が出ていない間は引き直さない。3.7.0 の設定画面と同じ）
  */
 export function watchDevices(): () => void {
   deviceUsers++;
@@ -91,7 +91,7 @@ let running = false;
 const IDLE: readonly MeterView[] = [IDLE_VIEW, IDLE_VIEW, IDLE_VIEW];
 
 /**
- * 開始・停止の通し番号（段2-2 検査1回目の指摘3）。meter_start・meter_stop は非同期のコマンドで、実行の順番が入れ替わりうる。
+ * 開始・停止の通し番号。meter_start・meter_stop は非同期のコマンドで、実行の順番が入れ替わりうる。
  * Rust はいちばん大きい番号だけを効かせる（MeterControl）。画面を読み込み直しても前より大きくなるよう、今の時刻（マイクロ秒ほど）から始める
  */
 let seq = 0;

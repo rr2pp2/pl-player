@@ -1,6 +1,7 @@
 // invoke を呼ぶのはここだけ。型付きの関数にして外へ出す。
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
+  AppIconPreviews,
   AppInfo,
   AppSettings,
   ArtChange,
@@ -174,7 +175,7 @@ export const api = {
     return invoke<void>("meter_start", { seq, onFrame: ch });
   },
   meterStop: (seq: number) => invoke<void>("meter_stop", { seq }),
-  // 遅れを測る（v3.8.0 段3）。曲を流している間・ほかの測定の間は、Rust が始めずに abort で返す
+  // 遅れを測る（v3.8.0）。曲を流している間・ほかの測定の間は、Rust が始めずに abort で返す
   latencySetup: () => invoke<LatencySetup>("latency_setup"),
   /**
    * 測る（通常は約 6 秒）。run は測るたびに増やす番号（0 は使わない）。choices は録る所を選び直した出力だけ
@@ -223,7 +224,7 @@ export const api = {
   avatarsPickImage: (slot: "playing" | "stopped") => invoke<PickedImage | null>("avatars_pick_image", { slot }),
   avatarsCancelPick: () => invoke<void>("avatars_cancel_pick"),
   avatarsCreate: (name: string, playing: string, stopped: string | null) => invoke<AvatarSummary>("avatars_create", { name, playing, stopped }),
-  /** 作った立ち絵を変える（v3.9.0 直し2回目）。playing・stopped は差し替える画像の印（null ならそのまま）、removeStopped なら停止中を外す。名前が空なら今の名前のまま */
+  /** 作った立ち絵を変える（v3.9.0）。playing・stopped は差し替える画像の印（null ならそのまま）、removeStopped なら停止中を外す。名前が空なら今の名前のまま */
   avatarsUpdate: (id: string, name: string, playing: string | null, stopped: string | null, removeStopped: boolean) =>
     invoke<AvatarSummary>("avatars_update", { id, name, playing, stopped, removeStopped }),
   avatarsDelete: (id: string) => invoke<SkinState>("avatars_delete", { id }),
@@ -231,4 +232,12 @@ export const api = {
   avatarsUse: (choice: string) => invoke<SkinState>("avatars_use", { choice }),
   /** 立ち絵を出さない（avatars_use の "none" と同じ。設定の「既定の見た目に戻す」の隣のボタン） */
   avatarsHide: () => invoke<SkinState>("avatars_hide"),
+
+  // 手で入れるアイコン（v3.11.0）。画面からパスは渡さない（押して選ぶときは Rust がファイルを選ぶ画面を出す。
+  // 落としたときは、ドロップの知らせの位置 x・y だけを返し、Rust が自分で控えた OS のパスを使う）。枠は名前と状態で指す
+  iconsPick: (name: string, state: string) => invoke<SkinState | null>("icons_pick", { name, state }),
+  iconsDrop: (name: string, state: string, x: number, y: number) => invoke<SkinState>("icons_drop", { name, state, x, y }),
+  iconsReset: (name: string, state: string) => invoke<SkinState>("icons_reset", { name, state }),
+  iconsClear: () => invoke<SkinState>("icons_clear"),
+  iconsAppPreview: () => invoke<AppIconPreviews>("icons_app_preview"),
 };

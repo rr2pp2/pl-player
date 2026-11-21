@@ -42,7 +42,7 @@ export function Tip(props: {
       setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - 288)), top: r.bottom + 6, below: true });
       return;
     }
-    // v3.8.0 段2-2：above は上に出す（再生バーの出力ボタン。画面の下の端にあるため）。左端の決め方は below と同じ
+    // v3.8.0：above は上に出す（再生バーの出力ボタン。画面の下の端にあるため）。左端の決め方は below と同じ
     if (props.place === "above") {
       setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - 288)), top: r.top - 6, below: false, above: true });
       return;

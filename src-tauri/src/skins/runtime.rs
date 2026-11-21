@@ -2,6 +2,8 @@
 //! 画面・トレイ・二重起動の知らせから呼ばれる。ファイルの扱いは package.rs、設定の保存は settings::store。
 //! v3.9.0：使う立ち絵（登録した立ち絵・ほかのスキンの立ち絵・出さない）を解いて、画面へ渡す（`refresh_character`）。
 //! 立ち絵のファイルの扱いは avatars.rs。
+//! v3.11.0：手で入れたアイコン（設定の `skin.icons` と `icons\` の中の画像）を確かめて画面へ渡す（`refresh_icons`）。
+//! ウィンドウ・トレイのアイコンは 手で入れたもの → スキン → 組み込み の順（`app_icon_sources`）。ファイルの扱いは icons.rs。
 //!
 //! 鍵（`Runtime` の Mutex）を持ったまま、Tauri のメインスレッドを待つ呼び出し（ウィンドウ・トレイのアイコン・ダイアログ・
 //! 設定の保存と通知）をしない。どの関数も、鍵は値を出し入れする間だけ持つ（v3.8.0〜3.8.1 で2回、この形で固まったため）
@@ -12,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::manifest::{from_skin, skin_error};
 use super::names::BUILTIN_ID;
 use super::avatars::{self, AvatarList, AvatarSummary, PickedImage, Slot};
+use super::icons;
 use super::package::{self, CharacterAssets, Installed, Inspection, ResolvedSkin, SkinSummary, Staged};
 use super::{images, Dirs};
 use crate::commands::{ev, AppState};
@@ -36,9 +39,11 @@ pub struct Runtime {
     pub character: Option<CharacterAssets>,
     /// v3.9.0：立ち絵を作るために選んで確かめた画像（再生中・停止中の2枠。作る・取り消す・選び直すまで）
     pub picks: [Option<avatars::Picked>; 2],
-    /// v3.9.0（直し1回目）：選んだ画像の世代。取り消す（`clear_picks`）たびに1つ進める。ファイルを選ぶ前に控えた世代と
+    /// v3.9.0：選んだ画像の世代。取り消す（`clear_picks`）たびに1つ進める。ファイルを選ぶ前に控えた世代と
     /// 違えば、あとから届いた確かめの結果は置かずに捨てる（取り消したあとに画像がメモリに残らないように）
     pub pick_gen: u64,
+    /// v3.11.0：いま画面に当てる手のアイコン（設定の `skin.icons` を確かめたもの。セーフモードの間は空）
+    pub manual_icons: icons::Resolved,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -46,10 +51,13 @@ pub struct Runtime {
 pub struct SkinNotice {
     /// `broken_fallback`（前に選んでいたスキンが壊れていたので既定に戻した）・`safe_mode`（既定の見た目で起動した）・
     /// `safe_mode_second`（2つ目の起動の --safe-mode で既定の見た目にした）・`app_icon_failed`・
-    /// `avatar_fallback`（v3.9.0：使う立ち絵に選んでいた立ち絵・スキンが無い・読めないので「スキンの立ち絵」に戻した）
+    /// `avatar_fallback`（v3.9.0：使う立ち絵に選んでいた立ち絵・スキンが無い・読めないので「スキンの立ち絵」に戻した）・
+    /// `icon_fallback`（v3.11.0：手で入れたアイコンの画像が無い・読めないので、その枠を外した。外した数は `count`）
     pub code: String,
     pub id: Option<String>,
     pub error: Option<ErrorKind>,
+    /// v3.11.0：`icon_fallback` で外した枠の数（ほかの知らせでは None）
+    pub count: Option<u32>,
 }
 
 /// 画面へ渡す着せ替えの状態
@@ -68,6 +76,9 @@ pub struct SkinState {
     /// v3.9.0：いま画面に出す立ち絵（使う立ち絵を解いたもの。スキンの立ち絵を選んでいれば `skin.character` と同じ）。
     /// 画面はスキンの `character` ではなく、こちらを出す
     pub character: Option<CharacterAssets>,
+    /// v3.11.0：手で入れたアイコン（名前 → 状態 → 画像。Rust が `icons\` の中で確かめたものだけ。セーフモードの間は空）。
+    /// 画面は 手のアイコン → スキンのアイコン → 今の SVG の順に選ぶ（src\skins\icons.ts の `pickLayeredIcon`）
+    pub manual_icons: icons::Resolved,
 }
 
 pub fn dirs(state: &AppState) -> Dirs {
@@ -98,6 +109,7 @@ fn snapshot(state: &AppState, take_notice: bool) -> SkinState {
         notice,
         avatar: sk.avatar,
         character: rt.character.clone(),
+        manual_icons: rt.manual_icons.clone(),
     }
 }
 
@@ -122,10 +134,12 @@ pub(crate) fn with_active(mut s: AppSettings, id: &str) -> AppSettings {
     s
 }
 
-/// 「既定の見た目に戻す」で変わる設定（v3.10.0）：既定のスキン・手で選んだ色なし。立ち絵の選択と大きさはそのまま
+/// 「既定の見た目に戻す」で変わる設定（v3.10.0）：既定のスキン・手で選んだ色なし。立ち絵の選択と大きさはそのまま。
+/// v3.11.0：手で入れたアイコンも外す（画像のファイルは reset_look が消す）
 pub(crate) fn reset_look_settings(s: AppSettings) -> AppSettings {
     let mut s = with_active(s, BUILTIN_ID);
     s.skin.colors.clear();
+    s.skin.icons.clear();
     s
 }
 
@@ -164,20 +178,48 @@ fn refresh_character(app: &AppHandle, state: &AppState, notify: bool) {
         if notify {
             let mut rt = lock(state);
             if rt.notice.is_none() {
-                rt.notice = Some(SkinNotice { code: "avatar_fallback".into(), id: None, error: Some(kind) });
+                rt.notice = Some(SkinNotice { code: "avatar_fallback".into(), id: None, error: Some(kind), count: None });
             }
         }
     }
     lock(state).character = r.character;
 }
 
-/// ウィンドウ・タスクバー・トレイのアイコンを、スキンのもの（無ければ組み込みのもの）にする。
+/// ウィンドウ・トレイのアイコンにする画像のファイル（パスと、形式を決める名前）
+type IconFile = Option<(std::path::PathBuf, String)>;
+
+/// v3.11.0：ウィンドウ・トレイのアイコンにする画像のファイル。ウィンドウは 手で入れたもの → スキン、
+/// トレイは 手で入れたもの → スキンのトレイ → （トレイが無ければ）ウィンドウに決まった画像。どれも無ければ None（組み込みのアイコン）。
+/// セーフモードの間は手のアイコンを使わない（スキンは呼び出し側が None を渡す）
+fn app_icon_sources(state: &AppState, inst: Option<&Installed>) -> (IconFile, IconFile) {
+    let safe = lock(state).safe_mode;
+    let (manual_window, manual_tray) = if safe {
+        (None, None)
+    } else {
+        let chosen = state.settings().skin.icons;
+        let d = dirs(state);
+        (icons::app_file(&d, &chosen, icons::APP_WINDOW), icons::app_file(&d, &chosen, icons::APP_TRAY))
+    };
+    layer_app_icons(manual_window, manual_tray, inst.and_then(|i| i.app_icon_exact(false)), inst.and_then(|i| i.app_icon_exact(true)))
+}
+
+/// アプリのアイコンの重ね方（ファイルには触らない。テストで確かめる）：ウィンドウは 手 → スキン、
+/// トレイは 手のトレイ → スキンのトレイ → 決まったウィンドウの画像。None は組み込みのアイコン
+pub(crate) fn layer_app_icons<T: Clone>(manual_window: Option<T>, manual_tray: Option<T>, skin_window: Option<T>, skin_tray: Option<T>) -> (Option<T>, Option<T>) {
+    let window = manual_window.or(skin_window);
+    let tray = manual_tray.or(skin_tray).or_else(|| window.clone());
+    (window, tray)
+}
+
+/// ウィンドウ・タスクバー・トレイのアイコンを、手で入れたもの（v3.11.0）→ スキンのもの → 組み込みのもの の順で決めて当てる。
 /// exe・ショートカット・スタートメニューのアイコンは変わらない（ビルドのときに exe に入れたもの）
 pub fn apply_app_icons(app: &AppHandle, inst: Option<&Installed>) {
+    let state = app.state::<AppState>();
+    let (window_src, tray_src) = app_icon_sources(&state, inst);
     let default = app.default_window_icon().cloned();
     let mut failed = false;
-    let mut pick = |tray: bool, size: u32| -> Option<tauri::image::Image<'static>> {
-        let (path, rel) = inst?.app_icon_file(tray)?;
+    let mut pick = |src: IconFile, size: u32| -> Option<tauri::image::Image<'static>> {
+        let (path, rel) = src?;
         let r = std::fs::read(&path)
             .map_err(|e| AppError::from_io(&e, &path))
             .and_then(|data| images::app_icon_rgba(&data, &rel, size));
@@ -190,8 +232,8 @@ pub fn apply_app_icons(app: &AppHandle, inst: Option<&Installed>) {
             }
         }
     };
-    let window_icon = pick(false, 256).or_else(|| default.clone());
-    let tray_icon = pick(true, 64).or_else(|| default.clone());
+    let window_icon = pick(window_src, icons::WINDOW_ICON_PX).or_else(|| default.clone());
+    let tray_icon = pick(tray_src, icons::TRAY_ICON_PX).or_else(|| default.clone());
     if let Some(w) = app.get_webview_window("main") {
         if let Some(i) = window_icon {
             if w.set_icon(i).is_err() {
@@ -255,6 +297,14 @@ pub fn startup(app: &AppHandle, safe_arg: bool) {
     // v3.9.0：使う立ち絵（無い・読めなければ「スキンの立ち絵」に戻して知らせる）。作る途中で終わった一時の場所を消す
     avatars::clean_staging(&dirs(&state));
     refresh_character(app, &state, true);
+    // v3.11.0：手で入れたアイコン（画像が無い・読めない枠は外して知らせる）。書く途中で終わった一時の場所を消す。
+    // ウィンドウ・トレイのアイコンを手で入れていれば当て直す（スキンが無いときは startup_inner が当てていないため）
+    icons::clean_staging(&dirs(&state));
+    refresh_icons(app, &state, true);
+    let safe = lock(&state).safe_mode;
+    if !safe && has_manual_app_icon(&state) {
+        reapply_app_icons(app, &state);
+    }
     lock(&state).started = true;
 }
 
@@ -276,7 +326,7 @@ fn startup_inner(app: &AppHandle, state: &AppState, safe_arg: bool) {
         let mut rt = lock(state);
         rt.safe_mode = true;
         rt.current = None;
-        rt.notice = Some(SkinNotice { code: "safe_mode".into(), id: None, error: None });
+        rt.notice = Some(SkinNotice { code: "safe_mode".into(), id: None, error: None, count: None });
         drop(rt);
         apply_app_icons(app, None);
         return;
@@ -285,7 +335,7 @@ fn startup_inner(app: &AppHandle, state: &AppState, safe_arg: bool) {
         let _ = save_active(app, state, BUILTIN_ID);
         let mut rt = lock(state);
         rt.current = None;
-        rt.notice = Some(SkinNotice { code: "broken_fallback".into(), id: Some(id), error: Some(kind) });
+        rt.notice = Some(SkinNotice { code: "broken_fallback".into(), id: Some(id), error: Some(kind), count: None });
         return;
     }
     if let Some(inst) = plan.installed {
@@ -332,6 +382,8 @@ pub fn apply(app: &AppHandle, id: &str) -> AppResult<SkinState> {
     }
     tracing::info!("skin applied: {id}");
     refresh_character(app, &state, false);
+    // v3.11.0：手のアイコンはスキンを替えても残る（セーフモードを抜けたときは、ここで当て直す）
+    refresh_icons(app, &state, false);
     emit(app, &state);
     Ok(snapshot(&state, false))
 }
@@ -343,18 +395,26 @@ pub fn reset(app: &AppHandle) -> AppResult<SkinState> {
 }
 
 /// 「既定の見た目に戻す」（設定画面・トレイのメニュー）。スキンを既定にし、手で選んだ色も全部外す（v3.10.0）。立ち絵は残す（v3.9.0）。
-/// 色を先に外してからスキンを戻す（スキンを戻せなくても、読めなくなった色はもう当たらない）
+/// 色を先に外してからスキンを戻す（スキンを戻せなくても、読めなくなった色はもう当たらない）。
+/// v3.11.0：手で入れたアイコンも色と一緒に外し、画面とアプリのアイコンが手放してから（スキンを戻したあとで）画像のファイルを消す
 pub fn reset_look(app: &AppHandle) -> AppResult<SkinState> {
     let state = app.state::<AppState>();
-    update_settings(app, &state, |s| {
-        let mut colorless = s.clone();
-        colorless.skin.colors = reset_look_settings(s.clone()).skin.colors;
-        (colorless != *s).then(|| {
-            tracing::info!("manual colors cleared (reset to the default look)");
-            colorless
-        })
-    })?;
-    reset(app)
+    {
+        let _f = icons::files_lock();
+        update_settings(app, &state, |s| {
+            let reset = reset_look_settings(s.clone());
+            let mut plain = s.clone();
+            plain.skin.colors = reset.skin.colors;
+            plain.skin.icons = reset.skin.icons;
+            (plain != *s).then(|| {
+                tracing::info!("manual colors and icons cleared (reset to the default look)");
+                plain
+            })
+        })?;
+    }
+    let r = reset(app);
+    remove_icon_files_if_cleared(&state);
+    r
 }
 
 /// v3.10.0：手で選んだ色を1つ変える（`None` なら外す）。決まりに合わなければ何も変えずに断る。保存して設定を画面へ知らせる
@@ -390,10 +450,11 @@ pub fn enter_safe_mode(app: &AppHandle) {
         let mut rt = lock(&state);
         rt.safe_mode = true;
         rt.current = None;
-        rt.notice = Some(SkinNotice { code: "safe_mode_second".into(), id: None, error: None });
+        rt.notice = Some(SkinNotice { code: "safe_mode_second".into(), id: None, error: None, count: None });
     }
     apply_app_icons(app, None);
     refresh_character(app, &state, false);
+    refresh_icons(app, &state, false);
     emit(app, &state);
 }
 
@@ -495,14 +556,14 @@ pub fn delete(app: &AppHandle, id: &str) -> AppResult<SkinState> {
     Ok(snapshot(&state, false))
 }
 
-/// v3.9.0（直し1回目）：使う立ち絵を変えて、画面の立ち絵を当て直す（消す前の切り替え・消せなかったときの戻し）
+/// v3.9.0：使う立ち絵を変えて、画面の立ち絵を当て直す（消す前の切り替え・消せなかったときの戻し）
 fn switch_avatar(app: &AppHandle, state: &AppState, choice: &str) {
     let _ = save_avatar(app, state, choice);
     refresh_character(app, state, false);
     emit(app, state);
 }
 
-/// v3.9.0（直し1回目）：使っている立ち絵（スキンの立ち絵を含む）を消すときの順番。使っていれば先に切り替え（画面が絵を手放す）、
+/// v3.9.0：使っている立ち絵（スキンの立ち絵を含む）を消すときの順番。使っていれば先に切り替え（画面が絵を手放す）、
 /// それから消す。消せなかったら切り替えを戻す。AppHandle を使わない部分（テストで順番を確かめる）
 pub(crate) fn switch_then_delete(
     in_use: bool,
@@ -637,7 +698,7 @@ pub fn create(app: &AppHandle, name: &str, playing: &str, stopped: Option<&str>)
     }
 }
 
-/// 作った立ち絵を変える（v3.9.0 直し2回目）。`playing`・`stopped` は差し替える画像の印（avatars_pick_image が返したもの。無ければそのまま）。
+/// 作った立ち絵を変える（v3.9.0）。`playing`・`stopped` は差し替える画像の印（avatars_pick_image が返したもの。無ければそのまま）。
 /// `remove_stopped` なら停止中を外す（`stopped` と同時には指せない）。名前が空なら今の名前のまま。
 /// 使っている立ち絵なら、画面の絵を当て直す（差し替えた絵はファイル名が変わるので、動く画像も読み直される）
 pub fn update(app: &AppHandle, id: &str, name: &str, playing: Option<&str>, stopped: Option<&str>, remove_stopped: bool) -> AppResult<AvatarSummary> {
@@ -652,7 +713,7 @@ pub fn update(app: &AppHandle, id: &str, name: &str, playing: Option<&str>, stop
         (None, true) => avatars::StoppedChange::Remove,
         (None, false) => avatars::StoppedChange::Keep,
     };
-    // 使っている立ち絵なら、avatar.json を置き換えた直後（古い絵を消す前）に解き直して通知する（直し3回目：画面が新しい絵へ移ってから古い絵を消す）
+    // 使っている立ち絵なら、avatar.json を置き換えた直後（古い絵を消す前）に解き直して通知する（画面が新しい絵へ移ってから古い絵を消す）
     let in_use = avatars::Choice::parse(&state.settings().skin.avatar) == Some(avatars::Choice::Avatar(id.to_string()));
     let after_commit = || {
         if in_use {
@@ -691,7 +752,7 @@ pub fn delete_avatar(app: &AppHandle, id: &str) -> AppResult<SkinState> {
     Ok(snapshot(&state, false))
 }
 
-/// v3.9.0（直し1回目）：立ち絵を出さない（設定の「立ち絵を出さない」・タスクトレイの「立ち絵を出さない」）。「使う」で「出さない」を選んだのと同じ。
+/// v3.9.0：立ち絵を出さない（設定の「立ち絵を出さない」・タスクトレイの「立ち絵を出さない」）。「使う」で「出さない」を選んだのと同じ。
 /// 作った立ち絵は消さない。画面（WebView）を通らず Rust だけで済む（立ち絵の画像で画面が崩れたときの逃げ道）。
 /// タスクトレイからはメインのスレッドで呼ばれるので、呼ぶ側（platform::windows::tray）が別のスレッドへ渡す
 pub fn hide_avatar(app: &AppHandle) -> AppResult<SkinState> {
@@ -713,5 +774,204 @@ pub fn use_avatar(app: &AppHandle, choice: &str) -> AppResult<SkinState> {
 pub fn after_settings_import(app: &AppHandle) {
     let state = app.state::<AppState>();
     refresh_character(app, &state, true);
+    // v3.11.0：zip の値で使われなくなった枠の画像を先に消す（残しておくと、あとで同じ枠を指す zip を読んだとき、
+    // 使った覚えのない古い画像が出るため）。消すのは読み込んだ設定に無い枠だけ（読み直しで外れた枠は、下の refresh_icons が外す）
+    {
+        let _f = icons::files_lock();
+        icons::remove_unused(&dirs(&state), &state.settings().skin.icons);
+    }
+    // zip の手のアイコンのうち、この PC に画像の無い枠を外して知らせる。ウィンドウ・トレイのアイコンも当て直す
+    refresh_icons(app, &state, true);
+    reapply_app_icons(app, &state);
     emit(app, &state);
+}
+
+// ---------------- v3.11.0：手で入れるアイコン ----------------
+
+/// 設定の手のアイコンを確かめて、画面に当てるものを決め直す（入れた・戻した・スキンを替えた・セーフモード・起動・設定の読み込み）。
+/// 画像が無い・読めない枠は設定から外して保存する。`notify` なら知らせる（起動・設定の読み込み。使う人が自分で戻したときは知らせない）。
+/// セーフモードの間は当てない（設定は変えない）。ファイルの確かめと設定の書き込みは files_lock の中で一続きにする
+fn refresh_icons(app: &AppHandle, state: &AppState, notify: bool) {
+    let safe = lock(state).safe_mode;
+    if safe {
+        lock(state).manual_icons = icons::Resolved::new();
+        return;
+    }
+    let _f = icons::files_lock();
+    let chosen = state.settings().skin.icons;
+    // 読めなかった枠は、少し待ってもう1回読んでから外す（一時的に掴まれているだけの画像で外さない）
+    let (resolved, missing) = icons::resolve_retrying(&dirs(state), &chosen, ICON_RETRY_WAIT);
+    if !missing.is_empty() {
+        let n = missing.len();
+        tracing::warn!("{n} manual icon(s) could not be used and were removed from the settings");
+        let _ = update_settings(app, state, |cur| {
+            let mut t = cur.clone();
+            // 読んだあとで入れ直された枠（形式が変わった）は外さない
+            for (name, st, ext) in &missing {
+                if icons::get(&t.skin.icons, name, st) == Some(ext.as_str()) {
+                    icons::set(&mut t.skin.icons, name, st, None);
+                }
+            }
+            (t != *cur).then_some(t)
+        });
+        if notify {
+            let mut rt = lock(state);
+            if rt.notice.is_none() {
+                rt.notice = Some(SkinNotice { code: "icon_fallback".into(), id: None, error: Some(ErrorKind::IconBroken), count: Some(n as u32) });
+            }
+        }
+    }
+    lock(state).manual_icons = resolved;
+}
+
+/// 読めなかった手のアイコンを読み直すまで待つ時間（読めない枠があるときだけ待つ）
+const ICON_RETRY_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// 手でウィンドウかトレイのアイコンを入れているか
+fn has_manual_app_icon(state: &AppState) -> bool {
+    let chosen = state.settings().skin.icons;
+    chosen.contains_key(icons::APP_WINDOW) || chosen.contains_key(icons::APP_TRAY)
+}
+
+/// いま当てているスキン（既定・セーフモードなら None。読めなければ None）
+fn current_installed(app: &AppHandle, state: &AppState) -> Option<Installed> {
+    let id = lock(state).current.as_ref().map(|c| c.id.clone())?;
+    package::load(&dirs(state), &id, &app_version(app)).ok()
+}
+
+/// ウィンドウ・トレイのアイコンを、今のスキンと手のアイコンで当て直す（鍵は持たずに呼ぶ）
+fn reapply_app_icons(app: &AppHandle, state: &AppState) {
+    let inst = current_installed(app, state);
+    apply_app_icons(app, inst.as_ref());
+}
+
+/// 手のアイコンが1つも残っていなければ、`icons\` の画像を全部消す（全部戻す・既定の見た目に戻すのあと。その間に入れ直されていれば消さない）
+fn remove_icon_files_if_cleared(state: &AppState) {
+    let _f = icons::files_lock();
+    if state.settings().skin.icons.is_empty() {
+        icons::remove_all(&dirs(state));
+    }
+}
+
+fn icon_slot(name: &str, st: &str) -> AppResult<(&'static str, &'static str)> {
+    icons::slot(name, st).ok_or_else(|| icons::for_screen(skin_error(ErrorKind::IconSlotInvalid, format!("{}/{}", from_skin(name), from_skin(st)))))
+}
+
+/// セーフモードの間は手のアイコンを入れない（枠を押したとき、ファイルを選ぶ画面を出す前にも確かめる）
+pub fn refuse_icons_in_safe_mode(app: &AppHandle) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    let safe = lock(&state).safe_mode;
+    if safe {
+        tracing::warn!("manual icon refused: safe mode");
+        return Err(AppError::new(ErrorKind::IconSafeMode, String::new()));
+    }
+    Ok(())
+}
+
+/// 画像のファイル（枠に落とした・選んだもの）を、その枠の手のアイコンにする。確かめ（復号）は鍵の外で行い、
+/// ファイルを置くのと設定に書くのは files_lock の中で一続きにする。セーフモードの間は断る
+pub fn set_icon_file(app: &AppHandle, name: &str, st: &str, path: &std::path::Path) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    let (n, s) = icon_slot(name, st)?;
+    refuse_icons_in_safe_mode(app)?;
+    // 断る文の詳しいところ（英語・アプリが決めた置き場所の名前）は画面へ返さない（icons::for_screen）
+    let (data, file_name) = icons::read_file(path).map_err(icons::for_screen)?;
+    let prepared = icons::prepare(n, s, data, &file_name).map_err(icons::for_screen)?;
+    {
+        let _f = icons::files_lock();
+        icons::write(&dirs(&state), &prepared).map_err(icons::for_screen)?;
+        update_settings(app, &state, |cur| {
+            (icons::get(&cur.skin.icons, n, s) != Some(prepared.ext)).then(|| {
+                let mut t = cur.clone();
+                icons::set(&mut t.skin.icons, n, s, Some(prepared.ext));
+                t
+            })
+        })?;
+    }
+    tracing::info!("manual icon set: {n}/{s}");
+    refresh_icons(app, &state, false);
+    if icons::is_app(n) {
+        reapply_app_icons(app, &state);
+    }
+    emit(app, &state);
+    Ok(snapshot(&state, false))
+}
+
+/// 1つの枠の手のアイコンを外す（スキンのアイコンか今のアイコンに戻る）。画面が手放してから画像のファイルを消す
+pub fn reset_icon(app: &AppHandle, name: &str, st: &str) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    let (n, s) = icon_slot(name, st)?;
+    {
+        let _f = icons::files_lock();
+        update_settings(app, &state, |cur| {
+            icons::get(&cur.skin.icons, n, s).is_some().then(|| {
+                let mut t = cur.clone();
+                icons::set(&mut t.skin.icons, n, s, None);
+                t
+            })
+        })?;
+    }
+    tracing::info!("manual icon reset: {n}/{s}");
+    refresh_icons(app, &state, false);
+    if icons::is_app(n) {
+        reapply_app_icons(app, &state);
+    }
+    emit(app, &state);
+    {
+        let _f = icons::files_lock();
+        if icons::get(&state.settings().skin.icons, n, s).is_none() {
+            icons::remove(&dirs(&state), n, s);
+        }
+    }
+    Ok(snapshot(&state, false))
+}
+
+/// 手で入れたアイコンを全部外す（「手で入れたアイコンを全部戻す」）。スキン・手の色・立ち絵は変えない。画像のファイルも消す
+pub fn clear_icons(app: &AppHandle) -> AppResult<SkinState> {
+    let state = app.state::<AppState>();
+    {
+        let _f = icons::files_lock();
+        update_settings(app, &state, |cur| {
+            (!cur.skin.icons.is_empty()).then(|| {
+                let mut t = cur.clone();
+                t.skin.icons.clear();
+                t
+            })
+        })?;
+    }
+    tracing::info!("manual icons cleared");
+    refresh_icons(app, &state, false);
+    reapply_app_icons(app, &state);
+    emit(app, &state);
+    remove_icon_files_if_cleared(&state);
+    Ok(snapshot(&state, false))
+}
+
+/// 設定の「アイコン」の欄に出す、今のウィンドウ・トレイのアイコンの見本（data: URL の PNG）
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppIconPreviews {
+    pub window: Option<String>,
+    pub tray: Option<String>,
+}
+
+/// 今のウィンドウ・トレイのアイコン（手で入れたもの → スキン → 組み込み。当てるときと同じ決め方）を見本にする
+pub fn app_icon_previews(app: &AppHandle) -> AppIconPreviews {
+    let state = app.state::<AppState>();
+    let inst = current_installed(app, &state);
+    let (window_src, tray_src) = app_icon_sources(&state, inst.as_ref());
+    let default = app.default_window_icon().cloned();
+    let one = |src: IconFile, size: u32| -> Option<String> {
+        let from_file = src.and_then(|(path, rel)| {
+            let data = std::fs::read(&path).ok()?;
+            let (rgba, w, h) = images::app_icon_rgba(&data, &rel, size).ok()?;
+            images::rgba_data_url(rgba, w, h, size)
+        });
+        from_file.or_else(|| {
+            let d = default.as_ref()?;
+            images::rgba_data_url(d.rgba().to_vec(), d.width(), d.height(), size)
+        })
+    };
+    // 画面では縦横 32px・16px で出す。高い倍率の画面でもにじまないように2倍で作る
+    AppIconPreviews { window: one(window_src, 64), tray: one(tray_src, 32) }
 }

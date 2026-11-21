@@ -14,7 +14,7 @@ import { Modal } from "../components/Modal";
 const mb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 
-/** v3.10.0（直し3回目）：計算できなかったテーマは「基準を満たしています」と出さず、error に理由を返す（前は例外を捨てて0件に見えていた） */
+/** v3.10.0：計算できなかったテーマは「基準を満たしています」と出さず、error に理由を返す（前は例外を捨てて0件に見えていた） */
 function contrastByTheme(a: SkinAppearance | null): { theme: string; rows: Result[]; error: string | null }[] {
   if (!a) return [];
   const out: { theme: string; rows: Result[]; error: string | null }[] = [];

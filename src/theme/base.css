@@ -855,7 +855,7 @@ textarea {
   height: 22px;
   transition: transform var(--dur-hover) var(--ease);
 }
-/* 右の列：（段2：出力ボタン）・全体の音量・歌詞のボタン・「···」。右に寄せる */
+/* 右の列：（出力ボタン）・全体の音量・歌詞のボタン・「···」。右に寄せる */
 .player-right {
   min-width: 0;
   display: flex;
@@ -886,7 +886,7 @@ textarea {
 }
 :root:has(.player.one-row) {
   --player-h: 76px;
-  --player-output-w: 80px; /* v3.8.0 段2-2：1段の出力ボタン（アイコンだけ。src\layout\playerLayout.ts の PLAYER.output1） */
+  --player-output-w: 80px; /* v3.8.0：1段の出力ボタン（アイコンだけ。src\layout\playerLayout.ts の PLAYER.output1） */
 }
 .player.one-row .player-left {
   gap: 10px;
@@ -1185,7 +1185,7 @@ textarea {
 }
 /* 取り込み中の知らせ（v3.8.0）：入りきらないときは、検索欄より先に縮めて省略記号で切る（モード切替を押し出さない）。
    幅に余裕があれば今までどおり、中身の幅で 140〜240px（帯の 140px が最低幅の代わり。縮めたときは帯ごと切る）。
-   3.7.0 の min-width: 140px のままだと縮まず、モード切替が文字つきになる幅（曲一覧の側 674〜703px）で右端が最大 30px 切れていた（検査1回目の指摘2） */
+   3.7.0 の min-width: 140px のままだと縮まず、モード切替が文字つきになる幅（曲一覧の側 674〜703px）で右端が最大 30px 切れていた */
 .import-status {
   display: flex;
   flex-direction: column;
@@ -2038,7 +2038,7 @@ img.skin-icon {
   margin-right: var(--character-rail-w);
 }
 /* 専用の幅は窓の幅で決まり（src\skins\character.ts の railWidthFor ＋ 12px。AppShell が --character-rail-w に入れる）、絵の縦横比・幅に左右されない。
-   v3.9.0 直し4回目：念のため幅を3つとも同じ値に固め、contain: strict で中身（高さに合わせた絵）が外の大きさに効かないようにした。
+   v3.9.0：念のため幅を3つとも同じ値に固め、contain: strict で中身（高さに合わせた絵）が外の大きさに効かないようにした。
    欄は流れの外（position: absolute）で、曲一覧などは同じ値の margin-right で空ける */
 .character-rail {
   position: absolute;
@@ -2232,7 +2232,88 @@ img.skin-icon {
   flex: none;
   width: 120px;
 }
-/* 直し2回目：カード全体を押すと切り替わる（キーボードでも。色は今の変数だけ） */
+/* 手で入れるアイコンの欄（v3.11.0。色は今の変数だけ）。枠の中の見本は、その場所で出す大きさ（--slot-px）で描く。
+   img.skin-icon（20px）より強い決まりにして、スキンの画像・手の画像も同じ大きさで出す */
+.icon-group {
+  margin: 10px 0 4px;
+}
+.icon-group-label {
+  font-size: var(--fs-small);
+  color: var(--c-secondary);
+  margin-bottom: 4px;
+}
+.icon-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 6px;
+}
+.icon-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-small);
+  min-width: 0;
+}
+.icon-slot.drop-over {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+  background: var(--c-selected);
+}
+.icon-slot-frame {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px dashed var(--c-outline);
+  border-radius: var(--radius-small);
+  background: var(--c-input);
+  color: var(--c-primary);
+  cursor: pointer;
+}
+.icon-slot.manual .icon-slot-frame {
+  border-style: solid;
+}
+.icon-slot-frame:hover:not(:disabled) {
+  background: var(--c-hover);
+}
+.icon-slot-frame:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+.icon-slot-frame:disabled {
+  cursor: default;
+}
+.icon-slot-frame .icon,
+.icon-slot-frame img.skin-icon {
+  width: var(--slot-px, 20px);
+  height: var(--slot-px, 20px);
+  flex: none;
+}
+.icon-slot-frame .icon-slot-app {
+  object-fit: contain;
+}
+/* 名前は切らない（省略記号にすると「シャッフル…」のように同じ名前の枠を見分けられない）。折り返して、状態は別の行に出す */
+.icon-slot-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-small);
+  line-height: 1.3;
+}
+.icon-slot-label {
+  overflow-wrap: anywhere;
+}
+.icon-slot-state {
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* カード全体を押すと切り替わる（キーボードでも。色は今の変数だけ） */
 .skin-card.pickable {
   cursor: pointer;
 }
@@ -2243,7 +2324,7 @@ img.skin-icon {
   outline: 2px solid var(--c-accent);
   outline-offset: -2px;
 }
-/* 直し3回目：大きさで立ち絵が隠れているときの案内。色は本文と同じ（伝えるのは文と【隠しています】の印。色だけに頼らない） */
+/* 大きさで立ち絵が隠れているときの案内。色は本文と同じ（伝えるのは文と【隠しています】の印。色だけに頼らない） */
 .avatar-window-note.narrow {
   color: var(--c-primary);
 }
@@ -2507,7 +2588,7 @@ img.skin-icon {
   border-color: var(--c-outline);
   background: transparent;
 }
-/* ---------- 同時再生（v3.8.0 段2-2）：詳細の配置・ミキサー・出力ボタン・出力のプルダウン・メーター ---------- */
+/* ---------- 同時再生（v3.8.0）：詳細の配置・ミキサー・出力ボタン・出力のプルダウン・メーター ---------- */
 /* 色は今の変数だけ（メーターの緑 --c-ok・黄 --c-favorite・赤 --c-danger、溝は --c-border の枠）。寸法は src\layout\detailLayout.ts・
    src\layout\playerLayout.ts と同じ値（scripts\ui-detail.test.mts で確かめる）。メーターの中の描画（帯・線・目盛り）だけは中で重ねて置く */
 
@@ -2591,7 +2672,7 @@ img.skin-icon {
 .mixer-row + .mixer-row {
   box-shadow: inset 0 1px 0 var(--c-border);
 }
-/* 上の段：名前は 48px まで縮み、それより先は「…」で切る（段2-2 検査1回目の指摘9）。印・状態・dB は縮めない。
+/* 上の段：名前は 48px まで縮み、それより先は「…」で切る。印・状態・dB は縮めない。
    いちばん混む場合（380px のミキサー・「個別」・「開けません」・dB・スキンで文字 +2px）でも名前に 48px が残る（scripts\ui-detail.test.mts）。
    万一入らなくても、段の外（オン/オフ・「…」の列）には出さない（overflow: hidden） */
 .mixer-row-top {
@@ -2715,7 +2796,7 @@ img.skin-icon {
   position: absolute;
   inset: 0;
 }
-/* 直前の最大の線：--c-primary の 2px の線に、パネルの色（不透明）の 1px の縁を付ける（段2-2 検査1回目の指摘8）。
+/* 直前の最大の線：--c-primary の 2px の線に、パネルの色（不透明）の 1px の縁を付ける。
    帯の色（Dark の黄 #ffd23f など）の上でも、縁が線と帯を分けるので見える。溝の上では線そのものが見える（scripts\theme-contrast.mts） */
 .meter-hold {
   position: absolute;
@@ -2818,12 +2899,12 @@ img.skin-icon {
 .output-btn.alert {
   border-color: var(--c-danger);
 }
-/* 3列で出力先が1つだけのときは、アイコンを外して状態の文字に中の幅いっぱい（112 − 枠 2 − 余白 16 ＝ 94px）を使う（段2-2 検査2回目の N2）。
+/* 3列で出力先が1つだけのときは、アイコンを外して状態の文字に中の幅いっぱい（112 − 枠 2 − 余白 16 ＝ 94px）を使う。
    日本語は太字でも1字が文字の大きさと同じ幅なので、「開けません」（5字）はスキンで文字を +2px にしても 80px で入る */
 .output-btn.alert .output-btn-text {
   font-weight: 700;
 }
-/* 鳴らせない出力のアイコンの角の「!」（段2-2 検査2回目の N1）。アイコンの枠（20px）の中に重ね、幅を増やさない。
+/* 鳴らせない出力のアイコンの角の「!」。アイコンの枠（20px）の中に重ね、幅を増やさない。
    地はパネルの色（不透明）、文字は --c-primary の太字（scripts\theme-contrast.mts）。危険の色は縁だけ。
    重ねる基準は .output-icon（position: relative） */
 .output-icon-mark {
@@ -2989,7 +3070,7 @@ img.skin-icon {
   }
 }
 
-/* ---------- v3.8.0 段3：遅れを測る（入口のボタンと小窓）。色の変数は足さない ----------
+/* ---------- v3.8.0：遅れを測る（入口のボタンと小窓）。色の変数は足さない ----------
    文字は --c-primary（断り・結果）・--c-secondary（説明）・--c-danger の太字（測れませんでした・押せない理由。文でも伝える）。
    小窓の上の組み合わせは scripts\theme-contrast.mts の「小窓（0.97）」で計算している。狭い窓でも切らずに折り返す（overflow-wrap） */
 .output-pop-foot {

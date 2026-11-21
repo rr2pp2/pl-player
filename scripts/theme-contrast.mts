@@ -135,7 +135,7 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "--c-favorite（星）／オンのボタンの面", fg: text("--c-favorite"), bg: favOn(panel), min: 3 });
   out.push({ name: "--c-favorite（星）／選んだ行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(selected), min: 3 });
   out.push({ name: "--c-favorite（星）／指を乗せた行のオンのボタンの面", fg: text("--c-favorite"), bg: favOn(hover), min: 3 });
-  // v3.8.0 段2-2（同時再生）：メーターの帯（図 3:1）。新しい色の変数は足さず、緑 --c-ok・黄 --c-favorite・赤 --c-danger を使い回す。
+  // v3.8.0（同時再生）：メーターの帯（図 3:1）。新しい色の変数は足さず、緑 --c-ok・黄 --c-favorite・赤 --c-danger を使い回す。
   // 帯は溝（--c-border の 1px の枠）の中に描き、中はその下の面の色のまま：ミキサー（パネル。行には面の色を重ねない）と、出力のプルダウン（メニューの面）。
   // 状態の文字（切断中・開けません・重複・音割れ）は --c-danger の文字で、上の「--c-danger／パネル」「--c-danger／メニュー」で確かめている
   // （行に --c-hover を重ねると、Dark の明るい背景画像で 4.17 になり 4.5 に届かなかったので、行には面の色を付けない）
@@ -147,7 +147,7 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
     out.push({ name: `メーター 黄の帯 --c-favorite／${label}`, fg: text("--c-favorite"), bg: bottom, min: 3 });
     out.push({ name: `メーター 赤の帯 --c-danger／${label}`, fg: text("--c-danger"), bg: bottom, min: 3 });
   }
-  // 段2-2 検査1回目の指摘8：直前の最大の線（--c-primary の 2px）には、パネルの色（不透明。rgb(--c-panel-rgb)）の 1px の縁がある（base.css の .meter-hold）。
+  // 直前の最大の線（--c-primary の 2px）には、パネルの色（不透明。rgb(--c-panel-rgb)）の 1px の縁がある（base.css の .meter-hold）。
   // 溝の上では線と溝の中（パネル）、帯の上では縁と帯の色、線と縁、の組み合わせで見分ける
   const edge = panelRgb;
   out.push({ name: "メーター 最大の線 --c-primary／溝の中（パネル）", fg: text("--c-primary"), bg: panel, min: 3 });
@@ -155,12 +155,12 @@ export function checks(t: Record<string, string>, s: Scene): Check[] {
   out.push({ name: "メーター 最大の線の縁／緑の帯 --c-ok", fg: edge, bg: text("--c-ok"), min: 3 });
   out.push({ name: "メーター 最大の線の縁／黄の帯 --c-favorite", fg: edge, bg: text("--c-favorite"), min: 3 });
   out.push({ name: "メーター 最大の線の縁／赤の帯 --c-danger", fg: edge, bg: text("--c-danger"), min: 3 });
-  // 段2-2 検査1回目の指摘2：出力ボタンの状態（切断中など・「!」）は --c-primary の太字（ボタンの面＝入力欄の上。上の「--c-primary／入力欄」）。
+  // 出力ボタンの状態（切断中など・「!」）は --c-primary の太字（ボタンの面＝入力欄の上。上の「--c-primary／入力欄」）。
   // 危険の色はボタンの縁だけに使う（--c-danger の文字はボタンの面の上で、Dark の明るい背景画像だと 4.17 で 4.5 に届かなかった）
   out.push({ name: "線 --c-danger（出力ボタンの縁）／パネル", fg: text("--c-danger"), bg: panel, min: 3 });
-  // 段2-2 検査2回目の N1：鳴らせない出力のアイコンの角の「!」（--c-primary の太字。地はパネルの色・不透明。base.css の .output-icon-mark）
+  // 鳴らせない出力のアイコンの角の「!」（--c-primary の太字。地はパネルの色・不透明。base.css の .output-icon-mark）
   out.push({ name: "出力ボタンの「!」 --c-primary／印の地（パネルの色）", fg: text("--c-primary"), bg: panelRgb, min: 4.5 });
-  // v3.8.0 段3：遅れを測る小窓（.modal：パネルの色を 0.97。下は .modal-backdrop の黒 0.45 を重ねた画面）。
+  // v3.8.0：遅れを測る小窓（.modal：パネルの色を 0.97。下は .modal-backdrop の黒 0.45 を重ねた画面）。
   // 文字は断り・結果（--c-primary）・説明（--c-secondary）・「測れませんでした」と押せない理由（--c-danger の太字。文でも伝える）。
   // 小窓の下がいちばん透ける形（覆いだけ）で計算する
   const modal = over(over(overlay, [0, 0, 0], 0.45), panelRgb, 0.97);

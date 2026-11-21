@@ -1,6 +1,6 @@
 // 骨組み：背景の層の上に、サイドバー・上の検索・一覧・下の再生バーを置く。
 // v3.8.0：一覧の側（.main）の幅を測って listPaneWidth に入れる（曲一覧と上の帯が使う）。再生バーの形は PlayerBar が自分の幅で決める。
-// v3.8.0 段2-2：詳細（仕様の「配信モード」）では、ミキサー（Mixer.tsx）を .app の格子に足す。左右か上下か・ミキサーの幅と高さ・
+// v3.8.0：詳細（仕様の「配信モード」）では、ミキサー（Mixer.tsx）を .app の格子に足す。左右か上下か・ミキサーの幅と高さ・
 //   流れる歌詞の列を自動で隠すかは src\layout\detailLayout.ts が窓の大きさで決める（決まった窓の幅では区切らない）。
 //   詳細を抜けたあとの曲一覧の側の幅（listPaneExitWidth）も入れる（上の帯の「通常」「コンパクト」を押したときに使う）
 // 画面内のドラッグ（曲 → プレイリスト／キュー、並び替え）はここでまとめて受ける。
@@ -53,7 +53,7 @@ export function AppShell() {
   // （3.7.0 までは歌詞画面で隠していた。作者「歌詞を全画面表示中にも再生曲の下に歌詞を出したい」2026-11-18）
   const view = useStore(route).view;
   const rowWanted = lyricsRowOn(s);
-  // v3.8.0 段2-2：詳細の配置（詳細でなければ null）。詳細で曲一覧が2行を切るときは、流れる歌詞の列を自動で隠す（設定は書き換えない。窓を広げたら戻る）
+  // v3.8.0：詳細の配置（詳細でなければ null）。詳細で曲一覧が2行を切るときは、流れる歌詞の列を自動で隠す（設定は書き換えない。窓を広げたら戻る）
   const D = useDetailLayout(size, s, collapsed, rowWanted);
   const showRow = rowWanted && !(D?.hideLyricsRow ?? false);
   const exitW = centerWidth(size.width, collapsed);
@@ -69,12 +69,12 @@ export function AppShell() {
     visible: true,
     scale: s.skin?.characterScale ?? 1,
     view,
-    // v3.9.0 直し5回目：専用の幅は窓の幅で決める（clamp(140, 窓 × 18% × 大きさ, 480)。立ち絵ごとの幅は使わない）
+    // v3.9.0：専用の幅は窓の幅で決める（clamp(140, 窓 × 18% × 大きさ, 480)。立ち絵ごとの幅は使わない）
     windowWidth: size.width,
     // 隠すかは、曲一覧の側（専用の幅を取る前）から専用の幅を引いた残りで決める。詳細でミキサーを左右に並べたときはその左の幅、
     // 上下のときと詳細でないときは中央の幅（centerWidth）
     paneWidth: characterPaneOf(size.width, D, collapsed),
-    // 残す幅：詳細なら 360（DETAIL.listMin。直し6回目。作者の決定「詳細でも出す」）、そうでなければ 634
+    // 残す幅：詳細なら 360（DETAIL.listMin。作者の決定「詳細でも出す」）、そうでなければ 634
     minListPx: characterMinListOf(D),
     playing,
     reducedMotion: reduce,
@@ -90,8 +90,8 @@ export function AppShell() {
     if (to) navigate({ view: to as any });
   }, [sidebarItemsKey]);
   // v3.8.0：曲一覧の側の幅（.main の幅）を測る。曲一覧の列・ジャケット・行の高さ・自動のコンパクト・上の帯の文字は、この幅で決める
-  // （ウィンドウの幅ではなく。配信モード（段2）で曲一覧の横にミキサーを並べたとき、曲一覧だけが狭くなるため）
-  // v3.9.0 直し7回目：立ち絵を出しているときは、曲一覧の列を決める幅から専用の幅（railPx。曲一覧の margin-right と同じ値）を引く。
+  // （ウィンドウの幅ではなく。配信モードで曲一覧の横にミキサーを並べたとき、曲一覧だけが狭くなるため）
+  // v3.9.0：立ち絵を出しているときは、曲一覧の列を決める幅から専用の幅（railPx。曲一覧の margin-right と同じ値）を引く。
   // 出す・隠すは上の characterLayout が専用の幅を引く前の幅で決めてある。ここで引いた幅は出す判断に戻さない（引きずり合って切り替わらない）
   const mainRef = useRef<HTMLElement>(null);
   const railRef = useRef<typeof character>(character);

@@ -1,6 +1,6 @@
 // 着せ替え（v3.2.0）：立ち絵を出すか・どの絵か・どの大きさか。
 // 置き方は「右側に立ち絵用の幅を取る」だけ（曲一覧はその左で終わる）。歌詞画面と、幅が足りないときは出さない。
-// v3.9.0 直し5回目：専用の幅は窓の幅で決める（立ち絵ごとの幅は使わない）。
+// v3.9.0：専用の幅は窓の幅で決める（立ち絵ごとの幅は使わない）。
 // ほかに依存しない純粋な関数だけを置く（scripts\skins.test.mts から Node だけで確かめるため）。
 
 /** 立ち絵の幅の左右に取るすき間（合わせて） */
@@ -9,7 +9,7 @@ export const SCALE_MIN = 0.75;
 /** v3.9.0：上限を 125% → 200% に（作者の決定。Rust の settings::store の丸めと同じ値） */
 export const SCALE_MAX = 2;
 
-// ---------------- v3.9.0 直し5回目：右の専用の幅は窓の幅で決める ----------------
+// ---------------- v3.9.0：右の専用の幅は窓の幅で決める ----------------
 // 2026-11-19 作者の決定。値は暫定。下限と上限を決め、窓の幅に応じて変える。
 // それまでは立ち絵ごとの幅（スキンの widthPx・追加した立ち絵の 180）を使っていたので、立ち絵を切り替えると
 // 曲一覧・設定の幅が変わっていた（例：幅 220 のスキン）。今は立ち絵ごとの幅を使わず、同じ窓・同じ大きさならどの立ち絵でも同じ幅。
@@ -24,7 +24,7 @@ export const RAIL_MAX_PX = 480;
  * から専用の幅 180 + 12 を引いた 634px（src\layout\detailLayout.ts の centerWidth と同じ値になることをテストで確かめる）。
  * スキンの minWindowWidthPx は使わない（置き方に立ち絵ごとの幅を使わなくなったので、その幅に合わせて決めた窓の下限も意味を持たない。
  * 使うと、立ち絵を切り替えたときに出る・隠れるの境目がずれ、立ち絵を切り替えると幅が変わる、という直した動きに戻る）
- * v3.9.0 直し6回目（作者の決定「詳細でも出す」）：詳細の表示のときは、詳細の配置が曲一覧に必ず残している幅（src\layout\detailLayout.ts の
+ * v3.9.0（作者の決定「詳細でも出す」）：詳細の表示のときは、詳細の配置が曲一覧に必ず残している幅（src\layout\detailLayout.ts の
  * DETAIL.listMin。360px）を境目にする。その値はここに写さず、呼ぶ側（AppShell・設定の案内）が `minListPx` として渡す
  */
 export const MIN_LIST_SIDE_PX = 634;
@@ -32,11 +32,11 @@ export const MIN_LIST_SIDE_PX = 634;
 export interface CharacterLike {
   playing: { path: string; still: string | null };
   stopped: { path: string; still: string | null };
-  /** 立ち絵ごとの幅（スキンの widthPx・追加した立ち絵の 180）。v3.9.0 直し5回目から置き方には使わない */
+  /** 立ち絵ごとの幅（スキンの widthPx・追加した立ち絵の 180）。v3.9.0 置き方には使わない */
   widthPx?: number;
   /** 高さの上限（立ち絵ごと）。× 大きさ が絵の高さ */
   maxHeightPx: number;
-  /** スキンが決めた出す窓の幅の下限。v3.9.0 直し5回目から使わない（MIN_LIST_SIDE_PX の説明） */
+  /** スキンが決めた出す窓の幅の下限。v3.9.0 使わない（MIN_LIST_SIDE_PX の説明） */
   minWindowWidthPx?: number;
 }
 
@@ -56,7 +56,7 @@ export interface CharacterInput {
    */
   paneWidth: number;
   /**
-   * 曲一覧の側に残す幅（隠す境目）。詳細でないときは MIN_LIST_SIDE_PX（634）、詳細のときは DETAIL.listMin（360。直し6回目）。
+   * 曲一覧の側に残す幅（隠す境目）。詳細でないときは MIN_LIST_SIDE_PX（634）、詳細のときは DETAIL.listMin（360）。
    * 渡さなければ MIN_LIST_SIDE_PX
    */
   minListPx?: number;
@@ -87,11 +87,11 @@ export function idealRailWidth(windowWidth: number, scale: number): number {
 }
 
 /**
- * 専用の幅（すき間を除く。v3.9.0 直し8回目。2026-11-19 作者の決定）：
+ * 専用の幅（すき間を除く。v3.9.0：2026-11-19 作者の決定）：
  *   clamp(140, min(窓の幅 × 18% × 大きさ, 曲一覧の側（引く前）− 残す幅 − すき間 12), 480)
  * 曲一覧の側が足りないときは、隠す前にまず幅を縮める。140px まで縮めても残す幅を割るときだけ隠す（null）。
  * 詳細でもふだんの表示でも同じ決め方（残す幅は詳細 360・ふだん 634。呼ぶ側が渡す）。
- * 直し7回目までは窓の幅だけで決めた幅をそのまま取り、足りなければすぐ隠していたので、サイドバーが開く窓・詳細の左右で谷ができていた
+ * 前は窓の幅だけで決めた幅をそのまま取り、足りなければすぐ隠していたので、サイドバーが開く窓・詳細の左右で谷ができていた
  */
 export function railWidthFor(windowWidth: number, scale: number, paneWidth: number, minListPx: number = MIN_LIST_SIDE_PX): number | null {
   const room = Math.floor(paneWidth - minListPx - RAIL_PADDING);
@@ -164,7 +164,7 @@ export interface CharacterWindowNote extends CharacterThresholds {
 }
 
 /**
- * 大きさのつまみの下に出す案内（v3.9.0 直し3回目。直し8回目で「縮めてから隠す」決め方に合わせた）。
+ * 大きさのつまみの下に出す案内（v3.9.0。「縮めてから隠す」決め方に合わせた）。
  * `hasCharacter` は出す立ち絵があるか（無ければ null）。`paneWidth` は今の曲一覧の側の幅（AppShell が決めたもの）、
  * `paneFor` は窓の幅 → 今の表示（詳細か・左右か上下か）での曲一覧の側の幅、`minListPx` は今の表示の残す幅（詳細なら DETAIL.listMin）。
  * `detail` は詳細の表示か（文の言い方だけに使う）。文は事実と食い違わない言い方だけを選ぶ（境目より狭い窓に別の出し方が混ざるときは「ことがあります」）
@@ -208,7 +208,7 @@ export function characterWindowNote(
 }
 
 /**
- * 曲一覧の実際の幅（v3.9.0 直し7回目）：.main の幅から、出している立ち絵の専用の幅（railPx。曲一覧などの margin-right と同じ値）を引いたもの。
+ * 曲一覧の実際の幅（v3.9.0）：.main の幅から、出している立ち絵の専用の幅（railPx。曲一覧などの margin-right と同じ値）を引いたもの。
  * 曲一覧の列（アルバム・ジャンル）・ジャケット・行の高さ・自動のコンパクトは、この幅で決める（density.ts の LIST_BELOW）。
  * 立ち絵を出していない・一時的に隠しているとき（layout が null）は .main の幅のまま。
  * 順番：出す・隠すは専用の幅を引く前の曲一覧の側の幅で決め（characterLayout）、そのあとで列の幅を引く。列の幅は出す判断に戻さないので、

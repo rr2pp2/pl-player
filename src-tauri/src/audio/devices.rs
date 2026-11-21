@@ -63,7 +63,7 @@ pub fn list_output_devices() -> Vec<DeviceInfo> {
     out
 }
 
-/// 録音デバイスの一覧（v3.8.0 段3：遅れを測るときの録る所。仮想ケーブルの出口など）
+/// 録音デバイスの一覧（v3.8.0。遅れを測るときの録る所。仮想ケーブルの出口など）
 pub fn list_input_devices() -> Vec<DeviceInfo> {
     let host = host();
     let default_id = host.default_input_device().as_ref().and_then(device_id);
