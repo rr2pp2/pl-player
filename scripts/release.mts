@@ -304,7 +304,7 @@ function find7zip(env: NodeJS.ProcessEnv): string | null {
  * Windows PowerShell 5.1（powershell.exe）を呼ぶときに渡す環境：PSModulePath を外す（名前の大文字小文字は問わない）。
  * PowerShell 7 の中から npm run release を走らせると、7 は PSModulePath の頭に 7 用のモジュールの場所を足している。node をはさむと
  * それがそのまま 5.1 に渡り、5.1 が 7 用の Microsoft.PowerShell.Archive を読んで、Expand-Archive が
- * 「"ExtractToDirectory" のオーバーロードで、引数の数が "3" であるものが見つかりません」で止まった（v3.3.0 で作者が踏んだ）。
+ * 「"ExtractToDirectory" のオーバーロードで、引数の数が "3" であるものが見つかりません」で止まった（v3.3.0 のビルドで実際に止まった）。
  * PSModulePath が無ければ、5.1 は起動のときに自分の既定（ユーザーと全ユーザーの WindowsPowerShell\Modules と $PSHOME\Modules）を組み立てる。
  * Microsoft の about_PSModulePath（Starting Windows PowerShell from PowerShell 7）に、間に別のプロセスをはさむときの直し方として、この形が書いてある
  */

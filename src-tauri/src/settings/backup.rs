@@ -322,7 +322,7 @@ pub(crate) fn import_entries(db: &Db, entries: &[zip::Entry], bg_dir: &Path) -> 
     // v3.2.0：着せ替えの設定は読み込まない（スキンそのものは zip に入らず、別の PC には無いことがあるため）。
     // v3.10.0：ただし手で選んだ色は zip の値にする（下。値そのものが入っていて、ファイルに頼らないため）。
     // v3.9.0：ただし使う立ち絵の選択は zip の値にする（立ち絵の画像は zip に入らない）。
-    // - 値が無い（3.8.1 までの zip）：この PC の今の選択を変えない（作者の決定。3.8.1 で「立ち絵を出す」を切っていた人に出てしまわないように）
+    // - 値が無い（3.8.1 までの zip）：この PC の今の選択を変えない（3.8.1 で「立ち絵を出す」を切っていた人に出てしまわないように）
     // - 値があって壊れている（形の違う文字・文字でない値）：「スキンの立ち絵」（store::de_avatar と normalize_choice）
     // - この PC に無い立ち絵・スキンを指していたら、呼び出し側（skins::runtime::after_settings_import）が「スキンの立ち絵」に戻す（ここではファイルを見ない）
     let mut skin = store::load(db).skin;
@@ -673,7 +673,7 @@ mod tests {
     }
 
     /// v3.9.0：使う立ち絵の選択は zip の値を使う（ほかの着せ替えの設定はこの PC の値のまま）。値が無い zip（3.8.1 まで）は
-    /// この PC の今の選択を変えない（作者の決定）。値があって壊れていれば「スキンの立ち絵」。立ち絵の画像は zip に入らない
+    /// この PC の今の選択を変えない。値があって壊れていれば「スキンの立ち絵」。立ち絵の画像は zip に入らない
     /// （この PC に無い立ち絵を指していたときに戻すのは skins::runtime::after_settings_import。決まりは skins::avatars::resolve のテスト）
     #[test]
     fn import_takes_avatar_choice_from_zip() {
@@ -709,7 +709,7 @@ mod tests {
             assert!((store::load(&b).skin.character_scale - 1.8).abs() < 1e-6);
             assert_eq!(store::load(&b).skin.avatar, v);
         }
-        // 値が無い zip（3.8.1 まで）：この PC の今の選択を変えない（作者の決定）。この PC が「出さない」でも「作った立ち絵」でも、そのまま
+        // 値が無い zip（3.8.1 まで）：この PC の今の選択を変えない。この PC が「出さない」でも「作った立ち絵」でも、そのまま
         let old = br#"{"theme":"light","skin":{"activeSkinId":"from-other-pc","characterVisible":true,"characterScale":1.2,"safeModeNextStart":false}}"#;
         let no_skin_at_all = br#"{"theme":"light"}"#;
         for (i, json) in [&old[..], &no_skin_at_all[..]].into_iter().enumerate() {

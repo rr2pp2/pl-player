@@ -95,7 +95,7 @@ export function sidebarToggleInfo(sidebarAuto: boolean, collapsed: boolean): { d
 export type TrackListKind = "library" | "playlist" | "queue" | "playerBar";
 
 /**
- * 「ごみ箱へ移す」を出す場所（作者の決定・v3.3.0）：ライブラリの曲一覧だけ。
+ * 「ごみ箱へ移す」を出す場所（v3.3.0）：ライブラリの曲一覧だけ。
  * プレイリスト・キューの一覧では、行のボタンも右クリックのメニューも出さない（「プレイリストから削除」「キューから削除」と
  * 取り違えて、曲ファイルまでごみ箱へ移さないため）。再生バーの右クリックにも出さない（一覧ではないため）
  */
@@ -103,7 +103,7 @@ export const TRASH_LISTS: readonly TrackListKind[] = ["library"];
 
 /**
  * 行の右端の「ごみ箱へ移す」ボタンを出すか：設定の「行に削除ボタンを出す」（ui.trashButton）がオンで、ライブラリの曲一覧のときだけ。
- * 設定が決めるのは行のボタンだけ（作者の決定・v3.3.0 の直し）。右クリックのメニューは trashMenuShown
+ * 設定が決めるのは行のボタンだけ（v3.3.0 の直し）。右クリックのメニューは trashMenuShown
  */
 export function trashButtonShown(ui: UiLike | null | undefined, list: TrackListKind): boolean {
   return ui?.trashButton === true && TRASH_LISTS.includes(list);
@@ -111,7 +111,7 @@ export function trashButtonShown(ui: UiLike | null | undefined, list: TrackListK
 
 /**
  * 右クリックのメニューに「ごみ箱へ移す…」を出すか：ライブラリの曲一覧なら、設定にかかわらずいつも出す
- * （作者の決定・v3.3.0 の直し。「ライブラリから外す…」と並べて、どちらも確認のあとで動く）。プレイリスト・キュー・再生バーには出さない
+ * （v3.3.0 の直し。「ライブラリから外す…」と並べて、どちらも確認のあとで動く）。プレイリスト・キュー・再生バーには出さない
  */
 export function trashMenuShown(list: TrackListKind): boolean {
   return TRASH_LISTS.includes(list);

@@ -42,6 +42,7 @@ import {
   IconX,
 } from "../components/Icons";
 import { dropState, registerDropZone } from "../components/FileDrop";
+import { WrapText } from "../components/WrapText";
 import { confirmDialog } from "../components/Modal";
 import { sidebarIconPx } from "../layout/density";
 import { hasManualIcon, ICON_GROUPS, ICON_SLOTS, iconZoneKey, isAppIcon, manualIconCount, slotPx, type IconSlot } from "../skins/iconSlots";
@@ -124,9 +125,12 @@ function SlotCard(props: { slot: IconSlot; px: number; manual: boolean; safe: bo
       >
         <SlotArt slot={slot} />
       </button>
-      {/* 名前は切らずに折り返し、状態（入・切・オン・オフ・全曲・1曲など）は別の行に必ず出す（同じ名前の枠を見分けるため） */}
+      {/* 名前は切らずに折り返し、状態（入・切・オン・オフ・全曲・1曲など）は別の行に必ず出す（同じ名前の枠を見分けるため）。
+          v3.11.1：「・」の後ろで折り返せるようにする（WrapText。折り返しの決まりは base.css） */}
       <span className="icon-slot-name">
-        <span className="icon-slot-label">{slot.label}</span>
+        <span className="icon-slot-label">
+          <WrapText text={slot.label} />
+        </span>
         {slot.stateLabel ? <span className="icon-slot-state">{slot.stateLabel}</span> : null}
       </span>
       <button className="btn small-btn" disabled={props.safe || !props.manual} onClick={() => void resetIcon(slot.name, slot.state)} aria-label={`${title}のアイコンを戻す`}>
@@ -183,7 +187,9 @@ export function IconsField() {
       {safe ? <div className="skin-callout warn">既定の見た目で動いている間（セーフモード）は、手で入れたアイコンも当てず、新しく入れることもできません。入れたアイコンは残っていて、セーフモードを抜けると戻ります。</div> : null}
       {ICON_GROUPS.map((g) => (
         <div key={g.id} className="icon-group" role="group" aria-label={`アイコン：${g.label}`}>
-          <div className="icon-group-label">{g.label}</div>
+          <div className="icon-group-label">
+            <WrapText text={g.label} />
+          </div>
           <div className="icon-slots">
             {ICON_SLOTS.filter((x) => x.group === g.id).map((slot) => {
               const key = iconZoneKey(slot.name, slot.state);

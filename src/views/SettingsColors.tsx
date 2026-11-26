@@ -11,6 +11,7 @@ import { settings } from "../stores/settings";
 import { clearColors, colorPreview, commitColor, currentTheme, dropColorPreview, previewColor, skinState } from "../stores/skin";
 import { useStore } from "../stores/store";
 import { confirmDialog } from "../components/Modal";
+import { WrapText } from "../components/WrapText";
 
 /** 濃さのつまみの刻み（%）。保存する濃さは小数3桁（0.1% 単位。色の確かめと同じ）なので、どの値でもつまみの位置と表示がそろう */
 const ALPHA_STEP_PCT = 0.1;
@@ -49,7 +50,9 @@ function ColorRow(props: { name: string; label: string; kind: ColorKind; value: 
 
   return (
     <div className="field color-row" data-color={props.name}>
-      <span className="flabel">{props.label}</span>
+      <span className="flabel">
+        <WrapText text={props.label} />
+      </span>
       <span className="row">
         <input
           ref={ref}

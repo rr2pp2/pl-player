@@ -60,7 +60,7 @@ test("確認の文：ごみ箱へ移す・ライブラリから外すで消え�
   assert.match(mig, /favorite\s+INTEGER NOT NULL DEFAULT 0,/);
 });
 
-test("お気に入りの星（作者の決定）：オンの星だけを黄色（--c-favorite）に。ほかのオンの印（シャッフル・リピート・ミュート・歌詞）はアクセントの色のまま", () => {
+test("お気に入りの星：オンの星だけを黄色（--c-favorite）に。ほかのオンの印（シャッフル・リピート・ミュート・歌詞）はアクセントの色のまま", () => {
   assert.match(rule(".icon-btn.on"), /color: var\(--c-accent\);/);
   const on = css.slice(css.indexOf("\n.t-fav .icon-btn.on,"), css.indexOf("}", css.indexOf("\n.t-fav .icon-btn.on,")));
   assert.match(on, /\.t-fav \.icon-btn\.on:hover \{/);
@@ -75,7 +75,7 @@ test("お気に入りの星（作者の決定）：オンの星だけを黄色�
   assert.match(tt, /className=\{"icon-btn small" \+ \(t\.favorite \? " on" : ""\)\}/);
   assert.match(tt, /aria-pressed=\{t\.favorite\}/);
   assert.match(tt, /<IconStar filled=\{t\.favorite\} \/>/);
-  // 見出しは文字「お気に入り」のまま 68px（作者の決定。星＋文字の 84px は採らない）
+  // 見出しは文字「お気に入り」のまま 68px（星＋文字の 84px は採らない）
   assert.match(tt, /\{cols\.favorite \? <span className="col-fav">お気に入り<\/span> : null\}/);
   assert.match(tt, /cols\.favorite \? "68px" : null,/);
   // サイドバーの「お気に入り」の星は、ほかの項目と同じ色の決まり（オンの印ではない）
@@ -91,7 +91,7 @@ test("行のボタン（お気に入り・ごみ箱）：32px の面と操作部
   const th = rule(".t-trash .icon-btn:hover");
   assert.match(th, /color: var\(--c-danger\);/);
   assert.match(th, /border-color: var\(--c-danger\);/);
-  // ごみ箱の見出しは文字「ごみ箱」のまま（アイコンだけにしない。作者の決定）。行のボタンは読み上げと吹き出しを持つ
+  // ごみ箱の見出しは文字「ごみ箱」のまま（アイコンだけにしない）。行のボタンは読み上げと吹き出しを持つ
   const tt = read("src/components/TrackTable.tsx");
   assert.match(tt, /\{cols\.trash \? <span className="col-trash">ごみ箱<\/span> : null\}/);
   assert.match(tt, /aria-label=\{p\.trashLabel\}/);

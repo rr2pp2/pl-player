@@ -314,12 +314,12 @@ test("再生バー：3列か1段かは、真ん中の列（40%・240〜560px）�
   assert.equal(firstThree, 728);
   assert.equal(playerLayout(barWidth(747), () => true).mode, "one");
   assert.equal(playerLayout(barWidth(748), () => true).mode, "three");
-  // v3.8.0（作者の決定）：出力ボタンを足しても、入らないときは全体の音量を「···」へ移して3列を保つ。3列が始まる幅は同じ
+  // v3.8.0：出力ボタンを足しても、入らないときは全体の音量を「···」へ移して3列を保つ。3列が始まる幅は同じ
   assert.equal(playerLayout(728, () => true, 120).mode, "three");
   assert.equal(playerLayout(727, () => true, 120).mode, "one");
 });
 
-test("再生バー（出力ボタン 112px あり。v3.8.0・作者の決定）：3列は出力ボタンが無いときと同じ再生バーの幅 728px（窓 748px）から。入らない幅では全体の音量を「···」へ移す（728〜1067px）。再生ボタンは中央のまま", () => {
+test("再生バー（出力ボタン 112px あり。v3.8.0）：3列は出力ボタンが無いときと同じ再生バーの幅 728px（窓 748px）から。入らない幅では全体の音量を「···」へ移す（728〜1067px）。再生ボタンは中央のまま", () => {
   const out = PLAYER.output3;
   assert.equal(out, 112);
   const volInMore: number[] = [];

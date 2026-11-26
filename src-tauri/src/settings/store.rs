@@ -140,7 +140,7 @@ pub const SIDEBAR_ITEMS_HIDEABLE: &[&str] =
     &["all", "artist", "album", "genre", "recent_added", "recent_played", "yearly_top", "favorites", "queue", "playlists"];
 
 /// 曲一覧の列のオン・オフ（画面の src\views\SettingsView.tsx の COLS と同じ並び）。
-/// v3.5.0：`artist` を足した（作者の要望）。3.4.0 までの設定・zip には無いので、読むときにオンで埋める
+/// v3.5.0：`artist` を足した。3.4.0 までの設定・zip には無いので、読むときにオンで埋める
 pub const TRACK_COLUMNS: &[&str] = &["artist", "album", "genre", "duration", "favorite"];
 
 fn all_shown(keys: &[&str]) -> BTreeMap<String, bool> {

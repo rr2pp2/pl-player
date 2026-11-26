@@ -2,6 +2,7 @@
 // v3.9.0：立ち絵の欄の並び・使う立ち絵の値（Rust と同じ形）・画面が出す立ち絵は Rust が解いたもの。
 // v3.10.0：手で選ぶ色（重なり順・値の確かめ・選び窓の値の作り方・読みやすさの警告・「既定の見た目に戻す」で外れる道）。
 // v3.11.0：手で入れるアイコン（重なり順・枠が Rust と同じ・ドロップの振り分け・欄の作り・保存の道・ビルドした CSS での大きさ）。
+// v3.11.1：ビルドした CSS の値で計算しても基準に届かない組み合わせがソースと同じこと・設定画面の短い文字を言葉の切れ目で折り返すこと。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
@@ -39,6 +40,7 @@ import {
   validRgbTriple,
 } from "../src/skins/tokens.ts";
 import { pickIconPath, pickLayeredIcon, repeatState, shuffleState, starState, volumeState, withRev } from "../src/skins/icons.ts";
+import { wrapParts } from "../src/components/wrapParts.ts";
 import { hasManualIcon, ICON_GROUPS, ICON_SLOTS, iconZoneKey, manualIconCount, parseIconZone, routeDrop, SIDEBAR_PX, slotPx } from "../src/skins/iconSlots.ts";
 import {
   characterFits,
@@ -676,7 +678,7 @@ test("欄の幅を決める CSS は固定値だけ（中身の幅に頼らない
   assert.equal((shell.match(/--character-rail-w/g) ?? []).length, 1);
 });
 
-// ---------------- v3.9.0：右の専用の幅（2026-11-19 作者の決定。値は暫定） ----------------
+// ---------------- v3.9.0：右の専用の幅（2026-11-19 に決めた。値は暫定） ----------------
 // 窓の幅で決める（立ち絵ごとの幅を使わない）。詳細でも出す（残す幅 360）。
 // 曲一覧の列は引いた後の幅で決める。足りないときは隠す前にまず縮める
 
@@ -714,7 +716,7 @@ test("定数（18%・140〜480px・暫定）と残す幅（ふだん 634＝3.8.1
   assert.equal(MIN_LIST_SIDE_PX, 634);
   assert.equal(DETAIL.listMin, 360);
   const src = readFileSync(fileURLToPath(new URL("../src/skins/character.ts", import.meta.url)), "utf8");
-  assert.ok(src.includes("2026-11-19 作者の決定。値は暫定"));
+  assert.ok(src.includes("2026-11-19 に決めた。値は暫定"));
   assert.doesNotMatch(src.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, ""), /\b360\b/);
   const hook = readFileSync(fileURLToPath(new URL("../src/layout/useDetailLayout.ts", import.meta.url)), "utf8");
   assert.ok(hook.includes("return D ? DETAIL.listMin : MIN_LIST_SIDE_PX;"));
@@ -1282,9 +1284,35 @@ test("ビルドした CSS のテーマの色（半透明の色は #rrggbbaa に�
     const e2 = evaluate(src, {});
     assert.equal(e1.length, e2.length);
     e1.forEach((x, i) => assert.ok(Math.abs(x.ratio - e2[i].ratio) / e2[i].ratio < 0.01, `${theme} ${x.scene} ${x.name} ${x.ratio} ${e2[i].ratio}`));
-    // 注：基準に届くかどうかまでは比べない。Dark の --c-hover・--c-input（0.07）はビルドで 0x12（0.0706）になり、明るい背景画像の上の
-    // 薄い文字が 4.512 → 4.498:1 と基準 4.5 をわずかに割る（ビルドの書き換えによるもので、読む側の直しの範囲の外）
+    // 基準に届くかどうかは、次のテスト（v3.11.1）でビルドした CSS の値そのもので確かめる
   }
+});
+
+test("v3.11.1：ビルドした CSS の値で計算しても、基準に届かない組み合わせはソースの値と同じ（Dark の指を乗せた面・入力欄の上の薄い文字が 4.5 以上）", () => {
+  for (const [theme, file] of [["dark", dark], ["light", light]] as const) {
+    const fails = (rows: { scene: string; name: string; ratio: number; min: number }[]) =>
+      rows.filter((r) => !(r.ratio >= r.min)).map((r) => `${r.scene} ${r.name}`).sort();
+    const src = fails(evaluate(readTheme(file), {}));
+    // ビルドした CSS の書き換わったままの値（#rrggbbaa。画面に当たっている濃さそのもの）と、画面がそれを読んだ値（濃さは小数3桁）の両方で
+    assert.deepEqual(fails(evaluate(BUILT[theme], {})), src, `${theme} built raw`);
+    assert.deepEqual(fails(evaluate(readThemeColors(BUILT[theme]).colors, {})), src, `${theme} built read`);
+  }
+  // 3.11.0 で 4.498:1 だった組み合わせ。ビルドの値で 4.5 以上
+  const D = readThemeColors(BUILT.dark).colors;
+  for (const t of [BUILT.dark, D]) {
+    for (const name of ["--c-secondary／指を乗せた行", "--c-secondary／入力欄"]) {
+      const low = Math.min(...evaluate(t, {}).filter((r) => r.name === name).map((r) => r.ratio));
+      assert.ok(low >= 4.5, `${name} ${low}`);
+    }
+  }
+  // 0.067 はビルドで 17/255（#ffffff11 か、短くした #fff1）になり、画面は 0.067 と読む（0.07 のように 0.071 へ上がらない）
+  for (const v of ["--c-hover", "--c-input"] as const) {
+    const c = contrastColor(BUILT.dark[v]);
+    assert.deepEqual(c.rgb, [255, 255, 255], v);
+    assert.equal(Math.round(c.a * 255), 17, `${v} ${BUILT.dark[v]}`);
+  }
+  assert.equal(D["--c-hover"], "rgba(255, 255, 255, 0.067)");
+  assert.equal(D["--c-input"], "rgba(255, 255, 255, 0.067)");
 });
 
 test("ビルドした CSS の既定を基準にしても、読みやすさの警告が出る（色の欄・スキンの取り込みの確認画面）", () => {
@@ -1534,7 +1562,8 @@ test("v3.11.0：ビルドした CSS でも、枠の中の見本はその場所�
 
 test("v3.11.0：枠の名前は切らずに折り返し、状態（入・切・オン・オフ・全曲・1曲など）は別の行に必ず出す。ビルドした CSS でも省略記号にしない", () => {
   const view = read("../src/views/SettingsIcons.tsx");
-  assert.ok(view.includes('<span className="icon-slot-label">{slot.label}</span>'));
+  // v3.11.1：名前は WrapText で出す（「・」の後ろに <wbr> を入れるだけで、文字は変えない）
+  assert.ok(/<span className="icon-slot-label">\s*<WrapText text=\{slot\.label\} \/>\s*<\/span>/.test(view));
   assert.ok(view.includes('{slot.stateLabel ? <span className="icon-slot-state">{slot.stateLabel}</span> : null}'));
   // 同じ名前の枠は、状態の名前で見分けられる（名前＋状態の組は重ならない・状態の名前は短い）
   const shown = ICON_SLOTS.map((x) => `${x.label}/${x.stateLabel ?? ""}`);
@@ -1553,6 +1582,49 @@ test("v3.11.0：枠の名前は切らずに折り返し、状態（入・切・�
     assert.ok(rule(css, ".icon-slot-name").includes("flex-direction:column"));
     assert.ok(rule(css, ".icon-slot-label").includes("overflow-wrap:anywhere"));
   }
+});
+
+test("v3.11.1：設定画面の短い文字（見出し・項目名・チェックの名前・アイコンの場所と枠の名前・色の名前）は、言葉の切れ目で折り返し、はみ出さない", () => {
+  // 「・」「／」の後ろで分け、つなぐと元の文字列に戻る（画面に出る文字は変えない）
+  assert.deepEqual(wrapParts("ウィンドウ・タスクバー"), ["ウィンドウ・", "タスクバー"]);
+  assert.deepEqual(wrapParts("そのほか（メニュー・ボタン・歌詞の画面）"), ["そのほか（メニュー・", "ボタン・", "歌詞の画面）"]);
+  assert.deepEqual(wrapParts("シャッフル"), ["シャッフル"]);
+  assert.deepEqual(wrapParts("戻す／消す"), ["戻す／", "消す"]);
+  assert.deepEqual(wrapParts(""), []);
+  for (const t of [...ICON_SLOTS.map((x) => x.label), ...ICON_GROUPS.map((g) => g.label), ...COLOR_ROWS.map((r) => r.label)]) {
+    assert.equal(wrapParts(t).join(""), t, t);
+  }
+  // 名前は WrapText で出す（アイコンの枠・場所・色の行）
+  const icons = read("../src/views/SettingsIcons.tsx");
+  assert.ok(/<div className="icon-group-label">\s*<WrapText text=\{g\.label\} \/>\s*<\/div>/.test(icons));
+  const colors = read("../src/views/SettingsColors.tsx");
+  assert.ok(/<span className="flabel">\s*<WrapText text=\{props\.label\} \/>\s*<\/span>/.test(colors));
+  const wrap = read("../src/components/WrapText.tsx");
+  assert.ok(wrap.includes("<wbr />") && wrap.includes("wrapParts(props.text)"));
+  // CSS：文節で切る（知らないブラウザでは keep-all）。言葉が幅に入らないときだけ途中で切る。ソースとビルドした CSS の両方
+  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  const rulesFor = (css: string, sel: string) =>
+    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]);
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    for (const sel of [".settingsh3", ".settings.skin-subhead", ".settings.flabel", ".settings.field>label", ".settingslabel.row", ".settings.icon-group-label", ".settings.icon-slot-label"]) {
+      const bodies = rulesFor(css, sel);
+      assert.ok(
+        bodies.some((b) => b.includes("word-break:auto-phrase") && b.includes("overflow-wrap:anywhere")),
+        `${sel}: ${bodies.join(" | ")}`,
+      );
+      // keep-all は auto-phrase より前（auto-phrase を知るブラウザでは後ろが勝つ）
+      const b = bodies.find((x) => x.includes("word-break:auto-phrase"))!;
+      if (b.includes("word-break:keep-all")) assert.ok(b.indexOf("word-break:keep-all") < b.indexOf("word-break:auto-phrase"), b);
+    }
+    // 枠の最小の幅は、名前に 80px 残る 188px。欄がそれより狭くても横にはみ出さない（min(100%, …)）
+    const slots = rulesFor(css, ".icon-slots").join(";");
+    assert.ok(slots.includes("minmax(min(100%,188px),1fr)"), slots);
+  }
+  // 188px から、見本の枠 40・余白 6×2・横の内側 6×2・縁 1×2・「戻す」（12px の字 2つ＋内側 8×2＋縁 1×2＝42）を引くと、名前に 80px（12px の字で6文字＋余り）
+  assert.equal(188 - 40 - 6 * 2 - 6 * 2 - 1 * 2 - (12 * 2 + 8 * 2 + 1 * 2), 80);
+  // カタカナだけの名前（文節で切っても分かれない）は 6文字（12px の字で 72px）以内なので、名前の 80px に1行で入る
+  const words = ICON_SLOTS.flatMap((x) => wrapParts(x.label)).filter((w) => /^[ァ-ヶー]+$/.test(w.replace(/・$/, "")));
+  for (const w of words) assert.ok(w.replace(/・$/, "").length <= 6, w);
 });
 
 test("v3.11.0 見本スキン：くもくじら・ペンギンの両テーマの色は、ビルドした CSS の既定を基準にしても読みやすさの警告が出ない（取り込みの確認画面と同じ）", () => {

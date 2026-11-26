@@ -212,7 +212,7 @@ const THEMES = [
   { id: "light", label: "Light" },
 ];
 // 曲一覧の列（ui.columns。無いキーはオン）。並びは曲一覧の列の順。名前は Rust の settings\store.rs の TRACK_COLUMNS と同じ。
-// v3.5.0（作者の要望）：アーティストを足した（コンパクト表示では列、通常の表示ではタイトルの下の段）
+// v3.5.0：アーティストを足した（コンパクト表示では列、通常の表示ではタイトルの下の段）
 const COLS = [
   { id: "artist", label: "アーティスト" },
   { id: "album", label: "アルバム" },

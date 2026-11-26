@@ -347,7 +347,7 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 設定の見出し（v3.3.0 の直し・作者の要望）：設定の画面だけ、いちばん上の帯の左（ほかの画面で検索欄が来る所）に出す。
+/* 設定の見出し（v3.3.0 の直し）：設定の画面だけ、いちばん上の帯の左（ほかの画面で検索欄が来る所）に出す。
    設定の画面の中の見出しの行は無く、タブがその下にすぐ続く（.settings-tabs の上の余白） */
 .topbar-title {
   flex: none;
@@ -455,7 +455,7 @@ textarea {
   width: 20px;
   height: 20px;
 }
-/* オンの印（シャッフル・リピート・ミュート・歌詞など）はアクセントの色。お気に入りの星だけは黄色（下の .t-fav。作者の決定） */
+/* オンの印（シャッフル・リピート・ミュート・歌詞など）はアクセントの色。お気に入りの星だけは黄色（下の .t-fav） */
 .icon-btn.on {
   color: var(--c-accent);
 }
@@ -2242,9 +2242,12 @@ img.skin-icon {
   color: var(--c-secondary);
   margin-bottom: 4px;
 }
+/* v3.11.1：枠の最小の幅 148px → 188px。148px では名前に 40px（3文字）しか残らず、「シャッフル」も言葉の途中で折れた。
+   188px なら、見本・余白・「戻す」（あわせて 108px）を引いても名前に 80px（12px の字で6〜7文字）残り、いちばん長い言葉（「プレイリスト」など）が1行に入る。
+   窓が 480px のときは1列、設定の欄が 382px を超えると2列。min(100%, …) で、欄がもっと狭くても横にはみ出さない */
 .icon-slots {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 188px), 1fr));
   gap: 6px;
 }
 .icon-slot {
@@ -2307,6 +2310,22 @@ img.skin-icon {
   line-height: 1.3;
 }
 .icon-slot-label {
+  overflow-wrap: anywhere;
+}
+/* v3.11.1：設定画面の短い文字（見出し・項目名・チェックの名前・アイコンの場所と枠の名前）は、言葉の切れ目で折り返す。
+   auto-phrase は日本語を文節で切る（Chromium 119 から。<html lang="ja"> が要る）。知らないブラウザでは前の keep-all が残り、
+   字と字の間では切らずに空白・句読点・「・」で切る。「・」「／」の後ろは画面が <wbr> を入れて、必ず切れるようにしている（SettingsIcons.tsx・SettingsColors.tsx）。
+   それでも1つの言葉が幅に入らないときだけ、overflow-wrap: anywhere で言葉の途中で切る（はみ出し・横スクロールを出さない）。
+   説明の長い文（.hint・.hint-text）は今までどおり（どこでも切る） */
+.settings h3,
+.settings .skin-subhead,
+.settings .flabel,
+.settings .field > label,
+.settings label.row,
+.settings .icon-group-label,
+.settings .icon-slot-label {
+  word-break: keep-all;
+  word-break: auto-phrase;
   overflow-wrap: anywhere;
 }
 .icon-slot-state {
@@ -2498,7 +2517,7 @@ img.skin-icon {
 .t-fav .icon-btn:hover {
   color: var(--c-primary);
 }
-/* お気に入りのオン（作者の決定：星は黄色）：塗った星を --c-favorite、面は薄い選ぶ色（--c-selected）。ほかのオンの印（.icon-btn.on）はアクセントの色のまま */
+/* お気に入りのオン（星は黄色）：塗った星を --c-favorite、面は薄い選ぶ色（--c-selected）。ほかのオンの印（.icon-btn.on）はアクセントの色のまま */
 .t-fav .icon-btn.on,
 .t-fav .icon-btn.on:hover {
   color: var(--c-favorite);

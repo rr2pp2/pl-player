@@ -139,7 +139,7 @@ export function trackMenu(opts: {
       },
     },
   );
-  // v3.3.0：ライブラリの曲一覧なら、設定にかかわらずいつも「ライブラリから外す…」と並べて出す（作者の決定。確認は trashTracksFlow が必ず出す）。
+  // v3.3.0：ライブラリの曲一覧なら、設定にかかわらずいつも「ライブラリから外す…」と並べて出す（確認は trashTracksFlow が必ず出す）。
   // 設定（ui.trashButton）が決めるのは行の右端のボタンだけ
   if (trashMenuShown(opts.list)) {
     items.push({

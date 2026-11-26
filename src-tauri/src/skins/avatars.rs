@@ -290,7 +290,7 @@ fn ext_of(file_name: &str) -> Option<&'static str> {
     names::IMAGE_EXTS.iter().copied().find(|e| *e == ext)
 }
 
-/// 名前の既定（v3.9.0。作者の決定）：ファイル名から拡張子を外したもの。名前の決まりに合わなければ、合うように詰める
+/// 名前の既定（v3.9.0）：ファイル名から拡張子を外したもの。名前の決まりに合わなければ、合うように詰める
 /// （40 文字で切る・使えない文字を外す＝名前の見える文字 `is_name_base` と空白だけを残す）。それでも空なら「立ち絵」
 pub fn name_from_file(file_name: &str) -> String {
     let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -643,7 +643,7 @@ pub enum StoppedChange<'a> {
     Remove,
 }
 
-/// 作った立ち絵を変える（v3.9.0。作者の決定）：再生中だけ／停止中だけを差し替える・停止中を外す・名前を変える。
+/// 作った立ち絵を変える（v3.9.0）：再生中だけ／停止中だけを差し替える・停止中を外す・名前を変える。
 /// 名前が空なら今の名前のまま。差し替える絵は新しい名前のファイル（`<状態>-<印>.<形式>`）に書き、全部書けてから avatar.json を
 /// 一時のファイル経由で置き換える。途中で失敗したら書いたものを消し、前の絵と avatar.json はそのまま。置き換えたあとで、使わなくなった絵を消す
 pub fn update(dirs: &Dirs, id: &str, name: &str, playing: Option<&Picked>, stopped: StoppedChange) -> AppResult<AvatarSummary> {

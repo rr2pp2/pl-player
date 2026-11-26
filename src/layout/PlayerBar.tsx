@@ -257,7 +257,7 @@ export function PlayerBar() {
           <div className="player-title" title={t?.title}>
             {t ? t.title : "曲を選んでください"}
           </div>
-          {/* 1段のときは、アーティスト名と歌詞の1行の代わりに「今の時間 / 長さ」（作者の決定） */}
+          {/* 1段のときは、アーティスト名と歌詞の1行の代わりに「今の時間 / 長さ」 */}
           {one ? (
             t ? <SeekTime /> : null
           ) : (

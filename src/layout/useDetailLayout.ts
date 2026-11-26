@@ -37,7 +37,7 @@ export function characterPaneOf(winW: number, D: DetailLayout | null, collapsed:
   return D ? D.listW : centerWidth(winW, collapsed);
 }
 
-/** 立ち絵：曲一覧の側に残す幅（隠す境目）。詳細なら詳細の配置が曲一覧に必ず残す幅（DETAIL.listMin。作者の決定「詳細でも出す」）、そうでなければ 634 */
+/** 立ち絵：曲一覧の側に残す幅（隠す境目）。詳細なら詳細の配置が曲一覧に必ず残す幅（DETAIL.listMin。詳細の表示でも出す）、そうでなければ 634 */
 export function characterMinListOf(D: DetailLayout | null): number {
   return D ? DETAIL.listMin : MIN_LIST_SIDE_PX;
 }

@@ -206,7 +206,7 @@ test("理由の文は Rust の種類（FailCode・AbortCode）と1対1。型（t
   for (const t of Object.values(FAIL_TEXT)) assert.ok(t.length > 0 && !/[a-z]+_[a-z]+/.test(t), t);
 });
 
-test("文言：作者の決めた断り・測れる範囲・仮想ケーブルの注意・ボタンの名前", () => {
+test("文言：測る前の断り・測れる範囲・仮想ケーブルの注意・ボタンの名前", () => {
   assert.equal(LATENCY_TEXT.caution, "クリック音が配信・録画に乗るので、止めてから測ってください。");
   assert.match(LATENCY_TEXT.scope, /Windows がデバイスへ渡すところまで/);
   assert.match(LATENCY_TEXT.scope, /USB の先・HDMI の先・Bluetooth/);

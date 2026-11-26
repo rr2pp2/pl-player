@@ -205,7 +205,7 @@ test("曲一覧（TrackTable）：コンパクトのときはジャケットの�
   assert.match(tt, /compact \? null : `\$\{size\.artSize\}px`,/);
   assert.match(tt, /\{compact \? null : <span \/>\}/);
   assert.match(tt, /\{p\.compact \? null : <Artwork /);
-  // v3.5.0（作者の要望）：タイトルとアーティストは別の列。タイトルの列は1行、アーティストはアルバム・ジャンルと同じ形の列
+  // v3.5.0：タイトルとアーティストは別の列。タイトルの列は1行、アーティストはアルバム・ジャンルと同じ形の列
   assert.match(tt, /<span className="t-line">\{t\.title\}<\/span>/);
   assert.ok(!/t-line-artist| — \{t\.artist/.test(tt), "no more 「タイトル — アーティスト」");
   // アーティストの列は、コンパクト表示で設定がオンのときだけ（cols.artist。下の「アーティストの出し入れ」）
@@ -406,7 +406,7 @@ test("並べ替えの矢印（v3.8.0）：アーティストで並べ替えた�
   assert.match(tt, /\{cols\.artistLine \? headBtn\("title", "タイトル \/ アーティスト"\) : headBtn\("title", "タイトル"\)\}/);
 });
 
-test("アーティストの出し入れ（v3.5.0。作者の要望）：設定の「曲一覧の列」のアルバムの前。名前と既定（オン）が Rust と画面で同じ。通常の表示ではタイトルの下の段を出し入れする", () => {
+test("アーティストの出し入れ（v3.5.0）：設定の「曲一覧の列」のアルバムの前。名前と既定（オン）が Rust と画面で同じ。通常の表示ではタイトルの下の段を出し入れする", () => {
   // 設定の画面：チェックの並びは列の順（アーティスト → アルバム → ジャンル → 時間 → お気に入り）
   const v = read("src/views/SettingsView.tsx");
   const colsDef = v.slice(v.indexOf("const COLS = ["), v.indexOf("];", v.indexOf("const COLS = [")));

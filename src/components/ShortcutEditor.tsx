@@ -13,7 +13,7 @@ function KeyBox(props: { value: string; bad?: boolean; onChange: (v: string) => 
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      // v3.8.1（作者の要望）：消せる枠（グローバルホットキー）では Esc で割り当てを消す（3.8.0 までは Delete・Backspace）。
+      // v3.8.1：消せる枠（グローバルホットキー）では Esc で割り当てを消す（3.8.0 までは Delete・Backspace）。
       // 消せない枠（アプリ内ショートカット）では、今までどおり Esc で受け付けをやめる。どちらも、枠の外を押せば何も変えずにやめる
       if (e.key === "Escape") {
         if (props.allowClear) props.onChange("");
@@ -57,7 +57,7 @@ export function ShortcutEditor() {
   };
   return (
     <>
-      {/* v3.3.0（作者の要望）：項目が多いので、幅があれば2列に並べる（狭いと1列。.key-grid） */}
+      {/* v3.3.0：項目が多いので、幅があれば2列に並べる（狭いと1列。.key-grid） */}
       <div className="key-grid">
       {SHORTCUT_ACTIONS.map((a) => (
         <div className="field" key={a}>

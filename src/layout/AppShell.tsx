@@ -50,7 +50,7 @@ export function AppShell() {
   const s = useStore(settings);
   const collapsed = s.ui.sidebarCollapsed || size.sidebarAuto;
   // 流れる歌詞の列（v3.0.2）：設定がオンなら出す。v3.8.0 から歌詞画面を開いている間も出す
-  // （3.7.0 までは歌詞画面で隠していた。作者「歌詞を全画面表示中にも再生曲の下に歌詞を出したい」2026-11-18）
+  // （3.7.0 までは歌詞画面で隠していた。2026-11-18 に変えた）
   const view = useStore(route).view;
   const rowWanted = lyricsRowOn(s);
   // v3.8.0：詳細の配置（詳細でなければ null）。詳細で曲一覧が2行を切るときは、流れる歌詞の列を自動で隠す（設定は書き換えない。窓を広げたら戻る）
@@ -74,7 +74,7 @@ export function AppShell() {
     // 隠すかは、曲一覧の側（専用の幅を取る前）から専用の幅を引いた残りで決める。詳細でミキサーを左右に並べたときはその左の幅、
     // 上下のときと詳細でないときは中央の幅（centerWidth）
     paneWidth: characterPaneOf(size.width, D, collapsed),
-    // 残す幅：詳細なら 360（DETAIL.listMin。作者の決定「詳細でも出す」）、そうでなければ 634
+    // 残す幅：詳細なら 360（DETAIL.listMin。詳細の表示でも出す）、そうでなければ 634
     minListPx: characterMinListOf(D),
     playing,
     reducedMotion: reduce,

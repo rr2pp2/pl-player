@@ -126,7 +126,7 @@ test("ごみ箱へ移す確認の文：曲名・ファイルの場所・戻せ�
   assert.ok(many.body.includes("曲4") && !many.body.includes("曲5"));
 });
 
-test("ごみ箱へ移すを出す場所（作者の決定）：ライブラリの曲一覧だけ。右クリックはいつも、行のボタンは設定がオンのときだけ", () => {
+test("ごみ箱へ移すを出す場所：ライブラリの曲一覧だけ。右クリックはいつも、行のボタンは設定がオンのときだけ", () => {
   const on = { trashButton: true };
   assert.equal(trashButtonShown(on, "library"), true);
   for (const l of ["playlist", "queue", "playerBar"] as const) assert.equal(trashButtonShown(on, l), false, l);
@@ -180,7 +180,7 @@ test("ごみ箱の列：見出しの行に「ごみ箱」、行のボタンは�
   assert.match(row, /title=\{`\$\{p\.trashLabel\}/);
   assert.ok(!/ごみ箱へ<\/span>/.test(row), "no text label in the row button");
   // お気に入りの列も同じ見出しの行に「お気に入り」（12px の字で5字＝60px が切れない幅）。
-  // v3.5.0 で一度星のマークにしたが、作者の要望で文字に戻した（星は行のボタンとサイドバーに出す）
+  // v3.5.0 で一度星のマークにしたが、文字に戻した（星は行のボタンとサイドバーに出す）
   assert.match(tt, /\{cols\.favorite \? <span className="col-fav">お気に入り<\/span> : null\}/);
   const f = tt.match(/cols\.favorite \? "(\d+)px" : null/);
   assert.ok(f && Number(f[1]) >= 60, "favorite column fits its header");
