@@ -12,6 +12,10 @@ use crate::skins::package;
 use crate::skins::testkit::*;
 
 const VER: &str = "3.9.1";
+/// 見本のスキンを通すアプリの版（今の版）。v3.12.0 から見本は IconShufflePlay を持つので、minAppVersion は 3.12.0
+const SKIN_APP_VER: &str = env!("CARGO_PKG_VERSION");
+/// 見本のスキンの minAppVersion（IconShufflePlay を知らない 3.11.1 までの版は、知らない名前として取り込みを断るため）
+const SKIN_MIN_APP_VER: &str = "3.12.0";
 
 fn base(tag: &str) -> PathBuf {
     let b = crate::test_tmp().join(format!("plp-sample-{tag}-{}", std::process::id()));
@@ -376,11 +380,11 @@ fn sample_skin_zip(dir: &str, extra: &[(&str, &str)]) -> Vec<u8> {
     zip(&items)
 }
 
-/// 見本のスキンを今のアプリの取り込みに通す。警告なし・34 個のアイコン（状態ごと）とウィンドウ・トレイのアイコンが全部使われる・
+/// 見本のスキンを今のアプリの取り込みに通す。警告なし・35 個のアイコン（状態ごと）とウィンドウ・トレイのアイコンが全部使われる・
 /// 両テーマの色が確かめに通る（読みやすさの警告は画面が出すもので、取り込みを止めない。色の値の形が違えばここで断られる）
 fn check_sample_skin(bytes: &[u8], tag: &str, id: &str, name: &str) {
     let d = dirs(tag);
-    let (insp, staged) = package::inspect_bytes(bytes, &d, VER).unwrap_or_else(|e| panic!("{id}: {:?} {}", e.kind, e.detail));
+    let (insp, staged) = package::inspect_bytes(bytes, &d, SKIN_APP_VER).unwrap_or_else(|e| panic!("{id}: {:?} {}", e.kind, e.detail));
     assert!(!insp.conflict);
     assert!(insp.warnings.is_empty(), "{id}: {:?}", insp.warnings);
     assert!(insp.ignored.is_empty() && !insp.unwrapped);
@@ -388,18 +392,19 @@ fn check_sample_skin(bytes: &[u8], tag: &str, id: &str, name: &str) {
     assert_eq!(insp.name, name);
     assert!(insp.description.starts_with("スキン作りの見本。"), "{}", insp.description);
     assert!(insp.parts.appearance && insp.parts.application && insp.parts.character && !insp.parts.animated);
-    // v3.11.0：全部入り。skin.json・ボタンのアイコン 41 枚（34 個の状態ごと）・ウィンドウとトレイ・立ち絵2枚
-    assert_eq!(insp.parts.icons, 34, "{id}");
-    assert_eq!(insp.file_count, 1 + 41 + 2 + 2, "{id}");
+    assert_eq!(insp.min_app_version.as_deref(), Some(SKIN_MIN_APP_VER), "{id}");
+    // v3.11.0：全部入り。skin.json・ボタンのアイコン 42 枚（35 個の状態ごと。v3.12.0 で IconShufflePlay を足した）・ウィンドウとトレイ・立ち絵2枚
+    assert_eq!(insp.parts.icons, 35, "{id}");
+    assert_eq!(insp.file_count, 1 + 42 + 2 + 2, "{id}");
     // 両テーマの色が入っている（形の違う値なら inspect_bytes が断る）
     let a = insp.appearance.as_ref().unwrap();
     assert!(a.dark.as_ref().map(|t| !t.tokens.is_empty()).unwrap_or(false), "{id}: dark");
     assert!(a.light.as_ref().map(|t| !t.tokens.is_empty()).unwrap_or(false), "{id}: light");
-    package::commit(&staged, &d, VER).unwrap();
+    package::commit(&staged, &d, SKIN_APP_VER).unwrap();
     package::discard(&staged);
-    let inst = package::load(&d, id, VER).unwrap();
+    let inst = package::load(&d, id, SKIN_APP_VER).unwrap();
     let r = inst.resolve();
-    // 34 個のアイコンの、状態ごとの絵が全部使われる（拒まれたり落とされたりしない）。手で入れるアイコンの枠と同じ数
+    // 35 個のアイコンの、状態ごとの絵が全部使われる（拒まれたり落とされたりしない）。手で入れるアイコンの枠と同じ数
     for (n, s) in crate::skins::icons::all_slots() {
         if crate::skins::icons::is_app(n) {
             continue;
@@ -407,7 +412,7 @@ fn check_sample_skin(bytes: &[u8], tag: &str, id: &str, name: &str) {
         let t = r.icons.get(n).and_then(|m| m.get(s)).unwrap_or_else(|| panic!("{id}: icon {n}/{s} is missing"));
         assert!(t.dark.is_some() && t.light.is_some(), "{id}: {n}/{s}");
     }
-    assert_eq!(r.icons.values().map(|m| m.len()).sum::<usize>(), 41, "{id}");
+    assert_eq!(r.icons.values().map(|m| m.len()).sum::<usize>(), 42, "{id}");
     // ウィンドウとトレイのアイコンは、それぞれの絵（静止画で、正方形に整えられる）
     let (w, wrel) = inst.app_icon_exact(false).unwrap();
     let (t, trel) = inst.app_icon_exact(true).unwrap();
@@ -417,7 +422,7 @@ fn check_sample_skin(bytes: &[u8], tag: &str, id: &str, name: &str) {
     let c = r.character.unwrap();
     assert_eq!((c.playing.width, c.playing.height, c.width_px, c.max_height_px), (450, 950, 220, 420));
     // 取り込んだスキンの立ち絵として選べる
-    assert_eq!(avatars::check_choice(&d, &format!("skin:{id}"), VER).unwrap(), format!("skin:{id}"));
+    assert_eq!(avatars::check_choice(&d, &format!("skin:{id}"), SKIN_APP_VER).unwrap(), format!("skin:{id}"));
 }
 
 /// スキンの見本（くもくじら・ペンギン）は、今のアプリの確かめを警告なしで通る
@@ -445,9 +450,30 @@ fn release_sample_skin_imports() {
     let p = PathBuf::from(std::env::var("PL_SAMPLE_SKIN_ZIP").expect("PL_SAMPLE_SKIN_ZIP"));
     let bytes = fs::read(&p).unwrap();
     let d = dirs("release-skin-peek");
-    let (insp, staged) = package::inspect_bytes(&bytes, &d, VER).unwrap();
+    let (insp, staged) = package::inspect_bytes(&bytes, &d, SKIN_APP_VER).unwrap();
     package::discard(&staged);
     let (_, id, name, _) = SAMPLE_SKINS.iter().find(|s| s.1 == insp.id).unwrap_or_else(|| panic!("not a sample skin: {}", insp.id));
     check_sample_skin(&bytes, "release-skin", id, name);
     println!("ok: {} ({id})", p.file_name().unwrap().to_string_lossy());
+}
+
+/// 動作確認用のデータフォルダに、スキンの見本（くもくじら・ペンギン）を取り込む（アプリの取り込みと同じ処理。使うスキンは変えない）。
+/// 「立ち絵」の欄に、取り込んだスキンの立ち絵のカードを並べて見るため（v3.12.0）。`skins::tests::seed_skins` と一緒に使える。
+/// 走らせ方：`PL_PLAYER_DATA_DIR=<プロジェクト内のフォルダ> cargo test --lib skins::sample::tests::seed_sample_skins -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn seed_sample_skins() {
+    let data = PathBuf::from(std::env::var("PL_PLAYER_DATA_DIR").expect("PL_PLAYER_DATA_DIR"));
+    fs::create_dir_all(&data).unwrap();
+    let d = Dirs::new(&data);
+    for (dir, id, _, extra) in SAMPLE_SKINS {
+        let (insp, staged) = package::inspect_bytes(&sample_skin_zip(dir, extra), &d, SKIN_APP_VER).unwrap_or_else(|e| panic!("{id}: {:?} {}", e.kind, e.detail));
+        if insp.conflict {
+            package::discard(&staged);
+            println!("already installed {id}");
+        } else {
+            package::commit(&staged, &d, SKIN_APP_VER).unwrap();
+            println!("installed {id}");
+        }
+    }
 }

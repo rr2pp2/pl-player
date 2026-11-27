@@ -5,8 +5,8 @@
   "name": "ペンギン（見本）",
   "version": "1.0.0",
   "author": "PL Player",
-  "description": "スキン作りの見本。氷の上のペンギンの立ち絵（再生中はヘッドホンで歌い、止めると眠る）、夜と昼の氷の海の色（Dark・Light）、ボタンのアイコン全部（34 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
-  "minAppVersion": "3.7.0",
+  "description": "スキン作りの見本。氷の上のペンギンの立ち絵（再生中はヘッドホンで歌い、止めると眠る）、夜と昼の氷の海の色（Dark・Light）、ボタンのアイコン全部（35 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
+  "minAppVersion": "3.12.0",
   "parts": {
     "appearance": {
       "themes": {
@@ -100,7 +100,8 @@
       "IconLyrics": "icons/IconLyrics.png",
       "IconBack": "icons/IconBack.png",
       "IconLyricsRow": "icons/IconLyricsRow.png",
-      "IconRanking": "icons/IconRanking.png"
+      "IconRanking": "icons/IconRanking.png",
+      "IconShufflePlay": "icons/IconShufflePlay.png"
     },
     "application": {
       "window": "app/window.png",

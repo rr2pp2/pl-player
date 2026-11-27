@@ -33,6 +33,7 @@ import {
   IconSearch,
   IconSettings,
   IconShuffle,
+  IconShufflePlay,
   IconSidebar,
   IconStar,
   IconTag,
@@ -60,6 +61,7 @@ const PLAIN: Record<string, (p: { className?: string }) => any> = {
   IconClockPlus,
   IconHistory,
   IconRanking,
+  IconShufflePlay,
   IconList,
   IconQueue,
   IconSettings,
@@ -218,7 +220,7 @@ export function IconsField() {
           </button>
         </span>
         <span className="hint">
-          画像を落とせるのは、枠の上に1つだけです（複数のファイル・フォルダは受けません）。枠の外に落としたものは、今までどおり曲の取り込みになります。シャッフルの入・切に関係しない「シャッフル再生」のボタン（曲一覧・プレイリスト・年間まとめ）は、スキンのアイコンか元のアイコンのままです。設定のバックアップ（zip）には、どの枠に入れたかだけが入り、画像は入りません。
+          画像を落とせるのは、枠の上に1つだけです（複数のファイル・フォルダは受けません）。枠の外に落としたものは、今までどおり曲の取り込みになります。曲一覧・年間まとめの「シャッフル再生」とプレイリストの「シャッフル」のボタン、サイドバーのプレイリストの右クリックの「シャッフル再生」は、「曲一覧」の「シャッフル再生」の枠で替わります（再生バーの「シャッフル」の切・入の枠では替わりません）。設定のバックアップ（zip）には、どの枠に入れたかだけが入り、画像は入りません。
         </span>
       </div>
     </div>

@@ -2143,6 +2143,47 @@ img.skin-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* v3.12.0：「立ち絵」の欄のカードの説明（スキンの名前・「（いまは無し）」など、文の終わりに意味がある）。省略記号で切らずに折り返す
+   （切れ目は下の v3.11.1 の決まり） */
+.skin-meta.wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+}
+/* v3.12.0：「立ち絵」の欄のカードは、左に絵・右に名前・説明・印・ボタン（上の「スキン」の一覧のカードは今のまま、上に絵・下に文字）。
+   格子は今と同じ auto-fill で、1枚の最小の幅を 280px にする（右の列に文字の 180px ほどが残る）。欄がそれより狭ければ1列で、
+   min(100%, …) で横にはみ出さない。絵は縦長の枠（72×96px）に縦横比を保って収める（立ち絵は縦長が多い） */
+.avatar-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  /* カードの高さは中身の分だけ（同じ行の長いカードに合わせて伸ばさない。短いカードのボタンが下に離れないように） */
+  align-items: start;
+}
+.skin-card.avatar-card {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+}
+.avatar-card .avatar-card-preview {
+  flex: none;
+  width: 72px;
+  height: 96px;
+  margin-bottom: 0;
+}
+.avatar-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* 名前も切らずに折り返す（登録した立ち絵の名前は 40 文字まで。省略記号にすると同じ頭の名前を見分けられない） */
+.avatar-card .skin-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+}
 .skin-tags {
   display: flex;
   flex-wrap: wrap;
@@ -2316,14 +2357,17 @@ img.skin-icon {
    auto-phrase は日本語を文節で切る（Chromium 119 から。<html lang="ja"> が要る）。知らないブラウザでは前の keep-all が残り、
    字と字の間では切らずに空白・句読点・「・」で切る。「・」「／」の後ろは画面が <wbr> を入れて、必ず切れるようにしている（SettingsIcons.tsx・SettingsColors.tsx）。
    それでも1つの言葉が幅に入らないときだけ、overflow-wrap: anywhere で言葉の途中で切る（はみ出し・横スクロールを出さない）。
-   説明の長い文（.hint・.hint-text）は今までどおり（どこでも切る） */
+   説明の長い文（.hint・.hint-text）は今までどおり（どこでも切る）。
+   v3.12.0：「立ち絵」の欄のカードの名前と説明（.avatar-card .skin-name・.skin-meta.wrap）も短い文なので、ここに入れた */
 .settings h3,
 .settings .skin-subhead,
 .settings .flabel,
 .settings .field > label,
 .settings label.row,
 .settings .icon-group-label,
-.settings .icon-slot-label {
+.settings .icon-slot-label,
+.settings .avatar-card .skin-name,
+.settings .skin-meta.wrap {
   word-break: keep-all;
   word-break: auto-phrase;
   overflow-wrap: anywhere;

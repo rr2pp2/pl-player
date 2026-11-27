@@ -3,6 +3,8 @@
 // v3.10.0：手で選ぶ色（重なり順・値の確かめ・選び窓の値の作り方・読みやすさの警告・「既定の見た目に戻す」で外れる道）。
 // v3.11.0：手で入れるアイコン（重なり順・枠が Rust と同じ・ドロップの振り分け・欄の作り・保存の道・ビルドした CSS での大きさ）。
 // v3.11.1：ビルドした CSS の値で計算しても基準に届かない組み合わせがソースと同じこと・設定画面の短い文字を言葉の切れ目で折り返すこと。
+// v3.12.0：「シャッフル再生」のボタンの枠（IconShufflePlay）。枠の場所・使うボタン・絵の順（手 → スキン → スキンの IconShuffle の default → 線）。
+//          取り込んだスキンの立ち絵のカード（説明にスキンの名前・削除すると消えること・「スキン」の印・切らずに折り返す）。取り込みの数の上限の値が文と同じ。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
@@ -39,7 +41,7 @@ import {
   validFontName,
   validRgbTriple,
 } from "../src/skins/tokens.ts";
-import { pickIconPath, pickLayeredIcon, repeatState, shuffleState, starState, volumeState, withRev } from "../src/skins/icons.ts";
+import { pickIconPath, pickLayeredIcon, repeatState, shuffleState, SKIN_FALLBACK, starState, volumeState, withRev } from "../src/skins/icons.ts";
 import { wrapParts } from "../src/components/wrapParts.ts";
 import { hasManualIcon, ICON_GROUPS, ICON_SLOTS, iconZoneKey, manualIconCount, parseIconZone, routeDrop, SIDEBAR_PX, slotPx } from "../src/skins/iconSlots.ts";
 import {
@@ -67,7 +69,23 @@ import { APP, centerWidth, DETAIL, detailLayout, type DetailInput } from "../src
 import { LIST_BELOW, listLayoutFor } from "../src/layout/density.ts";
 import { color as contrastColor, contrastWarnings, contrastWarningsOrError, evaluate, ratio } from "../src/skins/contrast.ts";
 import { warningRows } from "../src/skins/warnings.ts";
-import { AVATAR_NAME_MAX, avatarChoice, avatarNameOk, avatarNameReady, avatarRows, canCreateAvatar, cardClickSwitches, cardKeySwitches, CHOICE_NONE, CHOICE_SKIN, skinCharacterChoice } from "../src/skins/avatars.ts";
+import {
+  AVATAR_NAME_MAX,
+  avatarCardLabel,
+  avatarChoice,
+  avatarNameOk,
+  avatarNameReady,
+  avatarPreviewText,
+  avatarRows,
+  canCreateAvatar,
+  cardClickSwitches,
+  cardKeySwitches,
+  CHOICE_NONE,
+  CHOICE_SKIN,
+  SKIN_CHARACTER_BADGE,
+  skinCharacterChoice,
+  skinCharacterNote,
+} from "../src/skins/avatars.ts";
 import { evaluate as evaluateFile, readTheme } from "./theme-contrast.mts";
 
 const light = fileURLToPath(new URL("../src/theme/light.css", import.meta.url));
@@ -596,7 +614,8 @@ test("カード全体を押すと切り替わる。中のボタン（使う・�
   for (const b of ["使う", "変更", "削除"]) assert.match(view, new RegExp(`>\\s*${b}\\s*</button>`), b);
   assert.doesNotMatch(view, />\s*名前を変える\s*<\/button>/);
   // 小窓はカードの外（小窓の中のクリックがカードへ伝わらない）
-  const grid = view.indexOf('className="skin-grid"');
+  const grid = view.indexOf('className="skin-grid avatar-grid"');
+  assert.ok(grid > 0);
   const gridEnd = view.indexOf("立ち絵を足す");
   assert.ok(view.indexOf("<EditDialog") > gridEnd && view.indexOf("<CreateDialog") > gridEnd && grid < gridEnd);
 });
@@ -1418,9 +1437,9 @@ function rustIcons(): [string, string[]][] {
   return [...block.matchAll(/\("(Icon[A-Za-z]+)", &\[([^\]]*)\]\)/g)].map((m) => [m[1], [...m[2].matchAll(/"([a-z]+)"/g)].map((x) => x[1])]);
 }
 
-test("v3.11.0：枠は Rust（skins::icons）と同じ。ボタンのアイコン 34 個（状態のある4つは default を除いた状態ごと）＋ウィンドウ・トレイ。名前は日本語", () => {
+test("v3.11.0：枠は Rust（skins::icons）と同じ。ボタンのアイコン 35 個（状態のある4つは default を除いた状態ごと）＋ウィンドウ・トレイ。名前は日本語", () => {
   const icons = rustIcons();
-  assert.equal(icons.length, 34);
+  assert.equal(icons.length, 35);
   const want = new Set<string>();
   for (const [n, states] of icons) {
     const named = states.filter((s) => s !== "default");
@@ -1431,7 +1450,7 @@ test("v3.11.0：枠は Rust（skins::icons）と同じ。ボタンのアイコ�
   const got = ICON_SLOTS.map((x) => `${x.name}/${x.state}`);
   assert.equal(got.length, new Set(got).size, "no duplicates");
   assert.deepEqual([...got].sort(), [...want].sort());
-  assert.equal(got.length, 43);
+  assert.equal(got.length, 44);
   // Rust の枠の名前（ウィンドウ・トレイ）と状態の決め方
   const rsIcons = read("../src-tauri/src/skins/icons.rs");
   assert.ok(rsIcons.includes('pub const APP_WINDOW: &str = "AppWindow";') && rsIcons.includes('pub const APP_TRAY: &str = "AppTray";'));
@@ -1459,6 +1478,92 @@ test("v3.11.0：枠は Rust（skins::icons）と同じ。ボタンのアイコ�
   assert.equal(manualIconCount(undefined), 0);
   assert.ok(hasManualIcon({ IconStar: { filled: "gif" } }, "IconStar", "filled"));
   assert.ok(!hasManualIcon({ IconStar: { filled: "gif" } }, "IconStar", "outline"));
+});
+
+test("v3.12.0：「シャッフル再生」のボタンの枠（IconShufflePlay）。状態なし・「曲一覧」の先頭・16px。4か所のボタンが使い、再生バーの切・入は IconShuffle のまま", () => {
+  // 枠：状態なし（default だけ）・名前は「シャッフル再生」・場所は曲一覧の先頭（上のボタンは行より先に見える）・16px
+  const slot = ICON_SLOTS.filter((x) => x.name === "IconShufflePlay");
+  assert.deepEqual(slot, [{ name: "IconShufflePlay", state: "default", group: "list", label: "シャッフル再生", stateLabel: null, px: 16 }]);
+  assert.equal(ICON_SLOTS.filter((x) => x.group === "list")[0].name, "IconShufflePlay");
+  assert.deepEqual(rustIcons().find(([n]) => n === "IconShufflePlay"), ["IconShufflePlay", ["default"]]);
+  // シャッフルの枠は切・入だけのまま（default の枠は作らない）
+  assert.deepEqual(ICON_SLOTS.filter((x) => x.name === "IconShuffle").map((x) => x.state), ["off", "on"]);
+  // 部品：線は IconShuffle と同じ形・状態を渡さない（default）
+  const comp = read("../src/components/Icons.tsx");
+  assert.match(comp, /export const IconShufflePlay = \(p: P\) => \(\s*<Skinned name="IconShufflePlay" p=\{p\}>\s*<S \{\.\.\.p\}>\s*<path d=\{SHUFFLE_PATH\} \/>/);
+  assert.match(comp, /<Skinned name="IconShuffle" state=\{shuffleState\(p\.on\)\} p=\{p\}>\s*<S \{\.\.\.p\}>\s*<path d=\{SHUFFLE_PATH\} \/>/);
+  assert.ok(comp.includes('const SHUFFLE_PATH = "M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5";'));
+  // 使うボタン：曲一覧・年間まとめ・プレイリスト・サイドバーのプレイリストの右クリック。状態の無い <IconShuffle /> はもう無い
+  const uses: [string, RegExp][] = [
+    ["../src/views/LibraryView.tsx", /<IconShufflePlay \/> シャッフル再生/],
+    ["../src/views/YearlyView.tsx", /<IconShufflePlay \/> シャッフル再生/],
+    ["../src/views/PlaylistView.tsx", /<IconShufflePlay \/> シャッフル\r?\n/],
+    ["../src/layout/Sidebar.tsx", /\{ label: "シャッフル再生", icon: <IconShufflePlay \/>, onClick: \(\) => void api\.playlistPlay\(p\.id, null, true\) \}/],
+  ];
+  for (const [f, re] of uses) {
+    const src = read(f);
+    assert.match(src, re, f);
+    assert.ok(!src.includes("<IconShuffle />"), f);
+  }
+  for (const f of ["../src/views/GroupView.tsx", "../src/views/QueueView.tsx", "../src/components/TrackTable.tsx", "../src/components/trackActions.tsx"]) {
+    assert.ok(!read(f).includes("<IconShuffle />"), f);
+  }
+  // 再生バーの切・入は今のまま
+  assert.ok(read("../src/layout/PlayerBar.tsx").includes("icon: <IconShuffle on={s.shuffle} />,"));
+  // 見本の欄：状態の無い部品の表にある・説明文は今の仕組みのとおり
+  const view = read("../src/views/SettingsIcons.tsx");
+  assert.ok(/^  IconShufflePlay,$/m.test(view.slice(view.indexOf("const PLAIN"))));
+  assert.ok(view.includes("曲一覧・年間まとめの「シャッフル再生」とプレイリストの「シャッフル」のボタン、サイドバーのプレイリストの右クリックの「シャッフル再生」は、「曲一覧」の「シャッフル再生」の枠で替わります（再生バーの「シャッフル」の切・入の枠では替わりません）。"));
+  // 説明の呼び名は、それぞれのボタンに出ている文字と同じ（プレイリストは「シャッフル」、ほかは「シャッフル再生」。サイドバーは右クリックのメニュー）
+  assert.match(read("../src/views/PlaylistView.tsx"), /<IconShufflePlay \/> シャッフル\n/);
+  for (const f of ["../src/views/LibraryView.tsx", "../src/views/YearlyView.tsx"]) assert.match(read(f), /<IconShufflePlay \/> シャッフル再生\n/, f);
+  const side = read("../src/layout/Sidebar.tsx");
+  assert.ok(side.includes('{ label: "シャッフル再生", icon: <IconShufflePlay />') && side.includes("onContextMenu={(e) =>"));
+  assert.ok(!view.includes("スキンのアイコンか元のアイコンのままです"));
+  // 名前は「シャッフル」と「再生」の切れ目で折り返せる（文節で切る CSS。カタカナの言葉は 6 文字以内で、名前の 80px に入る）
+  assert.deepEqual(wrapParts("シャッフル再生"), ["シャッフル再生"]);
+  assert.ok("シャッフル".length * 12 <= 80 && "再生".length * 12 <= 80);
+});
+
+test("v3.12.0：「シャッフル再生」の絵の順は 手の IconShufflePlay → スキンの IconShufflePlay → スキンの IconShuffle の default → 線（null）。手の IconShuffle の切・入は見ない", () => {
+  assert.deepEqual(SKIN_FALLBACK, { IconShufflePlay: "IconShuffle" });
+  const t = (p: string) => ({ path: p, still: null });
+  const full = {
+    IconShufflePlay: { default: { dark: t("skin/sp-d.png"), light: t("skin/sp-l.png") } },
+    IconShuffle: { default: { dark: t("skin/sh-d.png"), light: t("skin/sh-l.png") }, on: { dark: t("skin/sh-on.png"), light: null }, off: { dark: t("skin/sh-off.png"), light: null } },
+  };
+  const onlyShuffle = { IconShuffle: full.IconShuffle };
+  const onlyStates = { IconShuffle: { on: full.IconShuffle.on, off: full.IconShuffle.off } };
+  const manualPlay = { IconShufflePlay: { default: manualOf("icons/IconShufflePlay/default.gif", "icons/IconShufflePlay/derived/default.png", "q1") } };
+  const manualShuffle = { IconShuffle: { off: manualOf("icons/IconShuffle/off.png"), on: manualOf("icons/IconShuffle/on.png") } };
+  const pick = (m: any, k: any, theme = "dark", rm = false) => pickLayeredIcon(m, k, "IconShufflePlay", "default", theme, rm);
+  // 1. 手で入れた IconShufflePlay（テーマに関係なく同じ。動きを減らすと最初の1コマ）
+  for (const theme of ["dark", "light"]) assert.deepEqual(pick({ ...manualPlay, ...manualShuffle }, full, theme), { path: "icons/IconShufflePlay/default.gif", rev: "q1" });
+  assert.deepEqual(pick(manualPlay, full, "dark", true), { path: "icons/IconShufflePlay/derived/default.png", rev: "q1" });
+  // 2. スキンの IconShufflePlay（テーマの絵）
+  assert.deepEqual(pick(manualShuffle, full, "dark"), { path: "skin/sp-d.png", rev: null });
+  assert.deepEqual(pick(manualShuffle, full, "light"), { path: "skin/sp-l.png", rev: null });
+  // 3. スキンの IconShuffle の default（3.11.1 までと同じ見え方）。切・入の絵は使わない
+  assert.deepEqual(pick(manualShuffle, onlyShuffle, "dark"), { path: "skin/sh-d.png", rev: null });
+  assert.deepEqual(pick(null, onlyShuffle, "light"), { path: "skin/sh-l.png", rev: null });
+  assert.equal(pick(manualShuffle, onlyStates, "dark"), null);
+  // 4. どれも無ければ線（null）。手の IconShuffle の切・入だけでは替わらない
+  assert.equal(pick(manualShuffle, null), null);
+  assert.equal(pick(manualShuffle, {}), null);
+  assert.equal(pick(null, null), null);
+  // 3.11.1 までの <IconShuffle />（状態なし）と同じ絵になる（手のアイコンが無いとき）
+  for (const k of [full, onlyShuffle, onlyStates, {}, null]) {
+    for (const theme of ["dark", "light"]) {
+      const before = pickLayeredIcon({}, k as any, "IconShuffle", "default", theme, false);
+      const kk = k && "IconShufflePlay" in k ? { ...k, IconShufflePlay: undefined } : k;
+      assert.deepEqual(pickLayeredIcon({}, kk as any, "IconShufflePlay", "default", theme, false), before, `${theme}`);
+    }
+  }
+  // 代わりを見るのは IconShufflePlay だけ。ほかのアイコンは今までどおり（スキンに無ければ null）
+  assert.equal(pickLayeredIcon(null, { IconPlay: full.IconShuffle } as any, "IconPause", "default", "dark", false), null);
+  // 再生バーの切・入は今までどおり（手の切・入 → スキンの切・入 → スキンの default）
+  assert.deepEqual(pickLayeredIcon(manualShuffle, full, "IconShuffle", "on", "dark", false), { path: "icons/IconShuffle/on.png", rev: "r1" });
+  assert.deepEqual(pickLayeredIcon(null, onlyShuffle, "IconShuffle", "off", "dark", false), { path: "skin/sh-off.png", rev: null });
 });
 
 test("v3.11.0：ドロップの振り分け。アイコンの枠の上はその枠へ（取り込みに回さない）。枠の外は今までどおり（受け手・取り込み・何もしない）", () => {
@@ -1639,4 +1744,179 @@ test("v3.11.0 見本スキン：くもくじら・ペンギンの両テーマの
       for (const [n, v] of Object.entries(skin.parts.appearance.themes[theme].tokens)) assert.equal(validColorToken(n, String(v)) !== null, true, `${dir} ${theme} ${n}`);
     }
   }
+});
+
+// ---------------- v3.12.0：取り込んだスキンの立ち絵のカード・取り込みの数の上限 ----------------
+
+test("v3.12.0：取り込んだスキンの立ち絵のカードは、説明にスキンの名前と「スキンを削除すると消えます」を書き、「スキン」の印を付ける。ほかのカードは今のまま", () => {
+  const list = {
+    skins: [{ skinId: "kumokujira-sample", name: "くもくじら（見本）", preview: null, animated: false }],
+    avatars: [{ id: "0123456789abcdef", name: "Pose", preview: null, hasStopped: true, animated: false, broken: null }],
+    max: 30,
+  };
+  const rows = avatarRows(list, "くもくじら（見本）", true);
+  const by = (k: string) => rows.find((r) => r.kind === k)!;
+  const sc = by("skinCharacter");
+  assert.equal(sc.name, "くもくじら（見本）");
+  assert.equal(sc.note, skinCharacterNote("くもくじら（見本）"));
+  assert.equal(sc.note, "スキン「くもくじら（見本）」の立ち絵。スキンを替えてもこの絵のままです。スキンを削除すると消えます");
+  assert.equal(sc.badge, SKIN_CHARACTER_BADGE);
+  assert.equal(SKIN_CHARACTER_BADGE, "スキン");
+  // 選び方の「スキンの立ち絵」・「出さない」・登録した立ち絵は今のまま（印なし。文も 3.11.1 と同じ）
+  assert.deepEqual([by("skin").name, by("skin").note, by("skin").badge], ["スキンの立ち絵", "いまは「くもくじら（見本）」の立ち絵", null]);
+  assert.deepEqual([by("none").name, by("none").note, by("none").badge], ["出さない", "立ち絵を出しません", null]);
+  assert.deepEqual([by("avatar").note, by("avatar").badge], ["登録した立ち絵", null]);
+  // 句読点の崩れ（「。、」「。。」「、、」）が無い
+  for (const r of rows) assert.ok(!/[。、][。、]/.test(r.note), r.note);
+  // 読み上げ：スキンそのものと取り違えないよう「スキン『◯◯』の立ち絵」と読む。ほかは 3.11.1 と同じ
+  assert.equal(avatarCardLabel(sc, false), "スキン「くもくじら（見本）」の立ち絵を使う");
+  assert.equal(avatarCardLabel(sc, true), "スキン「くもくじら（見本）」の立ち絵（使用中）");
+  assert.equal(avatarCardLabel(by("avatar"), false), "Poseを使う");
+  assert.equal(avatarCardLabel(by("skin"), true), "スキンの立ち絵（使用中）");
+  assert.equal(avatarCardLabel({ kind: "avatar", name: "", broken: "avatar_broken" }, false), "読めない立ち絵");
+  // 画面：印は「スキン」の一覧の札と同じ部品（.skin-tags の中の .skin-tag）。説明はどのカードも wrap を付けて切らない（全文が見えるので title は付けない）
+  const view = read("../src/views/SettingsAvatars.tsx");
+  assert.ok(view.includes("aria-label={avatarCardLabel(r, on)}"));
+  assert.ok(view.includes('<div className="skin-meta wrap">{r.note}</div>'));
+  assert.ok(!view.includes("title={r.note}"));
+  assert.match(view, /\{r\.badge \? \(\s*<div className="skin-tags">\s*<span className="skin-tag">\{r\.badge\}<\/span>/);
+  assert.ok(read("../src/views/SettingsSkins.tsx").includes('<span className="skin-tag">削除不可</span>'));
+  // 削除のボタンは登録した立ち絵だけ（スキンの立ち絵はスキンを削除すると一緒に消える）
+  assert.match(view, /\{r\.kind === "avatar" \? \(\s*<button className="btn danger" onClick=\{\(\) => void del\(r\)\}>/);
+});
+
+test("v3.12.0：取り込んだスキンの立ち絵のカードの説明は、省略記号で切らずに言葉の切れ目で折り返す（ソースとビルドした CSS）", () => {
+  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  const rulesFor = (css: string, sel: string) =>
+    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]);
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    const body = rulesFor(css, ".skin-meta.wrap").join(";");
+    assert.ok(body.includes("white-space:normal"), body);
+    assert.ok(!body.includes("text-overflow:ellipsis") && !body.includes("overflow:hidden"), body);
+    // 切れ目は v3.11.1 の設定画面の短い文字と同じ決まり（文節で切る・知らないブラウザでは keep-all・入らない言葉だけ途中で切る）
+    const phrase = rulesFor(css, ".settings.skin-meta.wrap");
+    assert.ok(phrase.some((b) => b.includes("word-break:auto-phrase") && b.includes("overflow-wrap:anywhere")), phrase.join(" | "));
+    // 札は1行のまま（一覧の札と同じ）
+    assert.ok(rulesFor(css, ".skin-tag").join(";").includes("white-space:nowrap"));
+  }
+  // ふつうのカードの説明（.skin-meta）は今までどおり1行で、省略記号
+  const meta = rulesFor(read("../src/theme/base.css"), ".skin-meta").join(";");
+  assert.ok(meta.includes("white-space:nowrap") && meta.includes("text-overflow:ellipsis"), meta);
+});
+
+test("v3.12.0：スキンの取り込みの数の上限（ファイル 128・項目 160・中央ディレクトリ 512）が、断るときの文・README・手引き・仕様の表と同じ", () => {
+  const mod = read("../src-tauri/src/skins/mod.rs");
+  const num = (re: RegExp) => Number(re.exec(mod)![1]);
+  const files = num(/pub const MAX_FILES: usize = (\d+);/);
+  const entries = num(/pub const MAX_ENTRIES: usize = (\d+);/);
+  const scanned = num(/pub const MAX_SCANNED_ENTRIES: usize = (\d+);/);
+  assert.deepEqual([files, entries, scanned], [128, 160, 512]);
+  // skin.json が指せる画像の数：アイコンの状態（default を含む）× Dark・Light ＋ ウィンドウ・トレイ・トレイの再生中 ＋ 立ち絵2枚 ＋ preview
+  const manifest = read("../src-tauri/src/skins/manifest.rs");
+  const table = manifest.slice(manifest.indexOf("pub const ICONS"), manifest.indexOf("];", manifest.indexOf("pub const ICONS")));
+  const states = [...table.matchAll(/\("Icon[A-Za-z]+", &\[([^\]]*)\]\)/g)].map((m) => m[1].split(",").length);
+  assert.equal(states.length, 35);
+  const images = states.reduce((a, b) => a + b, 0) * 2 + 3 + 2 + 1;
+  assert.equal(images, 98);
+  assert.ok(images + 1 <= files, "every image the skin can use, plus skin.json, fits the file limit");
+  assert.ok(read("../src/messages/ja.ts").includes(`ファイル ${files} 個・画像1つ 15MB まで`));
+  assert.ok(read("../README.md").includes(`ファイル ${files} 個・画像1つ 15MB`));
+  const guide = read("../docs/スキンの作り方.md");
+  assert.ok(guide.includes(`ファイル ${files} 個（フォルダも数えて ${entries} 項目）`));
+  assert.ok(guide.includes(`全部で ${images} 枚`));
+  const spec = read("../docs/着せ替え_仕様.md");
+  assert.ok(spec.includes(`| 項目の数（フォルダも数える） | ${entries} |`));
+  assert.ok(spec.includes(`| 中央ディレクトリの項目の数（OS が足すファイルも含めた全部） | ${scanned} |`));
+  assert.ok(spec.includes(`| ファイルの数 | ${files} |`));
+  assert.ok(spec.includes(`${images} 枚`));
+  assert.ok(spec.includes(`項目 ${entries + 1}・ファイル ${files + 1}・中央ディレクトリの項目 ${scanned + 1}`));
+  // 3.11.1 までの値が、今の上限として残っていない
+  for (const f of ["../src/messages/ja.ts", "../README.md", "../docs/スキンの作り方.md"]) assert.ok(!read(f).includes("ファイル 64 個・画像1つ"), f);
+});
+
+test("v3.12.0：「立ち絵」の欄のカードは左に絵・右に名前・説明・印・ボタン。「スキン」の一覧のカードは今のまま（上に絵・下に文字）", () => {
+  const view = read("../src/views/SettingsAvatars.tsx");
+  // 格子とカードの名前。カードの中は 絵（RowPreview）→ 右の列（名前・説明・印・読めない理由・ボタン）の順
+  assert.ok(view.includes('<div className="skin-grid avatar-grid" role="group" aria-label="使う立ち絵（カードを押すと切り替わります）">'));
+  assert.ok(view.includes('className={"skin-card avatar-card" + (on ? " active" : "")'));
+  assert.ok(view.includes('<div className="skin-preview avatar-card-preview" aria-hidden="true">'));
+  const card = view.slice(view.indexOf("<RowPreview row={r} skinStill={skinStill} />"), view.indexOf("        })}", view.indexOf("<RowPreview row={r}")));
+  const order = ['<div className="avatar-card-body">', '<div className="skin-name">{r.name}</div>', '<div className="skin-meta wrap">{r.note}</div>', '<span className="skin-tag">{r.badge}</span>', 'className="error-text"', '<div className="skin-actions">'];
+  let at = 0;
+  for (const part of order) {
+    const i = card.indexOf(part, at);
+    assert.ok(i >= at, part);
+    at = i;
+  }
+  // ボタン・カード全体を押す・キー・読み上げは今のまま
+  for (const t of ["cardClickSwitches(r, on, !!(e.target as HTMLElement).closest(\"button\"))", "cardKeySwitches(e.key, r, on, e.target === e.currentTarget)", 'role="button"', "aria-pressed={on}", ">\n                      使用中"]) {
+    assert.ok(view.includes(t), t);
+  }
+  // 「スキン」の一覧のカードは今のまま（avatar-card を付けない・説明は1行）
+  const skinsView = read("../src/views/SettingsSkins.tsx");
+  assert.ok(!skinsView.includes("avatar-card") && !skinsView.includes("avatar-grid"));
+  assert.ok(skinsView.includes('<div key={x.id} className={"skin-card" + (on ? " active" : "") + (x.broken ? " broken" : "")}>'));
+  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  const rulesFor = (css: string, sel: string) =>
+    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]).join(";");
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    // 格子は今と同じ auto-fill。1枚の最小の幅 280px、欄がそれより狭ければ1列（はみ出さない）
+    assert.ok(rulesFor(css, ".avatar-grid").includes("grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))"), rulesFor(css, ".avatar-grid"));
+    const c = rulesFor(css, ".skin-card.avatar-card");
+    assert.ok(c.includes("flex-direction:row"), c);
+    const pv = rulesFor(css, ".avatar-card.avatar-card-preview");
+    for (const d of ["flex:none", "width:72px", "height:96px"]) assert.ok(pv.includes(d), `${d}: ${pv}`);
+    const body = rulesFor(css, ".avatar-card-body");
+    for (const d of ["min-width:0", "flex-direction:column"]) assert.ok(body.includes(d), `${d}: ${body}`);
+    // 名前も切らずに、言葉の切れ目で折り返す
+    const name = rulesFor(css, ".avatar-card.skin-name");
+    assert.ok(name.includes("white-space:normal") && !name.includes("ellipsis"), name);
+    const phrase = rulesFor(css, ".settings.avatar-card.skin-name");
+    assert.ok(phrase.includes("word-break:auto-phrase") && phrase.includes("overflow-wrap:anywhere"), phrase);
+  }
+  // 「スキン」の一覧のカードの決まり（上に絵・下に文字・格子 190px）は今のまま
+  const base = read("../src/theme/base.css");
+  assert.ok(rulesFor(base, ".skin-grid").includes("minmax(190px,1fr)"));
+  assert.ok(rulesFor(base, ".skin-card").includes("flex-direction:column"));
+  // 右の列に残る幅：280 − 内側 9×2 − 縁 1×2 − 絵 72 − あき 10 = 178px。「使う」「変更」「削除」は、ボタンの字（本文の 14px。スキンで +2px まで）
+  // 2つ＋内側 9×2＋縁 1×2 を3つと、あき 6×2。16px でも 168px で1行に入る（入らなくても折り返す。.skin-actions は flex-wrap）
+  assert.equal(280 - 9 * 2 - 1 * 2 - 72 - 10, 178);
+  assert.ok(3 * (16 * 2 + 9 * 2 + 1 * 2) + 6 * 2 <= 178);
+  assert.ok(rulesFor(base, ".skin-actions").includes("flex-wrap:wrap"));
+});
+
+test("v3.12.0：「スキンの立ち絵」の説明は、立ち絵の無いスキンのとき「（いまは無し）」まで全文出す（どのカードの説明も省略記号で切らない）", () => {
+  const none = avatarRows({ skins: [], avatars: [], max: 30 }, "Shape Colors", false)[0];
+  assert.equal(none.note, "当てているスキンに立ち絵があれば出します（いまは無し）");
+  const has = avatarRows({ skins: [], avatars: [], max: 30 }, "ペンギン（見本）", true)[0];
+  assert.equal(has.note, "いまは「ペンギン（見本）」の立ち絵");
+  // 説明の要素はカードの種類によらず1つで、wrap が付く（種類で分けない）
+  const view = read("../src/views/SettingsAvatars.tsx");
+  assert.equal((view.match(/className="skin-meta/g) ?? []).length, 1);
+  assert.ok(view.includes('<div className="skin-meta wrap">{r.note}</div>'));
+});
+
+test("v3.12.0：立ち絵のカードの高さは中身の分だけ。説明が空なら行を作らない。絵の無い「スキンの立ち絵」の枠は「出さない」と同じ「なし」", () => {
+  const view = read("../src/views/SettingsAvatars.tsx");
+  // 同じ行の長いカードに合わせて伸ばさない（短いカードの「使う」が下に離れない）。ソースとビルドした CSS
+  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  const rulesFor = (css: string, sel: string) =>
+    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]).join(";");
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    const g = rulesFor(css, ".avatar-grid");
+    assert.ok(g.includes("align-items:start"), g);
+  }
+  // 読めない立ち絵は説明が空 → 説明の要素を出さない（名前と理由の間に空の行を作らない）
+  const rows = avatarRows({ skins: [], avatars: [{ id: "00000000000000aa", name: "", preview: null, hasStopped: false, animated: false, broken: "avatar_broken" as const }], max: 30 }, null, false);
+  assert.equal(rows[2].note, "");
+  assert.ok(view.includes('{r.note ? <div className="skin-meta wrap">{r.note}</div> : null}'));
+  // 絵の枠の文字：「出さない」と、立ち絵の無いスキンを当てているときの「スキンの立ち絵」は「なし」。ほかは空
+  assert.equal(avatarPreviewText("none"), "なし");
+  assert.equal(avatarPreviewText("skin"), "なし");
+  assert.equal(avatarPreviewText("skinCharacter"), "");
+  assert.equal(avatarPreviewText("avatar"), "");
+  assert.ok(view.includes('<span className="avatar-preview-text">{avatarPreviewText(r.kind)}</span>'));
+  // 立ち絵のあるスキンのときは、今までどおりその絵（Rust が解いた停止中の静止画）を出す
+  assert.ok(view.includes('const src = r.kind === "skin" ? props.skinStill : r.preview;'));
+  assert.ok(view.includes("const skinStill = skinChar ? skinChar.stopped.still ?? skinChar.stopped.path : null;"));
 });

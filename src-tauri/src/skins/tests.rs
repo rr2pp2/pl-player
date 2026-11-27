@@ -123,7 +123,7 @@ fn folder_zips_from_explorer_and_macos() {
     package::commit(&staged, &d, VER).unwrap();
     assert!(package::load(&d, id, VER).is_ok());
 
-    // macOS：フォルダごと＋__MACOSX/ に項目ごとの写し＋.DS_Store。写しを足すと 80 項目を超えても取り込める
+    // macOS：フォルダごと＋__MACOSX/ に項目ごとの写し＋.DS_Store。写しを足すと項目の数の上限（160）を超えても取り込める
     let d = dirs("wrap-mac");
     let mut mac = wrap(b"MySkin/", good_entries(id));
     mac.push(Z::file("MySkin/.DS_Store", &[0u8; 64]));
@@ -135,14 +135,14 @@ fn folder_zips_from_explorer_and_macos() {
         Z::raw(&n, &[0u8; 82])
     }).collect();
     mac.extend(copies);
-    for i in 0..70 {
+    for i in 0..150 {
         mac.push(Z::raw(format!("__MACOSX/MySkin/._extra{i}").as_bytes(), &[0u8; 82]));
     }
-    assert!(mac.len() > limits::MAX_ENTRIES);
+    assert!(mac.len() > limits::MAX_ENTRIES && mac.len() <= limits::MAX_SCANNED_ENTRIES);
     let (insp, staged) = inspect(&d, &mac).unwrap();
     assert!(insp.unwrapped);
     let ig: Vec<(String, usize)> = insp.ignored.iter().map(|g| (g.name.clone(), g.count)).collect();
-    assert_eq!(ig, vec![(".DS_Store".to_string(), 1), ("__MACOSX/".to_string(), 2 + 10 + 70)]);
+    assert_eq!(ig, vec![(".DS_Store".to_string(), 1), ("__MACOSX/".to_string(), 2 + 10 + 150)]);
     package::discard(&staged);
 
     // 一番上に置いた形（今までどおり）は、外さない
@@ -150,7 +150,7 @@ fn folder_zips_from_explorer_and_macos() {
     let (insp, staged) = inspect(&d, &good_entries(id)).unwrap();
     assert!(!insp.unwrapped && insp.ignored.is_empty());
     package::discard(&staged);
-    // 全部で 256 項目を超える zip は、中央ディレクトリを読む前に断る
+    // 全部で MAX_SCANNED_ENTRIES（512）項目を超える zip は、中央ディレクトリを読む前に断る
     let mut huge = good_entries(id);
     for i in 0..limits::MAX_SCANNED_ENTRIES {
         huge.push(Z::raw(format!("__MACOSX/._{i}").as_bytes(), &[]));
@@ -740,20 +740,208 @@ fn bombs_and_limits() {
         v.push(e);
     }
     assert_eq!(kind(&d, &v), ErrorKind::SkinTooLarge);
-    // 項目の数（81）・ファイルの数（65）
+    // 項目の数（161）・ファイルの数（129）。上限ちょうどは limits_at_the_edge
     let mut v = good_entries(id);
-    for i in 0..72 {
+    for i in 0..=limits::MAX_ENTRIES - v.len() {
         v.push(Z::dir(&format!("icons/d{i}/")));
     }
+    assert_eq!(v.len(), limits::MAX_ENTRIES + 1);
     assert_eq!(kind(&d, &v), ErrorKind::SkinTooLarge);
     let mut v = good_entries(id);
-    for i in 0..56 {
+    for i in 0..=limits::MAX_FILES - 9 {
         v.push(Z::file(&format!("icons/f{i}.png"), &[0u8; 4]));
     }
     assert_eq!(kind(&d, &v), ErrorKind::SkinTooLarge);
     // zip のファイルの大きさ（25MB）
     let big = vec![0u8; (limits::MAX_ZIP_BYTES + 1) as usize];
     assert_eq!(package::inspect_bytes(&big, &d, VER).unwrap_err().kind, ErrorKind::SkinTooLarge);
+}
+
+/// 数の上限はちょうどまで通し、1つ超えたら断る（v3.12.0 の 160・128・512）
+#[test]
+fn limits_at_the_edge() {
+    let id = "shape-sample";
+    let base = good_entries(id);
+    let files_in_base = base.iter().filter(|z| !z.name.ends_with(b"/")).count();
+    assert_eq!((base.len(), files_in_base), (10, 9));
+    // 項目の数：空のフォルダの項目で 160 ちょうどにする → 取り込める。161 → 断る
+    let d = dirs("edge-entries");
+    let mut v = base.clone();
+    for i in 0..limits::MAX_ENTRIES - base.len() {
+        v.push(Z::dir(&format!("icons/d{i}/")));
+    }
+    assert_eq!(v.len(), limits::MAX_ENTRIES);
+    let (insp, staged) = inspect(&d, &v).unwrap();
+    assert_eq!(insp.file_count, files_in_base);
+    package::discard(&staged);
+    v.push(Z::dir("icons/one-more/"));
+    let e = inspect(&d, &v).unwrap_err();
+    assert_eq!(e.kind, ErrorKind::SkinTooLarge);
+    assert!(e.detail.contains(&format!("({} > {})", limits::MAX_ENTRIES + 1, limits::MAX_ENTRIES)), "{}", e.detail);
+    // ファイルの数：128 ちょうどは数では断らない（skin.json が指せる画像は 98 枚までなので、使っていないファイルとして断る）。129 → 大きすぎる
+    let d = dirs("edge-files");
+    let mut v = base.clone();
+    for i in 0..limits::MAX_FILES - files_in_base {
+        v.push(Z::file(&format!("icons/f{i}.png"), &[0u8; 4]));
+    }
+    assert_eq!(v.iter().filter(|z| !z.name.ends_with(b"/")).count(), limits::MAX_FILES);
+    assert_eq!(kind(&d, &v), ErrorKind::SkinFileNotAllowed);
+    v.push(Z::file("icons/one-more.png", &[0u8; 4]));
+    let e = inspect(&d, &v).unwrap_err();
+    assert_eq!(e.kind, ErrorKind::SkinTooLarge);
+    assert!(e.detail.contains(&format!("more than {} files", limits::MAX_FILES)), "{}", e.detail);
+    // 中央ディレクトリの項目の数（OS が足すファイルも含めた全部）：512 ちょうど → 取り込める。513 → 名前を読む前に断る
+    let d = dirs("edge-scanned");
+    let mut v = base.clone();
+    for i in 0..limits::MAX_SCANNED_ENTRIES - base.len() {
+        v.push(Z::raw(format!("__MACOSX/._{i}").as_bytes(), &[]));
+    }
+    assert_eq!(v.len(), limits::MAX_SCANNED_ENTRIES);
+    let (insp, staged) = inspect(&d, &v).unwrap();
+    assert_eq!(insp.ignored.iter().map(|g| g.count).sum::<usize>(), limits::MAX_SCANNED_ENTRIES - base.len());
+    package::discard(&staged);
+    v.push(Z::raw(b"__MACOSX/._one-more", &[]));
+    let e = inspect(&d, &v).unwrap_err();
+    assert_eq!(e.kind, ErrorKind::SkinTooLarge);
+    assert!(e.detail.contains(&format!("({} > {})", limits::MAX_SCANNED_ENTRIES + 1, limits::MAX_SCANNED_ENTRIES)), "{}", e.detail);
+}
+
+/// アイコンを状態ごとに Dark・Light で分けた全部入りのスキン（v3.12.0）。skin.json が指せる画像を全部、別のファイルで持つ：
+/// ボタンのアイコン 35 個の状態ごと（`default` を含めて 46 枚）× Dark・Light の 92 枚・ウィンドウとトレイ（`tray.playing` を含めて 3 枚）・
+/// 立ち絵2枚・preview・skin.json の 99 ファイル。アイコンごとにフォルダを分ける（`icons/` と 35 個・`app/`・`character/` の 38 項目）
+fn themed_full_entries(id: &str, name: &str, playing: (&str, Vec<u8>), stopped: (&str, Vec<u8>)) -> Vec<Z> {
+    let mut icons = serde_json::Map::new();
+    let mut files = vec![];
+    let mut folders = vec![Z::dir("icons/"), Z::dir("app/"), Z::dir("character/")];
+    for (n, (icon, states)) in super::manifest::ICONS.iter().enumerate() {
+        folders.push(Z::dir(&format!("icons/{icon}/")));
+        let mut m = serde_json::Map::new();
+        for (k, st) in states.iter().enumerate() {
+            let (dark, light) = (format!("icons/{icon}/{st}-dark.png"), format!("icons/{icon}/{st}-light.png"));
+            let c = [(40 + n * 6) as u8, (60 + k * 30) as u8, 200];
+            files.push(Z::file(&dark, &png(&shape(96, 96, c, true))));
+            files.push(Z::file(&light, &png(&shape(96, 96, [c[0] / 2, c[1] / 2, 60], true))));
+            m.insert(st.to_string(), serde_json::json!({"dark": dark, "light": light}));
+        }
+        icons.insert(icon.to_string(), serde_json::Value::Object(m));
+    }
+    let parts = serde_json::json!({
+        "appearance": {"themes": {"dark": {"tokens": {"--c-accent": "#d08a55", "--c-accent-contrast": "#17130f"}},
+                                  "light": {"tokens": {"--c-accent": "#87502b", "--c-accent-contrast": "#ffffff"}}}},
+        "icons": icons,
+        "application": {"window": "app/window.png", "tray": {"default": "app/tray.png", "playing": "app/tray-playing.png"}},
+        "character": {"states": {"playing": playing.0, "stopped": stopped.0}, "placement": {"mode": "right-rail"}}
+    });
+    let mut m: serde_json::Value = serde_json::from_slice(&manifest(id, parts)).unwrap();
+    m["name"] = serde_json::json!(name);
+    m["description"] = serde_json::json!("図形だけの見本。ボタンのアイコンを状態ごとに Dark・Light で分けた全部入り");
+    let mut v = vec![
+        Z::file("skin.json", &serde_json::to_vec_pretty(&m).unwrap()).deflated(),
+        Z::file("preview.png", &png(&shape(64, 40, [40, 60, 120], false))),
+    ];
+    v.extend(folders);
+    v.extend(files);
+    v.push(Z::file("app/window.png", &png(&shape(256, 256, [124, 108, 255], true))));
+    v.push(Z::file("app/tray.png", &png(&shape(64, 64, [124, 108, 255], true))));
+    v.push(Z::file("app/tray-playing.png", &png(&shape(64, 64, [200, 108, 120], true))));
+    v.push(Z::file(playing.0, &playing.1));
+    v.push(Z::file(stopped.0, &stopped.1));
+    v
+}
+
+type CharacterFiles = ((&'static str, Vec<u8>), (&'static str, Vec<u8>));
+
+fn small_character() -> CharacterFiles {
+    (("character/playing.gif", gif_anim(&moving(72, 128, 6), 10)), ("character/stopped.png", png(&figure(72, 128, [120, 110, 200], 0))))
+}
+
+/// macOS の「圧縮」の形にする：フォルダごと（`MySkin/`）＋全部の項目（フォルダも）に `__MACOSX/` の写し
+fn macos_form(entries: Vec<Z>) -> Vec<Z> {
+    let mut mac = wrap(b"MySkin/", entries);
+    mac.push(Z::dir("__MACOSX/"));
+    let copies: Vec<Z> = mac
+        .iter()
+        .filter(|z| z.name != b"__MACOSX/")
+        .map(|z| {
+            let mut n = b"__MACOSX/".to_vec();
+            n.extend_from_slice(&z.name);
+            if z.name.ends_with(b"/") {
+                return Z::dir(std::str::from_utf8(&n).unwrap());
+            }
+            let cut = n.iter().rposition(|c| *c == b'/').unwrap() + 1;
+            n.splice(cut..cut, b"._".iter().copied());
+            Z::raw(&n, &[0u8; 82])
+        })
+        .collect();
+    mac.extend(copies);
+    mac
+}
+
+/// Dark・Light で別のアイコンを全部持つスキンが取り込める（3.11.1 までの上限 ファイル 64・項目 80 では断っていた）。
+/// アイコンは全部の状態で Dark・Light の別の絵が使われる。macOS で圧縮した形（写しで項目が倍を超える）でも取り込める
+#[test]
+fn themed_icons_for_every_state_fit_the_limits() {
+    let id = "shape-themed-icons";
+    let (playing, stopped) = small_character();
+    let v = themed_full_entries(id, "Shape Themed Icons", playing, stopped);
+    let files = v.iter().filter(|z| !z.name.ends_with(b"/")).count();
+    let states: usize = super::manifest::ICONS.iter().map(|(_, s)| s.len()).sum();
+    assert_eq!(states, 46);
+    assert_eq!(files, 1 + 1 + states * 2 + 3 + 2);
+    assert_eq!((files, v.len()), (99, 137));
+    assert!(files > 64 && v.len() > 80, "the 3.11.1 limits refused this");
+    assert!(files <= limits::MAX_FILES && v.len() <= limits::MAX_ENTRIES);
+    let d = dirs("themed-full");
+    let (insp, staged) = inspect(&d, &v).unwrap_or_else(|e| panic!("{:?} {}", e.kind, e.detail));
+    assert_eq!(insp.file_count, 99);
+    assert_eq!(insp.parts.icons, 35);
+    assert_eq!(insp.warnings.iter().map(|w| w.code.as_str()).collect::<Vec<_>>(), vec!["tray_playing_ignored"]);
+    package::commit(&staged, &d, VER).unwrap();
+    let r = package::load(&d, id, VER).unwrap().resolve();
+    for (icon, sts) in super::manifest::ICONS.iter() {
+        for st in sts.iter() {
+            let t = r.icons.get(*icon).and_then(|m| m.get(*st)).unwrap_or_else(|| panic!("{icon}/{st} is missing"));
+            // 画面に渡すパスは区切りが OS のもの（Windows では `\`）なので、`/` にそろえて比べる
+            let (dk, lt) = (t.dark.as_ref().unwrap().path.replace('\\', "/"), t.light.as_ref().unwrap().path.replace('\\', "/"));
+            assert!(dk.ends_with(&format!("{icon}/{st}-dark.png")) && lt.ends_with(&format!("{icon}/{st}-light.png")), "{icon}/{st}: {dk} {lt}");
+        }
+    }
+    // macOS で圧縮した形：写しを足すと 277 項目（160 を超えるが 512 に収まる）
+    let (playing, stopped) = small_character();
+    let mac = macos_form(themed_full_entries(id, "Shape Themed Icons", playing, stopped));
+    assert_eq!(mac.len(), (1 + 137) * 2 + 1);
+    assert!(mac.len() > limits::MAX_ENTRIES && mac.len() <= limits::MAX_SCANNED_ENTRIES);
+    let d = dirs("themed-full-mac");
+    let (insp, staged) = inspect(&d, &mac).unwrap_or_else(|e| panic!("{:?} {}", e.kind, e.detail));
+    assert!(insp.unwrapped);
+    assert_eq!(insp.file_count, 99);
+    package::discard(&staged);
+}
+
+/// 上限いっぱいの数の取り込みの確かめにかかる時間（docs\着せ替え_仕様.md 10章の「かかった時間」）。
+/// Dark・Light で分けた全部入り（99 ファイル）を、立ち絵が小さいときと、推奨の大きさ（720×1280・120 コマの APNG）が2枚のときで測る。
+/// 走らせ方：`cargo test --release --lib skins::tests::full_themed_skin_inspection_time -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn full_themed_skin_inspection_time() {
+    let id = "shape-themed-icons";
+    let heavy = apng(&moving(720, 1280, images::MAX_FRAMES), 50);
+    let (small_playing, small_stopped) = small_character();
+    let cases: [(&str, (&str, Vec<u8>), (&str, Vec<u8>)); 2] = [
+        ("small characters", small_playing, small_stopped),
+        ("recommended characters", ("character/playing.png", heavy.clone()), ("character/stopped.png", heavy)),
+    ];
+    for (what, playing, stopped) in cases {
+        let bytes = zip(&themed_full_entries(id, "Shape Themed Icons", playing, stopped));
+        for round in 1..=3 {
+            let d = dirs(&format!("themed-time-{round}"));
+            let t = std::time::Instant::now();
+            let (insp, staged) = package::inspect_bytes(&bytes, &d, VER).unwrap_or_else(|e| panic!("{what}: {:?} {}", e.kind, e.detail));
+            let took = t.elapsed();
+            println!("{what} #{round}: zip {} bytes, unpacked {} bytes, {} files, inspect {:?}", bytes.len(), insp.unpacked_bytes, insp.file_count, took);
+            package::discard(&staged);
+        }
+    }
 }
 
 fn assert_first_frame(data: &[u8], name: &str, frames: u32) {
@@ -920,6 +1108,8 @@ fn sample_zips() -> Vec<(&'static str, Vec<u8>)> {
         ("shape-low-contrast", zip(&[Z::file("skin.json", &serde_json::to_vec_pretty(&low).unwrap())])),
         ("shape-broken", zip(&bad)),
         ("shape-folder", zip(&folder)),
+        // v3.12.0：ボタンのアイコンを状態ごとに Dark・Light で分けた全部入り（99 ファイル。3.11.1 までは数の上限で断っていた）
+        ("shape-themed-icons", zip(&themed_full_entries("shape-themed-icons", "図形の見本（Dark・Light でアイコンを全部分けたもの）", small_character().0, small_character().1))),
     ]
 }
 

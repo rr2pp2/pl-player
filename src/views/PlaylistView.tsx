@@ -8,7 +8,7 @@ import { notify } from "../stores/notices";
 import { useStore } from "../stores/store";
 import { TrackTable } from "../components/TrackTable";
 import { totalDuration } from "../components/format";
-import { IconEdit, IconPlay, IconRepeat, IconShuffle, IconTrash } from "../components/Icons";
+import { IconEdit, IconPlay, IconRepeat, IconShufflePlay, IconTrash } from "../components/Icons";
 import { deletePlaylistFlow, renamePlaylistFlow } from "../layout/Sidebar";
 
 export function PlaylistView() {
@@ -53,7 +53,7 @@ export function PlaylistView() {
             <IconPlay /> 再生
           </button>
           <button className="btn" disabled={!tracks.length} onClick={() => void api.playlistPlay(id, null, true)}>
-            <IconShuffle /> シャッフル
+            <IconShufflePlay /> シャッフル
           </button>
           <button
             className={"btn" + (pb.repeat !== "off" ? " primary" : "")}

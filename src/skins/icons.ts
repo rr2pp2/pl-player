@@ -52,8 +52,16 @@ export interface ManualIconLike {
 export type ManualIconTable = Record<string, Record<string, ManualIconLike>>;
 
 /**
+ * v3.12.0：スキンにそのアイコンの絵が無いとき、代わりに見るスキンのアイコン（その default の絵だけ）。
+ * IconShufflePlay（「シャッフル再生」のボタン）は、3.11.1 まで IconShuffle の default を出していたので、
+ * IconShufflePlay を持たないスキンでも見え方を変えない。手で入れたアイコンの代わりには使わない（シャッフルの切・入の枠は見ない）
+ */
+export const SKIN_FALLBACK: Readonly<Record<string, string>> = { IconShufflePlay: "IconShuffle" };
+
+/**
  * v3.11.0：出す画像。重なり順は 今の SVG（null）< スキンのアイコン < 手で入れたアイコン。
  * 手のアイコンはその状態の枠だけを見る（状態のあるアイコンに default の枠は無い）。無ければスキンの選び方（pickIconPath）。
+ * v3.12.0：スキンに絵が無く SKIN_FALLBACK にある名前は、代わりのアイコンの default の絵（スキンの選び方と同じテーマの順）を見る。
  * rev は手のアイコンのときだけ（ファイルの名前が同じまま入れ直すので、URL に付けて読み直す）。
  * セーフモードの間は、呼び出し側が手のアイコンもスキンも渡さない
  */
@@ -67,7 +75,8 @@ export function pickLayeredIcon(
 ): { path: string; rev: string | null } | null {
   const m = manual?.[name]?.[state];
   if (m) return { path: reducedMotion && m.still ? m.still : m.path, rev: m.rev };
-  const p = pickIconPath(icons, name, state, theme, reducedMotion);
+  const fallback = SKIN_FALLBACK[name];
+  const p = pickIconPath(icons, name, state, theme, reducedMotion) ?? (fallback ? pickIconPath(icons, fallback, "default", theme, reducedMotion) : null);
   return p ? { path: p, rev: null } : null;
 }
 

@@ -10,7 +10,7 @@ import { libraryVersion, search } from "../stores/library";
 import { notify } from "../stores/notices";
 import { useStore } from "../stores/store";
 import { TrackTable } from "../components/TrackTable";
-import { IconPlay, IconShuffle } from "../components/Icons";
+import { IconPlay, IconShufflePlay } from "../components/Icons";
 import { yearlyEmptyText, yearlyPeriodText, yearlyStartNote } from "../messages/ja";
 
 export function YearlyView() {
@@ -62,7 +62,7 @@ export function YearlyView() {
             <IconPlay /> 再生
           </button>
           <button className="btn" disabled={!ids.length} onClick={shuffle}>
-            <IconShuffle /> シャッフル再生
+            <IconShufflePlay /> シャッフル再生
           </button>
         </div>
       </div>

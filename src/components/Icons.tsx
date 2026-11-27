@@ -198,10 +198,25 @@ export const IconPrev = (p: P) => (
     </S>
   </Skinned>
 );
+/** シャッフルの線（IconShuffle と IconShufflePlay で同じ形） */
+const SHUFFLE_PATH = "M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5";
+/** 再生バーのシャッフル（切・入） */
 export const IconShuffle = (p: P & { on?: boolean }) => (
   <Skinned name="IconShuffle" state={shuffleState(p.on)} p={p}>
     <S {...p}>
-      <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+      <path d={SHUFFLE_PATH} />
+    </S>
+  </Skinned>
+);
+/**
+ * 「シャッフル再生」のボタン（v3.12.0：曲一覧・年間まとめの「シャッフル再生」、プレイリストの「シャッフル」、サイドバーのプレイリストの右クリックの「シャッフル再生」）。状態なし。
+ * 絵の順は 手で入れた IconShufflePlay → スキンの IconShufflePlay → スキンの IconShuffle の default → この線（IconShuffle と同じ形）。
+ * 手で入れた IconShuffle の切・入は使わない（src\skins\icons.ts の SKIN_FALLBACK）
+ */
+export const IconShufflePlay = (p: P) => (
+  <Skinned name="IconShufflePlay" p={p}>
+    <S {...p}>
+      <path d={SHUFFLE_PATH} />
     </S>
   </Skinned>
 );

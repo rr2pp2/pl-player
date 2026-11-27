@@ -28,7 +28,7 @@ export const errorText: Record<ErrorCode, string> = {
   // 着せ替え（v3.2.0）。取り込みで断ったときは、何も入れていない
   skin_zip_invalid: "スキンの zip が壊れているか、読めない形です（分割・zip64・知らない圧縮方式・中身の破損など）。作り直した zip でお試しください。",
   skin_zip_encrypted: "パスワード付き（暗号化）の zip は取り込めません。",
-  skin_too_large: "スキンが大きすぎます（zip 25MB・展開後 80MB・ファイル 64 個・画像1つ 15MB まで）。",
+  skin_too_large: "スキンが大きすぎます（zip 25MB・展開後 80MB・ファイル 128 個・画像1つ 15MB まで）。",
   skin_path_unsafe: "スキンの zip に、使えない名前のファイルがあります（フォルダの外を指す名前・リンク・大文字小文字だけ違う名前・英数字と . _ - 以外の文字など）。",
   skin_file_not_allowed: "スキンの zip に、入れられないファイルがあります（入れられるのは skin.json・preview と、icons・app・character の中の画像だけ。skin.json が使っていない画像も入れられません）。skin.json は zip のいちばん上か、zip の中のただ1つのフォルダの中に置いてください。",
   skin_executable: "スキンの zip に、実行ファイルかスクリプトが入っています。取り込めません。",

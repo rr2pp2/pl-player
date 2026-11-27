@@ -9,7 +9,7 @@ import { TrackTable } from "../components/TrackTable";
 import { Artwork } from "../components/Artwork";
 import { dropState, IMAGE_RE, registerDropZone } from "../components/FileDrop";
 import { totalDuration } from "../components/format";
-import { IconFilePlus, IconFolderPlus, IconImage, IconPlay, IconShuffle, IconX } from "../components/Icons";
+import { IconFilePlus, IconFolderPlus, IconImage, IconPlay, IconShufflePlay, IconX } from "../components/Icons";
 
 const TITLES: Record<string, string> = {
   all: "すべての曲",
@@ -121,7 +121,7 @@ export function LibraryView() {
             <IconPlay /> 再生
           </button>
           <button className="btn" disabled={!ids.length} onClick={shuffle}>
-            <IconShuffle /> シャッフル再生
+            <IconShufflePlay /> シャッフル再生
           </button>
         </div>
       </div>

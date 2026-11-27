@@ -28,10 +28,10 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([len, body, crc]);
 }
 
-test("見本フォルダの中身：立ち絵の絵4枚・スキンの見本の zip 2つ・アイコンのフォルダ2つ（43 枚ずつ）・使い方", () => {
+test("見本フォルダの中身：立ち絵の絵4枚・スキンの見本の zip 2つ・アイコンのフォルダ2つ（44 枚ずつ）・使い方", () => {
   const files = sampleFiles(project, "9.9.9");
   const names = files.map((f) => f.name);
-  assert.equal(files.length, 4 + 2 + 43 * 2 + 1);
+  assert.equal(files.length, 4 + 2 + 44 * 2 + 1);
   assert.deepEqual(names.slice(0, 6), ["くじら_再生中.png", "くじら_停止中.png", "ペンギン_再生中.png", "ペンギン_停止中.png", "くもくじら.zip", "ペンギン.zip"]);
   assert.equal(names[names.length - 1], "README.md");
   // くじらの絵は、アプリに埋め込む絵（samples\kujira\）と同じファイル。ペンギンは埋め込まない
@@ -45,7 +45,7 @@ test("見本フォルダの中身：立ち絵の絵4枚・スキンの見本の 
   assert.ok(!sampleRs.includes("penguin"));
   // くじらの立ち絵は samples\kujira\ の1か所だけ（くもくじらのフォルダに写しを置かない）
   assert.ok(!existsSync(join(project, "samples", "kumokujira", "character")));
-  // アイコンのフォルダ：くじら・ペンギンそれぞれに、設定の「アイコン」の欄の枠と同じ 43 枚
+  // アイコンのフォルダ：くじら・ペンギンそれぞれに、設定の「アイコン」の欄の枠と同じ 44 枚（v3.12.0 で「シャッフル再生.png」を足した）
   for (const skin of SAMPLE_SKINS) {
     const inDir = names.filter((n) => n.startsWith(`${ICON_DIR}/${skin.label}/`)).map((n) => n.split("/")[2]);
     assert.deepEqual(inDir, ICON_SLOTS.map(iconFileName), skin.label);
@@ -66,7 +66,7 @@ test("見本フォルダの中身：立ち絵の絵4枚・スキンの見本の 
 test("アイコンのファイルの名前：枠の日本語の名前（状態のある枠は「名前_状態」）。使えない文字は「-」に置き換え、名前は重ならない", () => {
   const names = ICON_SLOTS.map(iconFileName);
   assert.equal(new Set(names).size, names.length);
-  for (const n of ["再生.png", "シャッフル_切.png", "シャッフル_入.png", "リピート_1曲.png", "音量_0.png", "お気に入り_オン.png", "ウィンドウ・タスクバー.png", "タスクトレイ.png"]) assert.ok(names.includes(n), n);
+  for (const n of ["再生.png", "シャッフル_切.png", "シャッフル_入.png", "シャッフル再生.png", "リピート_1曲.png", "音量_0.png", "お気に入り_オン.png", "ウィンドウ・タスクバー.png", "タスクトレイ.png"]) assert.ok(names.includes(n), n);
   for (const n of names) assert.ok(!/[\\/:*?"<>|\u0000-\u001f]/.test(n) && !/[ .]\.png$/.test(n), n);
   assert.equal(iconFileName({ name: "X", state: "a", group: "other", label: 'あ/い:う*え?"お<か>き|く', stateLabel: "け\\こ.", px: 16 }), "あ-い-う-え--お-か-き-く_け-こ.png");
   // 枠ごとの絵は、スキンの zip の中の同じ絵（skin.json の icons・application が指すもの）
@@ -98,9 +98,10 @@ test("スキンの見本の zip：いちばん上に skin.json・残りは名前
     const rest = back.slice(1).map((e) => e.name);
     assert.deepEqual([...rest].sort(), rest);
     for (const [i, [, rel]] of list.entries()) assert.deepEqual(back[i].data, samples(rel), rel);
-    // 全部入り：skin.json・アイコン 41 枚（34 個の状態ごと）・ウィンドウとトレイ・立ち絵2枚
-    assert.equal(back.length, 46, skin.zip);
-    assert.equal(rest.filter((n) => n.startsWith("icons/")).length, 41);
+    // 全部入り：skin.json・アイコン 42 枚（35 個の状態ごと。v3.12.0 で icons/IconShufflePlay.png を足した）・ウィンドウとトレイ・立ち絵2枚
+    assert.equal(back.length, 47, skin.zip);
+    assert.equal(rest.filter((n) => n.startsWith("icons/")).length, 42);
+    assert.ok(rest.includes("icons/IconShufflePlay.png"), skin.zip);
     assert.deepEqual(rest.filter((n) => !n.startsWith("icons/")), ["app/tray.png", "app/window.png", "character/playing.png", "character/stopped.png"]);
     // skin.json が使うファイルと、zip の中のファイルが同じ（使っていない画像は取り込みで断られるため）
     const skinJson = JSON.parse(back[0].data.toString("utf8"));
@@ -111,11 +112,14 @@ test("スキンの見本の zip：いちばん上に skin.json・残りは名前
     };
     collect(skinJson.parts);
     assert.deepEqual([...used].sort(), [...rest].sort(), skin.zip);
-    // 配布の見本としての名前・id・説明。34 個のアイコン
+    // 配布の見本としての名前・id・説明。35 個のアイコン（IconShufflePlay を書くので minAppVersion は 3.12.0）
     assert.equal(skinJson.id, skin.id);
     assert.equal(skinJson.name, skin.name);
     assert.ok(skinJson.description.startsWith("スキン作りの見本。"), skinJson.description);
-    assert.equal(Object.keys(skinJson.parts.icons).length, 34);
+    assert.equal(Object.keys(skinJson.parts.icons).length, 35);
+    assert.equal(skinJson.parts.icons.IconShufflePlay, "icons/IconShufflePlay.png");
+    assert.equal(skinJson.minAppVersion, "3.12.0");
+    assert.ok(skinJson.description.includes("ボタンのアイコン全部（35 種類）"), skinJson.description);
     assert.deepEqual(skinJson.parts.application, { window: "app/window.png", tray: "app/tray.png" });
     assert.deepEqual(skinJson.parts.character.states, { playing: "character/playing.png", stopped: "character/stopped.png" });
     // Rust のテスト（取り込みに通す側）が同じ決まり（フォルダ・id・名前・足すファイル）で組む
@@ -144,8 +148,8 @@ test("配る絵に、作った PC・ソフト・日時を書ける塊が無い�
     ...SAMPLE_SKINS.flatMap((skin) => iconFiles(project, skin).map(([, r]) => r)),
   ]);
   const pngs = [...rels].filter((r) => r.endsWith(".png"));
-  // くじら2枚・くもくじらのフォルダ 43 枚（アイコン 41・アプリ 2。立ち絵はくじらの2枚）・ペンギンのフォルダ 45 枚
-  assert.equal(pngs.length, 2 + 43 + 45);
+  // くじら2枚・くもくじらのフォルダ 44 枚（アイコン 42・アプリ 2。立ち絵はくじらの2枚）・ペンギンのフォルダ 46 枚
+  assert.equal(pngs.length, 2 + 44 + 46);
   for (const rel of pngs) {
     const chunks = pngChunks(samples(rel));
     assert.deepEqual(pngMetadataChunks(samples(rel)), [], rel);
@@ -217,7 +221,7 @@ test("スキンの見本の zip の項目の日時は、どれも固定の 1980-
   for (const skin of SAMPLE_SKINS) {
     const zip = a.find((f) => f.name === skin.zip)!.data;
     const times = zipTimes(zip);
-    assert.equal(times.length, 46);
+    assert.equal(times.length, 47); // skin.json・アイコン 42 枚・ウィンドウとトレイ・立ち絵2枚
     // 時刻 0（00:00:00）・日付 0x21（1980 年 1 月 1 日。MS-DOS の形が表せるいちばん古い日）。Rust のテストの zip（testkit）も同じ値
     assert.deepEqual([...new Set(times.map((t) => `${t.date}/${t.time}`))], ["33/0"], skin.zip);
     assert.deepEqual(b.find((f) => f.name === skin.zip)!.data, zip, `${skin.zip} is reproducible`);

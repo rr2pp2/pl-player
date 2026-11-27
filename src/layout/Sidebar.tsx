@@ -25,7 +25,7 @@ import {
   IconQueue,
   IconRanking,
   IconSettings,
-  IconShuffle,
+  IconShufflePlay,
   IconSidebar,
   IconStar,
   IconTag,
@@ -205,7 +205,7 @@ export function Sidebar(props: { onToggle: () => void; sidebarAuto: boolean; col
             onContextMenu={(e) =>
               openMenu(e, [
                 { label: "再生", icon: <IconPlay />, onClick: () => void api.playlistPlay(p.id, 0, false) },
-                { label: "シャッフル再生", icon: <IconShuffle />, onClick: () => void api.playlistPlay(p.id, null, true) },
+                { label: "シャッフル再生", icon: <IconShufflePlay />, onClick: () => void api.playlistPlay(p.id, null, true) },
                 { separator: true },
                 { label: "名前を変更…", icon: <IconEdit />, onClick: () => void renamePlaylistFlow(p.id, p.name) },
                 { label: "削除…", icon: <IconTrash />, danger: true, onClick: () => void deletePlaylistFlow(p.id, p.name) },

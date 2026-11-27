@@ -27,7 +27,9 @@ import { characterMinListOf, useCharacterPaneFor, useDetailLayout } from "../lay
 import { DETAIL } from "../layout/detailLayout";
 import {
   AVATAR_NAME_MAX,
+  avatarCardLabel,
   avatarNameOk,
+  avatarPreviewText,
   avatarRows,
   canCreateAvatar,
   cardClickSwitches,
@@ -99,11 +101,11 @@ function RowPreview(props: { row: AvatarRow; skinStill: string | null }) {
   const url = fileUrl(src);
   const [bad, setBad] = useState(false);
   return (
-    <div className="skin-preview" aria-hidden="true">
+    <div className="skin-preview avatar-card-preview" aria-hidden="true">
       {url && !bad ? (
         <img src={url} alt="" draggable={false} onError={() => setBad(true)} />
       ) : (
-        <span className="avatar-preview-text">{r.kind === "none" ? "なし" : r.kind === "skin" ? "スキン" : ""}</span>
+        <span className="avatar-preview-text">{avatarPreviewText(r.kind)}</span>
       )}
     </div>
   );
@@ -374,7 +376,8 @@ export function AvatarsField() {
     <div className="avatar-block">
       <h4 className="skin-subhead">立ち絵</h4>
       {st?.safeMode ? <div className="skin-callout warn">既定の見た目で動いている間（セーフモード）は、立ち絵を出しません。選んでおくことはできます。</div> : null}
-      <div className="skin-grid" role="group" aria-label="使う立ち絵（カードを押すと切り替わります）">
+      {/* v3.12.0：カードは左に絵・右に名前・説明・印・ボタン（.avatar-grid・.avatar-card。上の「スキン」の一覧のカードは今のまま） */}
+      <div className="skin-grid avatar-grid" role="group" aria-label="使う立ち絵（カードを押すと切り替わります）">
         {rows.map((r) => {
           const on = r.choice === choice;
           const pickable = !r.broken;
@@ -383,12 +386,12 @@ export function AvatarsField() {
             // ボタン自身が処理するので切り替えない（cardClickSwitches・cardKeySwitches）
             <div
               key={r.choice}
-              className={"skin-card" + (on ? " active" : "") + (r.broken ? " broken" : "") + (pickable ? " pickable" : "")}
+              className={"skin-card avatar-card" + (on ? " active" : "") + (r.broken ? " broken" : "") + (pickable ? " pickable" : "")}
               role="button"
               tabIndex={pickable ? 0 : -1}
               aria-pressed={on}
               aria-disabled={!pickable}
-              aria-label={r.broken ? "読めない立ち絵" : `${r.name}${on ? "（使用中）" : "を使う"}`}
+              aria-label={avatarCardLabel(r, on)}
               onClick={(e) => {
                 if (cardClickSwitches(r, on, !!(e.target as HTMLElement).closest("button"))) void chooseAvatar(r.choice);
               }}
@@ -400,31 +403,39 @@ export function AvatarsField() {
               }}
             >
               <RowPreview row={r} skinStill={skinStill} />
-              <div className="skin-name">{r.name}</div>
-              <div className="skin-meta" title={r.note}>
-                {r.note}
-              </div>
-              {r.broken ? <div className="error-text">読めません：{errorText[r.broken] ?? r.broken}</div> : null}
-              <div className="skin-actions">
-                {r.broken ? null : on ? (
-                  <button className="btn primary" disabled>
-                    使用中
-                  </button>
-                ) : (
-                  <button className="btn" onClick={() => void chooseAvatar(r.choice)}>
-                    使う
-                  </button>
-                )}
-                {r.kind === "avatar" && !r.broken ? (
-                  <button className="btn" onClick={() => edit(r)}>
-                    変更
-                  </button>
+              <div className="avatar-card-body">
+                <div className="skin-name">{r.name}</div>
+                {/* v3.12.0：説明はどのカードも切らずに折り返す（「スキンの立ち絵」の「（いまは無し）」など、文の終わりに意味がある）。
+                    取り込んだスキンの立ち絵には「スキン」の印を付ける。印は「スキン」の一覧の札（.skin-tag）と同じ形と色（文字で伝え、色だけに頼らない） */}
+                {/* 説明が空（読めない立ち絵）なら出さない（名前と理由の間に空の行を作らない） */}
+                {r.note ? <div className="skin-meta wrap">{r.note}</div> : null}
+                {r.badge ? (
+                  <div className="skin-tags">
+                    <span className="skin-tag">{r.badge}</span>
+                  </div>
                 ) : null}
-                {r.kind === "avatar" ? (
-                  <button className="btn danger" onClick={() => void del(r)}>
-                    削除
-                  </button>
-                ) : null}
+                {r.broken ? <div className="error-text">読めません：{errorText[r.broken] ?? r.broken}</div> : null}
+                <div className="skin-actions">
+                  {r.broken ? null : on ? (
+                    <button className="btn primary" disabled>
+                      使用中
+                    </button>
+                  ) : (
+                    <button className="btn" onClick={() => void chooseAvatar(r.choice)}>
+                      使う
+                    </button>
+                  )}
+                  {r.kind === "avatar" && !r.broken ? (
+                    <button className="btn" onClick={() => edit(r)}>
+                      変更
+                    </button>
+                  ) : null}
+                  {r.kind === "avatar" ? (
+                    <button className="btn danger" onClick={() => void del(r)}>
+                      削除
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           );

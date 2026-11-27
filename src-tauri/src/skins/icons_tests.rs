@@ -39,13 +39,13 @@ fn icons_of(pairs: &[(&str, &str, &str)]) -> Icons {
     i
 }
 
-/// 枠：ボタンのアイコン 34 個（状態のある4つは default を除いた状態ごと）＋ウィンドウ・トレイ。知らない名前・状態は無い
+/// 枠：ボタンのアイコン 35 個（状態のある4つは default を除いた状態ごと）＋ウィンドウ・トレイ。知らない名前・状態は無い
 #[test]
 fn slots_follow_the_skin_icon_table() {
     let all = all_slots();
-    // 状態の無い 30 個 ＋ 星2・音量4・リピート3・シャッフル2 ＋ ウィンドウ・トレイ
-    assert_eq!(all.len(), 30 + 2 + 4 + 3 + 2 + 2);
-    assert_eq!(ICONS.len(), 34);
+    // 状態の無い 31 個（v3.12.0 で IconShufflePlay を足した）＋ 星2・音量4・リピート3・シャッフル2 ＋ ウィンドウ・トレイ
+    assert_eq!(all.len(), 31 + 2 + 4 + 3 + 2 + 2);
+    assert_eq!(ICONS.len(), 35);
     for (n, states) in ICONS.iter() {
         let mine = slot_states(n).unwrap();
         if states.len() == 1 {
@@ -62,11 +62,17 @@ fn slots_follow_the_skin_icon_table() {
     assert_eq!(slot_states("IconVolume").unwrap(), vec!["muted", "zero", "low", "high"]);
     assert_eq!(slot_states("IconRepeat").unwrap(), vec!["off", "all", "one"]);
     assert_eq!(slot_states("IconShuffle").unwrap(), vec!["off", "on"]);
+    // v3.12.0：「シャッフル再生」のボタンの枠は状態なし（default だけ）。シャッフルの枠に default は無いまま
+    assert_eq!(slot_states("IconShufflePlay").unwrap(), vec!["default"]);
+    assert_eq!(slot("IconShufflePlay", "default"), Some(("IconShufflePlay", "default")));
+    assert_eq!(slot("IconShuffle", "default"), None);
     assert_eq!(slot("AppWindow", "default"), Some((APP_WINDOW, "default")));
     assert_eq!(slot("AppTray", "default"), Some((APP_TRAY, "default")));
     for (n, s) in [
         ("IconStar", "default"),
         ("IconPlay", "on"),
+        ("IconShufflePlay", "on"),
+        ("iconshuffleplay", "default"),
         ("iconplay", "default"),
         ("IconHeadphones", "default"),
         ("AppWindow", "playing"),

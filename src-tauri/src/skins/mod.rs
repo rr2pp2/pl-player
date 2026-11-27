@@ -40,12 +40,14 @@ pub mod limits {
     pub const MAX_ZIP_BYTES: u64 = 25 * 1024 * 1024;
     /// 戻した中身の合計（申告ではなく、実際に戻したバイト数で数える）
     pub const MAX_UNPACKED_BYTES: u64 = 80 * 1024 * 1024;
-    /// zip の項目の数（フォルダの項目も数える。飛ばした OS のファイルと、外したフォルダの項目は数えない）
-    pub const MAX_ENTRIES: usize = 80;
-    /// 中央ディレクトリを読む項目の数の上限（OS のファイルも含めた全部。macOS の zip は項目ごとに `__MACOSX/` の写しが付き、倍を超えるため）
-    pub const MAX_SCANNED_ENTRIES: usize = 256;
-    /// ファイルの数
-    pub const MAX_FILES: usize = 64;
+    /// zip の項目の数（フォルダの項目も数える。飛ばした OS のファイルと、外したフォルダの項目は数えない）。
+    /// v3.12.0：80 → 160（ファイルの数と同じく倍。フォルダの項目の分も 16 → 32）
+    pub const MAX_ENTRIES: usize = 160;
+    /// 中央ディレクトリを読む項目の数の上限（OS のファイルも含めた全部。macOS の zip は項目ごとに `__MACOSX/` の写しが付き、倍を超えるため）。
+    /// v3.12.0：256 → 512（項目の数の上限と同じく倍）
+    pub const MAX_SCANNED_ENTRIES: usize = 512;
+    /// ファイルの数。v3.12.0：64 → 128（アイコンを状態ごとに Dark・Light で分けると、スキンが使える画像は全部で 98 枚になるため）
+    pub const MAX_FILES: usize = 128;
     /// 圧縮率の上限（戻すと 1MiB を超える項目だけに当てる。小さい JSON は圧縮率が高くても害が無いため）
     pub const MAX_RATIO: u64 = 100;
     pub const RATIO_CHECK_FROM: u64 = 1024 * 1024;

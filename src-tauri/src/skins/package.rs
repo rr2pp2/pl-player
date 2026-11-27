@@ -81,7 +81,7 @@ pub struct ResolvedSkin {
 #[serde(rename_all = "camelCase")]
 pub struct Parts {
     pub appearance: bool,
-    /// 差し替えるアイコンの数（34 のうち。v3.5.0 までは 33）
+    /// 差し替えるアイコンの数（35 のうち。v3.5.0 までは 33、v3.11.1 までは 34）
     pub icons: usize,
     pub application: bool,
     pub character: bool,

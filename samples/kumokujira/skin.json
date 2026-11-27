@@ -5,8 +5,8 @@
   "name": "くもくじら（見本）",
   "version": "1.0.0",
   "author": "PL Player",
-  "description": "スキン作りの見本。雲に乗ったくじらの立ち絵、夜の海の色（Dark）と昼の海の色（Light）、ボタンのアイコン全部（34 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
-  "minAppVersion": "3.7.0",
+  "description": "スキン作りの見本。雲に乗ったくじらの立ち絵、夜の海の色（Dark）と昼の海の色（Light）、ボタンのアイコン全部（35 種類）、ウィンドウとタスクトレイのアイコンが入っています。絵は図形だけで描いたもの",
+  "minAppVersion": "3.12.0",
   "parts": {
     "appearance": {
       "themes": {
@@ -98,7 +98,8 @@
       "IconLyrics": "icons/IconLyrics.png",
       "IconBack": "icons/IconBack.png",
       "IconLyricsRow": "icons/IconLyricsRow.png",
-      "IconRanking": "icons/IconRanking.png"
+      "IconRanking": "icons/IconRanking.png",
+      "IconShufflePlay": "icons/IconShufflePlay.png"
     },
     "application": {
       "window": "app/window.png",

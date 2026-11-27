@@ -24,7 +24,11 @@ pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 /// 差し替えられるアイコン（src\components\Icons.tsx の export 名）と、使える状態。
 /// v3.6.0：IconRanking（サイドバーの「年間まとめ」）を足した（34 個）。3.5.0 までの版は知らない名前として断るので、
 /// 使うスキンは minAppVersion を 3.6.0 にする（docs\スキンの作り方.md）
-pub const ICONS: [(&str, &[&str]); 34] = [
+/// v3.12.0：IconShufflePlay（曲一覧・年間まとめの「シャッフル再生」とプレイリストの「シャッフル」のボタン、サイドバーのプレイリストの
+/// 右クリックの「シャッフル再生」）を足した（35 個）。3.11.1 までの版は
+/// 知らない名前として断るので、使うスキンは minAppVersion を 3.12.0 にする。スキンに無いときは IconShuffle の default を使う（画面の
+/// src\skins\icons.ts の SKIN_FALLBACK）
+pub const ICONS: [(&str, &[&str]); 35] = [
     ("IconMusic", &["default"]),
     ("IconUser", &["default"]),
     ("IconDisc", &["default"]),
@@ -59,6 +63,7 @@ pub const ICONS: [(&str, &[&str]); 34] = [
     ("IconBack", &["default"]),
     ("IconLyricsRow", &["default"]),
     ("IconRanking", &["default"]),
+    ("IconShufflePlay", &["default"]),
 ];
 
 /// 立ち絵の置き方の値（3.2.0 は right-rail だけ）
@@ -1235,6 +1240,11 @@ mod tests {
         assert_eq!(k(parts(json!({"icons": {"IconPlay": {"filled": "icons/a.png"}}}))), Some(ErrorKind::SkinManifestInvalid));
         assert_eq!(k(parts(json!({"icons": {"IconVolume": {"medium": "icons/a.png"}}}))), Some(ErrorKind::SkinManifestInvalid));
         assert_eq!(k(parts(json!({"icons": {"IconPlay": 1}}))), Some(ErrorKind::SkinManifestInvalid));
+        // v3.12.0：IconShufflePlay は状態なし（default だけ）。状態を書けば断る
+        assert_eq!(k(parts(json!({"icons": {"IconShufflePlay": {"on": "icons/a.png"}}}))), Some(ErrorKind::SkinManifestInvalid));
+        let sp = p(parts(json!({"icons": {"IconShufflePlay": "icons/a.png", "IconShuffle": {"default": "icons/b.png"}}}))).unwrap();
+        assert_eq!(sp.manifest.icons["IconShufflePlay"]["default"].dark.as_deref(), Some("icons/a.png"));
+        assert_eq!(sp.manifest.icons["IconShuffle"]["default"].dark.as_deref(), Some("icons/b.png"));
         assert_eq!(
             k(parts(json!({"appearance": {"themes": {"dark": {"tokens": {"--c-bg": "url(https://example.invalid/x)"}}}}}))),
             Some(ErrorKind::SkinManifestInvalid)

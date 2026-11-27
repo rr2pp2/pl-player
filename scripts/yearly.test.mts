@@ -42,7 +42,7 @@ test("サイドバー：「年間まとめ」は「最近再生」の次。名�
   assert.match(read("src/layout/AppShell.tsx"), /if \(r\.view === "yearly_top"\) return <YearlyView \/>;/);
 });
 
-test("アイコン：IconRanking は着せ替えで差し替えられる（Rust の ICONS と、Icons.tsx の差し替えの名前が同じ 34 個）", () => {
+test("アイコン：IconRanking は着せ替えで差し替えられる（Rust の ICONS と、Icons.tsx の差し替えの名前が同じ。v3.12.0 で IconShufflePlay を足して 35 個）", () => {
   const icons = read("src/components/Icons.tsx");
   const tsNames = [...icons.matchAll(/<Skinned name="(\w+)"/g)].map((x) => x[1]);
   assert.ok(tsNames.includes("IconRanking"));
@@ -51,11 +51,11 @@ test("アイコン：IconRanking は着せ替えで差し替えられる（Rust 
   const m = rs.match(/pub const ICONS: \[\(&str, &\[&str\]\); (\d+)\] = \[([\s\S]*?)\n\];/);
   assert.ok(m, "ICONS");
   const rsNames = [...m![2].matchAll(/\("(\w+)",/g)].map((x) => x[1]);
-  assert.equal(Number(m![1]), 34);
+  assert.equal(Number(m![1]), 35);
   assert.deepEqual([...rsNames].sort(), [...new Set(tsNames)].sort());
   // スキンを作る人向けの手引きにも同じ数と名前
   const doc = read("docs/スキンの作り方.md");
-  assert.match(doc, /名前は次の 34 個：/);
+  assert.match(doc, /名前は次の 35 個：/);
   assert.match(doc, /`IconRanking`/);
 });
 
