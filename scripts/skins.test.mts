@@ -5,6 +5,7 @@
 // v3.11.1：ビルドした CSS の値で計算しても基準に届かない組み合わせがソースと同じこと・設定画面の短い文字を言葉の切れ目で折り返すこと。
 // v3.12.0：「シャッフル再生」のボタンの枠（IconShufflePlay）。枠の場所・使うボタン・絵の順（手 → スキン → スキンの IconShuffle の default → 線）。
 //          取り込んだスキンの立ち絵のカード（説明にスキンの名前・削除すると消えること・「スキン」の印・切らずに折り返す）。取り込みの数の上限の値が文と同じ。
+// v3.12.1：立ち絵のカードの説明を「スキン『◯◯』の立ち絵」だけにし、欄の頭の説明は2文（同じ文を画面に2回出さない）。カードの高さを全部そろえ、ボタンを下の端に。
 // 走らせ方（プロジェクトのフォルダで。依存は要らない。Node 24 の型の取り外しで .ts をそのまま読む）：
 //   node --test scripts/skins.test.mts
 import { test } from "node:test";
@@ -70,6 +71,7 @@ import { LIST_BELOW, listLayoutFor } from "../src/layout/density.ts";
 import { color as contrastColor, contrastWarnings, contrastWarningsOrError, evaluate, ratio } from "../src/skins/contrast.ts";
 import { warningRows } from "../src/skins/warnings.ts";
 import {
+  AVATAR_LEAD,
   AVATAR_NAME_MAX,
   avatarCardLabel,
   avatarChoice,
@@ -1748,7 +1750,7 @@ test("v3.11.0 見本スキン：くもくじら・ペンギンの両テーマの
 
 // ---------------- v3.12.0：取り込んだスキンの立ち絵のカード・取り込みの数の上限 ----------------
 
-test("v3.12.0：取り込んだスキンの立ち絵のカードは、説明にスキンの名前と「スキンを削除すると消えます」を書き、「スキン」の印を付ける。ほかのカードは今のまま", () => {
+test("v3.12.0：取り込んだスキンの立ち絵のカードは、説明にスキンの名前を書き、「スキン」の印を付ける（v3.12.1 から共通の文は欄の頭に1回だけ）。ほかのカードは今のまま", () => {
   const list = {
     skins: [{ skinId: "kumokujira-sample", name: "くもくじら（見本）", preview: null, animated: false }],
     avatars: [{ id: "0123456789abcdef", name: "Pose", preview: null, hasStopped: true, animated: false, broken: null }],
@@ -1759,7 +1761,7 @@ test("v3.12.0：取り込んだスキンの立ち絵のカードは、説明に�
   const sc = by("skinCharacter");
   assert.equal(sc.name, "くもくじら（見本）");
   assert.equal(sc.note, skinCharacterNote("くもくじら（見本）"));
-  assert.equal(sc.note, "スキン「くもくじら（見本）」の立ち絵。スキンを替えてもこの絵のままです。スキンを削除すると消えます");
+  assert.equal(sc.note, "スキン「くもくじら（見本）」の立ち絵");
   assert.equal(sc.badge, SKIN_CHARACTER_BADGE);
   assert.equal(SKIN_CHARACTER_BADGE, "スキン");
   // 選び方の「スキンの立ち絵」・「出さない」・登録した立ち絵は今のまま（印なし。文も 3.11.1 と同じ）
@@ -1774,12 +1776,12 @@ test("v3.12.0：取り込んだスキンの立ち絵のカードは、説明に�
   assert.equal(avatarCardLabel(by("avatar"), false), "Poseを使う");
   assert.equal(avatarCardLabel(by("skin"), true), "スキンの立ち絵（使用中）");
   assert.equal(avatarCardLabel({ kind: "avatar", name: "", broken: "avatar_broken" }, false), "読めない立ち絵");
-  // 画面：印は「スキン」の一覧の札と同じ部品（.skin-tags の中の .skin-tag）。説明はどのカードも wrap を付けて切らない（全文が見えるので title は付けない）
+  // 画面：印は「スキン」の一覧の札と同じ部品（.skin-tag）で、v3.12.1 から名前と同じ行。説明はどのカードも wrap を付けて切らない（全文が見えるので title は付けない）
   const view = read("../src/views/SettingsAvatars.tsx");
   assert.ok(view.includes("aria-label={avatarCardLabel(r, on)}"));
   assert.ok(view.includes('<div className="skin-meta wrap">{r.note}</div>'));
   assert.ok(!view.includes("title={r.note}"));
-  assert.match(view, /\{r\.badge \? \(\s*<div className="skin-tags">\s*<span className="skin-tag">\{r\.badge\}<\/span>/);
+  assert.match(view, /<div className="avatar-card-head">\s*<span className="skin-name">\{r\.name\}<\/span>\s*\{r\.badge \? <span className="skin-tag">\{r\.badge\}<\/span> : null\}\s*<\/div>/);
   assert.ok(read("../src/views/SettingsSkins.tsx").includes('<span className="skin-tag">削除不可</span>'));
   // 削除のボタンは登録した立ち絵だけ（スキンの立ち絵はスキンを削除すると一緒に消える）
   assert.match(view, /\{r\.kind === "avatar" \? \(\s*<button className="btn danger" onClick=\{\(\) => void del\(r\)\}>/);
@@ -1836,12 +1838,12 @@ test("v3.12.0：スキンの取り込みの数の上限（ファイル 128・項
 
 test("v3.12.0：「立ち絵」の欄のカードは左に絵・右に名前・説明・印・ボタン。「スキン」の一覧のカードは今のまま（上に絵・下に文字）", () => {
   const view = read("../src/views/SettingsAvatars.tsx");
-  // 格子とカードの名前。カードの中は 絵（RowPreview）→ 右の列（名前・説明・印・読めない理由・ボタン）の順
+  // 格子とカードの名前。カードの中は 絵（RowPreview）→ 右の列（名前と印・説明・読めない理由・ボタン）の順（v3.12.1 から印は名前の行）
   assert.ok(view.includes('<div className="skin-grid avatar-grid" role="group" aria-label="使う立ち絵（カードを押すと切り替わります）">'));
   assert.ok(view.includes('className={"skin-card avatar-card" + (on ? " active" : "")'));
   assert.ok(view.includes('<div className="skin-preview avatar-card-preview" aria-hidden="true">'));
   const card = view.slice(view.indexOf("<RowPreview row={r} skinStill={skinStill} />"), view.indexOf("        })}", view.indexOf("<RowPreview row={r}")));
-  const order = ['<div className="avatar-card-body">', '<div className="skin-name">{r.name}</div>', '<div className="skin-meta wrap">{r.note}</div>', '<span className="skin-tag">{r.badge}</span>', 'className="error-text"', '<div className="skin-actions">'];
+  const order = ['<div className="avatar-card-body">', '<span className="skin-name">{r.name}</span>', '<span className="skin-tag">{r.badge}</span>', '<div className="skin-meta wrap">{r.note}</div>', 'className="error-text"', '<div className="skin-actions">'];
   let at = 0;
   for (const part of order) {
     const i = card.indexOf(part, at);
@@ -1896,16 +1898,8 @@ test("v3.12.0：「スキンの立ち絵」の説明は、立ち絵の無いス�
   assert.ok(view.includes('<div className="skin-meta wrap">{r.note}</div>'));
 });
 
-test("v3.12.0：立ち絵のカードの高さは中身の分だけ。説明が空なら行を作らない。絵の無い「スキンの立ち絵」の枠は「出さない」と同じ「なし」", () => {
+test("v3.12.0：説明が空なら行を作らない。絵の無い「スキンの立ち絵」の枠は「出さない」と同じ「なし」", () => {
   const view = read("../src/views/SettingsAvatars.tsx");
-  // 同じ行の長いカードに合わせて伸ばさない（短いカードの「使う」が下に離れない）。ソースとビルドした CSS
-  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
-  const rulesFor = (css: string, sel: string) =>
-    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]).join(";");
-  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
-    const g = rulesFor(css, ".avatar-grid");
-    assert.ok(g.includes("align-items:start"), g);
-  }
   // 読めない立ち絵は説明が空 → 説明の要素を出さない（名前と理由の間に空の行を作らない）
   const rows = avatarRows({ skins: [], avatars: [{ id: "00000000000000aa", name: "", preview: null, hasStopped: false, animated: false, broken: "avatar_broken" as const }], max: 30 }, null, false);
   assert.equal(rows[2].note, "");
@@ -1919,4 +1913,58 @@ test("v3.12.0：立ち絵のカードの高さは中身の分だけ。説明が�
   // 立ち絵のあるスキンのときは、今までどおりその絵（Rust が解いた停止中の静止画）を出す
   assert.ok(view.includes('const src = r.kind === "skin" ? props.skinStill : r.preview;'));
   assert.ok(view.includes("const skinStill = skinChar ? skinChar.stopped.still ?? skinChar.stopped.path : null;"));
+});
+
+// ---------------- v3.12.1：立ち絵のカードの説明を短く・高さをそろえる ----------------
+
+test("v3.12.1：スキンの立ち絵のカードの説明は「スキン『◯◯』の立ち絵」だけ。欄の頭の説明は2文で、同じ文を画面に2回出さない", () => {
+  const rows = avatarRows({ skins: [{ skinId: "penguin-sample", name: "ペンギン（見本）", preview: null, animated: false }], avatars: [], max: 30 }, null, false);
+  const sc = rows.find((r) => r.kind === "skinCharacter")!;
+  assert.equal(sc.note, "スキン「ペンギン（見本）」の立ち絵");
+  assert.equal(sc.badge, "スキン");
+  // カードの文には、どのカードでも同じ文を入れない
+  for (const r of rows) assert.ok(!/スキンを替えても|削除すると消え/.test(r.note), r.note);
+  // 欄の頭の説明：「スキン」の印のカードが何か・消すときはスキンの一覧からスキンを削除する、の2文だけ（480px で3行まで）
+  assert.equal(AVATAR_LEAD, "「スキン」の印のカードは、取り込んだスキンに入っている立ち絵です。消すときは、上のスキンの一覧からそのスキンを削除してください。");
+  assert.equal(AVATAR_LEAD.split("。").filter(Boolean).length, 2);
+  assert.ok(!/[。、][。、]/.test(AVATAR_LEAD));
+  // 3行に収まる長さの目安：1行を少なめに 27 字と見て 81 字まで（480px の窓の画面では1行 33 字前後で、2行に収まる）
+  assert.ok([...AVATAR_LEAD].length <= 81, String([...AVATAR_LEAD].length));
+  const view = read("../src/views/SettingsAvatars.tsx");
+  // 見出しのすぐ下に1回だけ（色・アイコンの欄と同じ .hint-text の形）
+  assert.ok(view.includes('<h4 className="skin-subhead">立ち絵</h4>\n      <p className="hint-text">{AVATAR_LEAD}</p>'));
+  assert.equal((view.match(/\{AVATAR_LEAD\}/g) ?? []).length, 1);
+  // 「スキンを替えても、選んだ立ち絵はそのままです。」は画面に1回だけ（「立ち絵を足す」の説明）。欄の頭の説明には書かない
+  const lead = read("../src/skins/avatars.ts");
+  const same = "スキンを替えても、選んだ立ち絵はそのままです。";
+  assert.equal(view.split(same).length - 1, 1);
+  assert.ok(!AVATAR_LEAD.includes(same) && !lead.includes(`"${same}`));
+  // 操作の説明（カードを押すと切り替わる）は、欄の読み上げの名前に残す（目に見える説明からは外した）
+  assert.ok(!AVATAR_LEAD.includes("カードを押"));
+  assert.ok(view.includes('aria-label="使う立ち絵（カードを押すと切り替わります）"'));
+});
+
+test("v3.12.1：立ち絵のカードは全部同じ高さ（行は全部 1fr。ふつうは絵の枠 96px が基準）で、ボタンは下の端。印は名前と同じ行", () => {
+  const flat = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  const rulesFor = (css: string, sel: string) =>
+    [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((r) => r[1].split(",").includes(sel)).map((r) => r[2]).join(";");
+  for (const css of [read("../src/theme/base.css"), BUILT_CSS]) {
+    const g = rulesFor(css, ".avatar-grid");
+    // 行は全部同じ高さ（いちばん高いカード）。中身の高さで止めない（3.12.0 の align-items: start はやめた）
+    assert.ok(g.includes("grid-auto-rows:1fr"), g);
+    assert.ok(!g.includes("align-items:start"), g);
+    // カードは行の高さいっぱい（stretch）、右の列も高さいっぱいで、ボタンは下の端
+    const c = rulesFor(css, ".skin-card.avatar-card");
+    assert.ok(c.includes("align-items:stretch"), c);
+    assert.ok(rulesFor(css, ".avatar-card-body").includes("flex:1"));
+    assert.ok(rulesFor(css, ".skin-actions").includes("margin-top:auto"));
+    // 名前と印は同じ行（入らなければ印を次の行へ）
+    const head = rulesFor(css, ".avatar-card-head");
+    for (const d of ["display:flex", "flex-wrap:wrap", "align-items:center"]) assert.ok(head.includes(d), `${d}: ${head}`);
+    // 絵の枠は 96px（カードの基準の高さ：96 ＋ 内側 9×2 ＋ 縁 1×2 ＝ 116px）
+    assert.ok(rulesFor(css, ".avatar-card.avatar-card-preview").includes("height:96px"));
+  }
+  assert.equal(96 + 9 * 2 + 1 * 2, 116);
+  const view = read("../src/views/SettingsAvatars.tsx");
+  assert.ok(!view.includes('<div className="skin-tags">'), "the badge sits on the name row");
 });

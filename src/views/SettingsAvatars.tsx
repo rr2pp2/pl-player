@@ -26,6 +26,7 @@ import { characterPaneWidth, useLayoutSize } from "../components/useLayoutSize";
 import { characterMinListOf, useCharacterPaneFor, useDetailLayout } from "../layout/useDetailLayout";
 import { DETAIL } from "../layout/detailLayout";
 import {
+  AVATAR_LEAD,
   AVATAR_NAME_MAX,
   avatarCardLabel,
   avatarNameOk,
@@ -375,8 +376,10 @@ export function AvatarsField() {
   return (
     <div className="avatar-block">
       <h4 className="skin-subhead">立ち絵</h4>
+      <p className="hint-text">{AVATAR_LEAD}</p>
       {st?.safeMode ? <div className="skin-callout warn">既定の見た目で動いている間（セーフモード）は、立ち絵を出しません。選んでおくことはできます。</div> : null}
-      {/* v3.12.0：カードは左に絵・右に名前・説明・印・ボタン（.avatar-grid・.avatar-card。上の「スキン」の一覧のカードは今のまま） */}
+      {/* v3.12.0：カードは左に絵・右に名前・説明・印・ボタン（.avatar-grid・.avatar-card。上の「スキン」の一覧のカードは今のまま）。
+          v3.12.1：カードは全部同じ高さ（絵の枠 96px が基準。収まらないカードがあれば、いちばん高いカードに全部をそろえる）、ボタンは下の端 */}
       <div className="skin-grid avatar-grid" role="group" aria-label="使う立ち絵（カードを押すと切り替わります）">
         {rows.map((r) => {
           const on = r.choice === choice;
@@ -404,16 +407,15 @@ export function AvatarsField() {
             >
               <RowPreview row={r} skinStill={skinStill} />
               <div className="avatar-card-body">
-                <div className="skin-name">{r.name}</div>
-                {/* v3.12.0：説明はどのカードも切らずに折り返す（「スキンの立ち絵」の「（いまは無し）」など、文の終わりに意味がある）。
-                    取り込んだスキンの立ち絵には「スキン」の印を付ける。印は「スキン」の一覧の札（.skin-tag）と同じ形と色（文字で伝え、色だけに頼らない） */}
-                {/* 説明が空（読めない立ち絵）なら出さない（名前と理由の間に空の行を作らない） */}
+                {/* 取り込んだスキンの立ち絵には「スキン」の印を、名前と同じ行に付ける（v3.12.1。絵の枠 96px の高さに収めるため）。
+                    印は「スキン」の一覧の札（.skin-tag）と同じ形と色（文字で伝え、色だけに頼らない） */}
+                <div className="avatar-card-head">
+                  <span className="skin-name">{r.name}</span>
+                  {r.badge ? <span className="skin-tag">{r.badge}</span> : null}
+                </div>
+                {/* 説明はどのカードも切らずに折り返す（「スキンの立ち絵」の「（いまは無し）」など、文の終わりに意味がある）。
+                    説明が空（読めない立ち絵）なら出さない（名前と理由の間に空の行を作らない） */}
                 {r.note ? <div className="skin-meta wrap">{r.note}</div> : null}
-                {r.badge ? (
-                  <div className="skin-tags">
-                    <span className="skin-tag">{r.badge}</span>
-                  </div>
-                ) : null}
                 {r.broken ? <div className="error-text">読めません：{errorText[r.broken] ?? r.broken}</div> : null}
                 <div className="skin-actions">
                   {r.broken ? null : on ? (

@@ -2156,8 +2156,9 @@ img.skin-icon {
    min(100%, …) で横にはみ出さない。絵は縦長の枠（72×96px）に縦横比を保って収める（立ち絵は縦長が多い） */
 .avatar-grid {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  /* カードの高さは中身の分だけ（同じ行の長いカードに合わせて伸ばさない。短いカードのボタンが下に離れないように） */
-  align-items: start;
+  /* v3.12.1：カードは全部同じ高さ。行は全部 1fr（いちばん高いカードの高さ）で、ふつうは絵の枠 96px＋内側と縁の 116px に収まる。
+     収まらないカード（長い名前・読めない立ち絵の理由）があるときだけ、全部をその高さにそろえる。ボタンは下の端（.skin-actions の margin-top: auto） */
+  grid-auto-rows: 1fr;
 }
 .skin-card.avatar-card {
   flex-direction: row;
@@ -2176,6 +2177,17 @@ img.skin-icon {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+/* v3.12.1：名前と「スキン」の印を同じ行に（入らなければ印を次の行へ） */
+.avatar-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+}
+.avatar-card-head .skin-name {
+  min-width: 0;
 }
 /* 名前も切らずに折り返す（登録した立ち絵の名前は 40 文字まで。省略記号にすると同じ頭の名前を見分けられない） */
 .avatar-card .skin-name {
